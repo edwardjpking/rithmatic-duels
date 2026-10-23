@@ -2,13 +2,12 @@
 
 A two-player, simultaneous-choice strategy duel game, loosely in the spirit of Pokémon-style duels, built on the chalk-drawing magic system from *The Rithmatist*. Every action takes time to complete, and both players commit to actions each turn without knowing what the other has chosen.
 
-This document consolidates the design notes held in Notion (under the top-level "Rithmatic duels" page: a **Lines** database, an **Actions** database, a **Structure of the game** page, and a **Defences** page nested under Line of Warding) plus decisions made in conversation since. Where the two differ, this document reflects the latest decisions and the difference is flagged.
+This document is the single source of truth for the game's design. It began as a consolidation of earlier Notion notes; as of 2026-10-23 Notion is no longer maintained and is not kept in sync.
 
 **Scope notes**
 - All numbers are placeholders to be tuned through balancing.
 - Only gameplay-relevant material belongs here. Story and lore from the novel are out of scope.
 - Only four lines exist in the game (Warding, Forbiddance, Vigor, Making). The novel's Line of Silencing and Line of Revocation have no duelling relevance and are excluded.
-- Older Notion material (a 2023 "Game development hub" / "Rithmatism" page) is deliberately ignored.
 
 ---
 
@@ -45,7 +44,7 @@ Each turn:
 
 **Decision timer.** Each turn has a time limit for choosing, configured by the players before the duel starts: default 30 seconds, settable from 10 to 120 seconds, or off (for hotseat and practice against the AI; online duels require a value). On timeout, the player's action is **Continue drawing** if a drawing is in progress, otherwise **Pass the turn**.
 
-**Duel start.** Both players start by working on a defence (see section 6). The turn count begins once both main LoW are complete. Players can pick a saved defence preset (section 6.8) so they do not have to select each line every duel. (Note: the Notion "Structure of the game" page only contains the first line; the details in this document come from conversation.)
+**Duel start.** Both players start by working on a defence (see section 6). The turn count begins once both main LoW are complete. Players can pick a saved defence preset (section 6.8) so they do not have to select each line every duel.
 
 ### 2.1 End game: chalk fatigue and tiebreak
 
@@ -81,7 +80,7 @@ Because dismissal (step 1) resolves before movement and attacks (step 2), a LoF 
 
 ## 4. Lines
 
-Four line types. Each completed drawing receives a random modifier (section 5). Stat field names below match the Notion "Lines" database. Values that were blank until 2026-10-23 now have first-pass placeholder numbers, to be tuned in testing.
+Four line types. Each completed drawing receives a random modifier (section 5). Values that were blank until 2026-10-23 now have first-pass placeholder numbers, to be tuned in testing.
 
 ### 4.1 Line of Warding (LoW)
 
@@ -154,7 +153,7 @@ All tier values are placeholders and live in data. The tier system should be bui
 - Has no durability of its own: it is removed when absorbed.
 - On hitting a LoW it creates a pockmark; enough hits to the same point can breach the line.
 - Behaves like a light wave: reflects off LoF and refracts on a change of medium.
-- *Supersedes the earlier formula "time to draw = movement speed / frequency", which contradicted the intent that higher frequency takes longer. The Notion Lines database still says "1 / movement" and needs updating.*
+- *Supersedes the earlier formula "time to draw = movement speed / frequency", which contradicted the intent that higher frequency takes longer.*
 
 ### 4.4 Line of Making (LoM)
 
@@ -208,7 +207,7 @@ Each turn a player picks one of these (availability depends on state):
 
 | Action | Rules |
 |---|---|
-| **Start drawing** | Only available with no drawing in progress. Choose one of the 4 line types. Optionally **rush** or **steady** (below). |
+| **Start drawing** | Only available with no drawing in progress. Choose one of the 4 line types. Optionally **rush** or **steady** (below). The turn spent starting does **not** count as progress; the drawing's turns are paid with Continue drawing. (The one exception is rushing a 1-turn drawing, which completes instantly; section 5.2.) |
 | **Continue drawing** | Advance the current drawing. Uses the action for the turn. |
 | **Cancel drawing** | Abandon the current drawing and lose all progress. Uses the action for the turn. |
 | **Add to drawing** | Buff LoM: 2 turns per stat buff. Repair LoW / LoF: 2 turns per point of durability. |
@@ -268,7 +267,7 @@ A set of default bind-point presets gives the standard circles (4, 6 and 9 point
 | Nine-point circle | 9 | Easton, Shoaff, Taylor |
 | Ellipse | 2 | Jordan, Osborn |
 
-Main LoW draw time is bind points div 2 (1 turn for an ellipse, 2 for four-point, 3 for six-point, 4 for nine-point). Everything attached is drawn on top of that. Diagrams below are copied from the Notion Defences page (images in `docs/images/defences/`). Defences too thinly described in the novel to draw (such as Hill) have been removed.
+Main LoW draw time is bind points div 2 (1 turn for an ellipse, 2 for four-point, 3 for six-point, 4 for nine-point). Everything attached is drawn on top of that. Diagrams are in `docs/images/defences/`. Defences too thinly described in the novel to draw (such as Hill) have been removed.
 
 ### 6.4 Four-point circles
 
@@ -384,8 +383,5 @@ A preset gives **no** reduction in drawing time, only in thinking time. It queue
 
 **Open questions:** none outstanding as of 2026-10-23.
 
-**Settled 2026-10-23:** board model, LoV frequency tiers, chalkling stats, glyph cap, binding, steady rounding, rush on 1-turn drawings, rush/steady odds, turn limit, decision timer, end-game pressure, bind point rules, LoF dismissal timing (intended), LoV paths and absorption, LoV-on-LoV collisions, pushing chalklings, minimum damage, defence legality, presets, and double breach.
+**Settled 2026-10-23:** board model, LoV frequency tiers, chalkling stats, glyph cap, binding, steady rounding, rush on 1-turn drawings, rush/steady odds, turn limit, decision timer, end-game pressure, bind point rules, LoF dismissal timing (intended), LoV paths and absorption, LoV-on-LoV collisions, pushing chalklings, minimum damage, defence legality, presets, double breach, and that starting a drawing does not count as progress.
 
-**Notion sync status**
-- The latest decisions have **not yet been written to Notion**: section 1 (board, turn limit, end of duel), section 2 (turn structure, timer, end game), section 3 resolution order, the information model, LoV frequency tiers and collisions, chalkling stats, glyphs and binding, the placeholder numbers, rush/steady rounding and odds, free-form defences, the bind point rules and saved presets. Planned Notion edits: expand the "Structure of the game" page; add the bind point rules to the top of the Defences page and strip story-flavoured phrasing from it; update the rush/steady pages under Actions; update the LoV and LoM entries in the Lines database; remove Hill from the overview table on the Defences page (its section is already gone).
-- Notion hierarchy to preserve: Rithmatic duels > { Lines (database; Line of Warding > Defences), Actions (database; Add to drawing > {Buff LoM, Repair LoW / LoF}), Structure of the game }.

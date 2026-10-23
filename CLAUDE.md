@@ -6,7 +6,7 @@ A two-player, simultaneous-choice, turn-based strategy duel game built on the ch
 
 `docs/DESIGN.md` is the authoritative design document. Read the relevant section before implementing or changing any game rule. If code and the design doc disagree, flag it to the user rather than silently picking one. When a design decision is made in conversation, update `docs/DESIGN.md` in the same change.
 
-Design notes also live in the user's Notion ("Rithmatic duels" page). The design doc lists which recent decisions have not yet been synced there (section 7, "Notion sync status").
+Notion is no longer used for design notes; do not sync to it.
 
 ## Key rules at a glance
 
