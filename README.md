@@ -5,6 +5,7 @@ A two-player, simultaneous-choice strategy duel game based on the chalk-drawing 
 Players commit to drawing lines (Warding, Forbiddance, Vigor, Making) without knowing the opponent's choice. Every drawing takes turns to complete, and you lose when your main Line of Warding is breached.
 
 - Design document: [docs/DESIGN.md](docs/DESIGN.md)
+- Build plan and how to play the current prototype: [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)
 
 *This is an unofficial fan project. The Rithmatist is the work of Brandon Sanderson.*
 
