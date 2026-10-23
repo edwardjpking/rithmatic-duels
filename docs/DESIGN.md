@@ -18,7 +18,21 @@ This document consolidates the design notes held in Notion (under the top-level 
 - Every drawing takes a number of **turns** to complete. There is a single unit of time (the tick, equal to one turn); different actions simply cost different numbers of turns.
 - A player can only have **one drawing in progress** at a time, so what to commit time to is the central decision.
 - **Win condition:** a player loses if their *main Line of Warding* is breached.
-- **Draw:** the duel has a turn limit (value not yet decided). If nobody has breached the other's main LoW by then, it is a draw. Stalemates are considered undesirable and should be mitigated wherever possible.
+- **Turn limit:** default 60 turns, configurable per duel from 30 to 120 before it starts. The turn count starts on the first turn after **both** main LoW are complete; setup turns are not counted or capped.
+- **End of the duel:** if nobody has breached the other's main LoW by the turn limit, a tiebreak decides it (section 2.1). Only an exact tie is a draw.
+- **Double breach:** if both main LoW are breached in the same tick, the breach that happens earlier within the tick (by time of impact along the moving line's path) wins. Only breaches at exactly the same moment are a draw.
+- Stalling needs no special rule: with a turn limit and a tiebreak, mutual stalling benefits nobody, so at least one player is making a mistake by doing it.
+
+### 1.1 The board
+
+The board is **continuous 2D**, with snapping to help placement.
+
+- Lines are real shapes: a LoW is a circle (centre and radius) or an ellipse, a LoF is a straight segment, a LoV travels along a direction vector.
+- **Snapping (default mode):** a player's selections snap to bind points and to cardinal directions where applicable. For example, a LoF drawn on the circumference of a LoW snaps to being a tangent.
+- **LoV aim is free:** a LoV can be angled in any direction, never snapped.
+- **Free hand mode:** holding a key turns snapping off, so lines can be placed wherever the player wishes. Lines that are straight (such as LoF) are still drawn straight.
+- Collision is computed geometrically (segment, circle and ellipse intersection), so reflections off LoF use the true angle.
+- **Scale (placeholder):** the board is 32 x 20 units. Each player's main LoW is centred 6 units from their own short edge, so the two centres are 20 units apart. The default main LoW radius is 3 units.
 
 ## 2. Turn structure
 
@@ -29,9 +43,16 @@ Each turn:
 3. Choices are locked, time resumes for one tick, and the tick resolves (section 3).
 4. The next turn begins.
 
-**Decision timer.** There will be a time limit for deciding within a turn. It is flexible and can be configured by the players before the duel starts.
+**Decision timer.** Each turn has a time limit for choosing, configured by the players before the duel starts: default 30 seconds, settable from 10 to 120 seconds, or off (for hotseat and practice against the AI; online duels require a value). On timeout, the player's action is **Continue drawing** if a drawing is in progress, otherwise **Pass the turn**.
 
-**Duel start.** Both players start by working on a defence (see section 6); the game turn tracker begins after that. (Note: the Notion "Structure of the game" page only contains this one line; the details in this document come from conversation.)
+**Duel start.** Both players start by working on a defence (see section 6). The turn count begins once both main LoW are complete. Players can pick a saved defence preset (section 6.8) so they do not have to select each line every duel. (Note: the Notion "Structure of the game" page only contains the first line; the details in this document come from conversation.)
+
+### 2.1 End game: chalk fatigue and tiebreak
+
+The end game is pressured in two ways, similar to tiebreaks and overtime pressure in games like Clash Royale.
+
+- **Chalk fatigue:** during the last 15 turns of the duel, repairs are not allowed, and every main LoW loses 1 durability every 3 turns.
+- **Tiebreak:** if the turn limit is reached with no breach, the player whose main LoW has the higher share of its maximum durability left wins. An exact tie is a draw.
 
 ### Information
 
@@ -48,31 +69,40 @@ While players choose, time is frozen. LoV that have been drawn and are not yet d
    - Any LoF, LoW or LoM that finishes drawing this tick (including repairs to such lines) gains its durability.
 2. **Movement and attacks.** Any actions taken by LoV or LoM (chalklings) take place. These include movement and attacking.
 3. **Damage.** Damage from collisions that occurred this tick is processed:
-   - **LoV hits LoW:** damages the LoW at the LoV's current position.
-   - **LoV hits LoF:** the LoV is reflected according to the laws of reflection for EM waves.
+   - **LoV hits LoF:** the LoV is reflected according to the laws of reflection for EM waves and carries on. LoF are the only lines that do not absorb a LoV.
+   - **LoV hits LoW or a chalkling (LoM):** the LoV is absorbed and deals its damage at the point of impact. Excess damage is ignored. A chalkling that survives is pushed back (section 4.3).
+   - **LoV hits LoV:** the two absorb each other's energy (section 4.3).
    - **LoM hits LoW / LoF / LoM:** an attacking LoM deals its damage to the line at its current position.
    - Any line left with no durability loses effect.
 
-Consequence worth noting: because dismissal (step 1) resolves before movement and attacks (step 2), a LoF whose dismissal completes in a tick no longer blocks a LoV arriving in that same tick.
+A LoV that crosses several objects in one tick resolves them **in order along its path**, and keeps going along the reflected path after a reflection, until it is absorbed or runs out of movement for that tick.
+
+Because dismissal (step 1) resolves before movement and attacks (step 2), a LoF whose dismissal completes in a tick no longer blocks a LoV arriving in that same tick. **This is intended.**
 
 ## 4. Lines
 
-Four line types. Each completed drawing receives a random modifier (section 5). Stat field names below match the Notion "Lines" database; fields marked *blank* are intentionally empty for now.
+Four line types. Each completed drawing receives a random modifier (section 5). Stat field names below match the Notion "Lines" database. Values that were blank until 2026-10-23 now have first-pass placeholder numbers, to be tuned in testing.
 
 ### 4.1 Line of Warding (LoW)
 
 | Stat | Value |
 |---|---|
-| Durability | 12 |
+| Durability | 12 at each point of a default circle (radius 3), scaled by curvature (below) |
 | Modifier (+ve / -ve) | +2 durability / -2 durability |
-| Damage, movement speed | blank |
+| Damage | 0 (a LoW never attacks) |
+| Movement speed | 0 (fixed in place) |
+
+**Durability is per point.** A hit damages the LoW within 0.5 units either side of the impact; the LoW is breached when any point reaches 0. Placeholder curvature scaling: durability at a point = 12 x clamp(sqrt(k / k_ref), 0.5, 2), where k is the local curvature and k_ref = 1/3 is the curvature of the default circle. So smaller circles are stronger per point, larger circles weaker, and an ellipse is strongest at its bind points and weakest along its sides.
 
 **Time to draw**
 - Main LoW: (number of bind points) div 2 (integer division). So 2 bind points = 1 turn, 4 = 2, 6 = 3, 9 = 4.
-- Mark's Cross: 1 turn.
+- Any other LoW: the same formula, minimum 1 turn.
+- Mark's Cross: 1 turn. Placeholder: its small circle has radius 1, and its two LoF use the LoF formulas.
 
 **Features**
 - The duel is lost if the *main* LoW is breached.
+- A LoW is **fixed in place** once constructed. Nothing, including a LoV, can move it.
+- An elliptical LoW has its durability scaled by the steepness of its curvature (section 6.1).
 - Provides bind points for LoF and defensive chalklings.
 - Any subsequent LoW must be bound to the main LoW.
 - Strength depends on evenness and curvature: steeper curvature means a stronger line. Circles have even curvature all the way round. Ellipses are strongest at their bind points and weakest along their sides.
@@ -87,42 +117,78 @@ Four line types. Each completed drawing receives a random modifier (section 5). 
 | Durability | 3 + (number of bind points) x 3 |
 | Modifier | +2 durability / -2 durability |
 | Time to draw | 4 - (number of bind points), minimum 1 |
+| Damage | 0 |
+| Movement speed | 0 |
 
-**Features:** reflects LoV. LoF also act as anchors and structural supports within defences. LoF can be dismissed (action costing 2 turns). A *Mark's Cross* is a small four-point circle containing a crossed pair of LoF, used to brace a larger circle.
+**Features:** reflects LoV and takes no damage from them; only chalklings can damage a LoF. LoF also act as anchors and structural supports within defences. LoF can be dismissed (action costing 2 turns). A *Mark's Cross* is a small four-point circle containing a crossed pair of LoF, used to brace a larger circle.
 
 ### 4.3 Line of Vigor (LoV)
 
 | Stat | Value |
 |---|---|
-| Damage | 2 |
-| Movement speed | 0 (Notion value, appears to be a placeholder) |
+| Damage, movement speed, time to draw | set by frequency tier (below) |
 | Modifier | +1 damage / -1 damage |
-| Time to draw | movement speed / frequency (see below) |
+
+**Frequency tiers.** When starting a LoV the player picks a frequency tier. Higher frequency means a faster line that takes longer to draw and carries more energy, so it deals more damage on impact.
+
+| Tier | Time to draw (turns) | Speed (units per tick) | Damage |
+|---|---|---|---|
+| Low | 1 | 3 | 1 |
+| Medium | 2 | 5 | 2 |
+| High | 3 | 7 | 3 |
+
+At these speeds a LoV crosses the 14-unit gap between two default main LoW in about 5, 3 or 2 ticks.
+
+**Minimum damage.** Damage can drop to 0 after modifiers (for example a Low tier LoV with a -1 modifier). A 0-damage LoV fizzles out: it is removed before it reaches anything. Damage never goes below 0, so a negative modifier never heals the target.
+
+**LoV hitting LoV.** Two LoV that collide absorb each other's energy. The lower tier line is destroyed, and the higher tier line drops by the lower line's tier and carries on with the speed and base damage of its new tier (High hitting Low becomes Medium; High hitting Medium, and Medium hitting Low, both leave the higher line as Low). Equal tiers destroy each other. A modifier stays with the surviving line.
+
+**Pushing chalklings.** A LoV that hits a chalkling deals its damage and is absorbed. If the chalkling survives, it is pushed along the LoV's direction by 2 x (LoV damage) / (chalkling max durability) units, capped at 3 units. So tougher chalklings move less. A bound chalkling cannot be pushed beyond its tether.
+
+All tier values are placeholders and live in data. The tier system should be built so it can later be replaced by a continuous frequency slider (see `docs/FUTURE_IDEAS.md`).
 
 **Features**
-- The main offensive line. Drawn as a sine wave; once complete it moves ("shoots out") each tick at its speed until it hits an obstacle.
-- Most chalklings are easily destroyed by a LoV.
+- The main offensive line. Drawn as a sine wave; once complete it moves ("shoots out") each tick at its speed until it is absorbed by any line other than a LoF.
+- Can be aimed at any angle (no snapping).
+- Most chalklings are easily destroyed by a LoV. A LoV can push a chalkling (LoM) it hits; it can never move a LoW.
+- Has no durability of its own: it is removed when absorbed.
 - On hitting a LoW it creates a pockmark; enough hits to the same point can breach the line.
-- Reflects off LoF.
 - Behaves like a light wave: reflects off LoF and refracts on a change of medium.
-- Frequency trade-off: higher-frequency LoV penetrate better, lower-frequency LoV transfer more energy (for example displacing a LoW). A tighter curve (more wave in less area) is harder to draw but stronger.
-- **Draw time (latest clarification):** a LoV takes a number of turns equal to *movement speed / frequency*, where frequency is directly tied to movement speed and higher frequency means longer to draw. *Note: the Notion Lines database still says "1 / movement"; it has not been updated.*
+- *Supersedes the earlier formula "time to draw = movement speed / frequency", which contradicted the intent that higher frequency takes longer. The Notion Lines database still says "1 / movement" and needs updating.*
 
 ### 4.4 Line of Making (LoM)
 
 Creates chalklings (autonomous units).
 
-| Stat | Value |
+A chalkling has three stats: **Durability**, **Damage** and **Speed**. When the player starts a LoM they give its stat specification by spending stat buffs, one at a time, on any of the three. The specification sets how long the drawing takes.
+
+| Stat | Base | Per stat buff |
+|---|---|---|
+| Durability | 1 | +2 |
+| Damage | 0 | +1 |
+| Speed (units per tick) | 0 | +1 |
+
+| Rule | Value |
 |---|---|
-| Damage | 0 |
-| Movement speed | 0 |
-| Durability | 1 + (number of bind points) x 2 |
+| Durability when bound | +2 per bind point the chalkling is bound to (binding gives free durability) |
 | Modifier | +1 to a stat of choice / -1 to the highest stat |
-| Time to draw | 1 per stat buff + 1 per glyph |
+| Time to draw | 1 per stat buff + 1 per glyph (minimum 1) |
 
-**Stat specification.** When the player starts a LoM they provide their stat specifications (the stats the chalkling will have). That specification determines how long the drawing takes. How stats are represented in play is still to be fleshed out.
+**Binding.** A chalkling can be bound to a bind point. A bound chalkling cannot move further than its tether distance from its bind point, and gains free durability as above.
 
-**Glyphs** are instructions given to a chalkling once complete. A chalkling may have at most **one glyph per 3 stat buffs**.
+**Placeholder numbers**
+
+| Value | Placeholder |
+|---|---|
+| Chalkling size | radius 0.25 units |
+| Attack range | 0.5 units (contact) |
+| Attacks | 1 attack per tick, dealing its Damage |
+| Tether distance when bound | 2 units |
+| Defend glyph patrol | moves around its bind point within the tether; attacks the nearest unbound or foreign chalkling in reach |
+
+More stats (such as range or attack speed) and fixed archetypes for teaching and fast duels may be added later; see `docs/FUTURE_IDEAS.md`.
+
+**Glyphs** are instructions given to a chalkling once complete. A chalkling may carry **1 glyph for free, plus 1 more per 3 stat buffs**. (So the cheapest defensive chalkling is 0 buffs + the Defend glyph = 1 turn.)
 
 | Glyph | Shape | Effect |
 |---|---|---|
@@ -155,10 +221,18 @@ When a drawing completes, a modifier is applied at random. The base odds are P(-
 
 When starting a drawing the player may choose:
 
-- **Rush:** drawing time reduced by 50%, **rounded up**. Odds change to P(-ve) = 1/4, P(2x -ve) = 1/12.
-- **Steady:** drawing time increased by 50% (rounding not yet specified). Odds change to P(-ve) = 1/12, P(+ve) = 1/3, P(2x +ve) = 1/12.
+- **Rush:** drawing time reduced by 50%, **rounded up**. **Exception:** rushing a 1-turn drawing makes it complete **immediately**, in the same tick it is started (step 1 of section 3).
+- **Steady:** drawing time increased by 50%, **rounded up** (1 → 2, 2 → 3, 3 → 5, 4 → 6), so steady always costs at least one extra turn.
 
-Notes: because rush rounds up, a 1-turn drawing is not shortened by rushing (only the modifier odds worsen). The Notion page lists the rush and steady odds as written above; whether the "-ve" figures are inclusive of the "2x -ve" case is not stated.
+Each figure below is a **separate outcome**; "none" takes the remainder.
+
+| Mode | 2x -ve | -ve | None | +ve | 2x +ve | Expected modifier |
+|---|---|---|---|---|---|---|
+| Base | 0 | 1/8 | 3/4 | 1/8 | 0 | 0 |
+| Rush | 1/6 | 1/4 | 7/12 | 0 | 0 | -7/12 |
+| Steady | 0 | 1/12 | 5/12 | 1/3 | 1/6 | +7/12 |
+
+Rush can never give a positive modifier. Steady keeps a slim chance of a negative one. These choices should feel impactful: players should feel the weight of the risk. The double-effect odds were raised from 1/12 to 1/6 for that reason (see the balance watchlist in section 7).
 
 ## 6. Defences
 
@@ -166,13 +240,17 @@ A **defence** is the arrangement of lines a player draws around their main LoW. 
 
 ### 6.1 Bind point framework
 
-All defences use the same structure for bind points:
+**Elliptical LoW**
+- Always has exactly **2 bind points**, at the two points where its curvature is greatest.
+- Its durability is scaled by the steepness of that curvature. It is strong near its bind points and weak along its sides, so attachments should not touch the sides.
 
-1. Place a triangle around the Line of Warding. Its vertices determine the bind points.
-2. Bind points are placed where the **edges of the triangle** and the **perpendiculars extended from each vertex** intersect the LoW's circumference (where such intersections exist).
-3. This framework gives a **maximum of 12** possible bind points (3 edges and 3 perpendiculars, each crossing the circumference at up to 2 points).
+**Circular LoW**
+1. The player places the three vertices of a triangle around the LoW circle.
+2. One set of bind points is placed where the **edges of the triangle** intersect the circumference.
+3. More bind points are placed where the **altitude through each vertex, extended to a full line**, intersects the circumference.
+4. This gives a **maximum of 12** bind points (3 edges and 3 altitude lines, each crossing the circle at up to 2 points).
 
-Common cases: an ellipse has 2 bind points (at its tightest curves), and the standard circle shapes have 4, 6 or 9. An elliptical LoW is strong near its bind points and weak along its sides, so attachments should not touch the sides.
+A set of default bind-point presets gives the standard circles (4, 6 and 9 points) used by the defences below. Players can also create and save their own triangle constructions as presets.
 
 ### 6.2 Vocabulary
 
@@ -187,17 +265,21 @@ Common cases: an ellipse has 2 bind points (at its tightest curves), and the sta
 |---|---|---|
 | Four-point circle | 4 | Ballintain, Sumsion |
 | Six-point circle | 6 | Eskridge, Matson |
-| Nine-point circle | 9 | Easton, Hill, Shoaff, Taylor |
+| Nine-point circle | 9 | Easton, Shoaff, Taylor |
 | Ellipse | 2 | Jordan, Osborn |
 
-Main LoW draw time is bind points div 2 (1 turn for an ellipse, 2 for four-point, 3 for six-point, 4 for nine-point). Everything attached is drawn on top of that. The Notion Defences page includes a diagram for each preset.
+Main LoW draw time is bind points div 2 (1 turn for an ellipse, 2 for four-point, 3 for six-point, 4 for nine-point). Everything attached is drawn on top of that. Diagrams below are copied from the Notion Defences page (images in `docs/images/defences/`). Defences too thinly described in the novel to draw (such as Hill) have been removed.
 
 ### 6.4 Four-point circles
+
+<img src="images/defences/four-point-circle.png" alt="Four-point circle bind points" width="260">
 
 **Ballintain** (simple, quick to set up, little internal support)
 - Two LoF, each joining a pair of neighbouring bind points.
 - A circular LoW at each of two opposite bind points.
 - One defensive chalkling bound to one of the two remaining bind points.
+
+<img src="images/defences/ballintain.png" alt="Ballintain defence" width="260">
 
 **Sumsion**
 - A long LoF lying tangent to the front bind point.
@@ -205,23 +287,33 @@ Main LoW draw time is bind points div 2 (1 turn for an ellipse, 2 for four-point
 - Defensive chalklings bound to the bind points on either side.
 - A line crossing the rear bind point perpendicular to the curve as an anchor.
 
+<img src="images/defences/sumsion.png" alt="Sumsion defence" width="260">
+
 ### 6.5 Six-point circles
 
 Six bind points at the corners of a regular hexagon within the circle. More versatile and sturdier than two- or four-point circles.
+
+<img src="images/defences/six-point-circle.png" alt="Six-point circle bind points" width="260">
 
 **Eskridge**
 - Three internal LoF, each joining two neighbouring bind points, leaving three open gaps to draw in.
 - Defensive chalklings at the top and bottom bind points.
 - Circular LoW at the remaining bind points, each with an internal LoF pointing at the opponent to help turn aside LoV.
 
+<img src="images/defences/eskridge.png" alt="Eskridge defence" width="260">
+
 **Matson** (chalkling-heavy)
 - Two parallel LoF, each joining a pair of neighbouring bind points.
 - The two remaining bind points (opposite each other) each carry a circular LoW with a Mark's Cross.
 - A defensive chalkling at every bind point across all three circles except where the small circles join the large one: ten chalklings in total.
 
+<img src="images/defences/matson.png" alt="Matson defence" width="260">
+
 ### 6.6 Nine-point circles
 
 Nine bind points derived from a triangle: the midpoints of its sides plus the points where its altitudes meet the circle.
+
+<img src="images/defences/nine-point-circle.png" alt="Nine-point circle construction" width="260">
 
 **Easton**
 - A circular LoW at every bind point.
@@ -229,13 +321,14 @@ Nine bind points derived from a triangle: the midpoints of its sides plus the po
 - Drawbacks: the cost of a nine-point circle, and the LoF restrict the player's own chalklings.
 - Variants: add defensive chalklings to the outer circles. An advanced version adds a Mark's Cross to each outer circle, cuts the internal LoF from six to three, and binds chalklings to some outer bind points.
 
-**Hill**
-- Uses LoF, but can be adapted to work without them. No further detail available.
+<img src="images/defences/easton.png" alt="Easton defence" width="260">
 
 **Shoaff**
 - Elliptical LoW at each bind point, with a defensive chalkling bound at the opposite end of each ellipse.
 - Only two short LoF, as anchors, so it is vulnerable to LoV.
 - Strong against chalkling-based offence; suits LoV-focused players.
+
+<img src="images/defences/shoaff.png" alt="Shoaff defence" width="260">
 
 **Taylor**
 - Two concentric circular LoW.
@@ -245,12 +338,18 @@ Nine bind points derived from a triangle: the midpoints of its sides plus the po
 - A very large investment of drawing time.
 - If the **outer** concentric circle is breached, that counts as a loss.
 
+<img src="images/defences/taylor.png" alt="Taylor defence" width="260">
+
 ### 6.7 Ellipses
+
+<img src="images/defences/ellipse.png" alt="Elliptical LoW bind points" width="260">
 
 **Jordan**
 - A large cage of LoF surrounds the defence.
 - Many offensive chalklings are drawn inside and released in waves by dismissing the front LoF, which is redrawn once they have moved out.
 - A line through each of the two bind points acts as an anchor.
+
+<img src="images/defences/jordan.png" alt="Jordan defence" width="260">
 
 **Osborn**
 - The only standard ellipse-based preset.
@@ -258,26 +357,35 @@ Nine bind points derived from a triangle: the midpoints of its sides plus the po
 - A single anchor line through the rear bind point.
 - Optionally, a circular LoW with a Mark's Cross on each side. These must not touch the ellipse, since there are no bind points on its sides.
 
+<img src="images/defences/osborn.png" alt="Osborn defence" width="260">
+
+### 6.8 Saved defence presets
+
+Players can save their own defences as presets and pick one at the start of a duel, so they do not have to select each line every time. The game ships every named defence above as a default preset (this may change).
+
+A preset gives **no** reduction in drawing time, only in thinking time. It queues the drawings; each line still costs its normal drawing time, one drawing in progress at a time.
+
+**All defences are legal.** Some will be better than others, and that is intended. If one proves too strong it is rebalanced through its cost, not banned.
+
 ## 7. Open questions and to-do
 
-**Pending data entry (reminder requested)**
-- Fill in the intentionally blank stats (damage, durability, movement speed and similar fields on each line) once the overarching design themes and issues are pinned down. The user asked to be reminded of this at that point.
+**Placeholder numbers**
+- The previously blank stats (LoW damage and speed, LoF damage and speed, board scale, LoV speeds, LoW per-point and curvature scaling, chalkling size, range, tether and push) were filled with first-pass placeholders on 2026-10-23. They are meant to be tested and tuned, not trusted.
 
-**Undecided numbers and rules**
-- The turn limit for a duel, and how to mitigate stalemates.
-- Default and permitted range for the per-turn decision timer.
-- Rounding rule for the steady option (+50%).
-- Whether the rush/steady "-ve" odds include the "2x -ve" case.
-- How chalkling stats are represented in play (stat specification, movement, damage).
+**Balance watchlist (monitor closely in testing)**
+- **Instant rush on 1-turn drawings** (section 5.2). The user is suspicious of the balance of this mechanic.
+- **Double-effect odds of 1/6** for rush and steady (section 5.2). Check whether this feels too swingy.
+- **LoV damage dropping to 0** (section 4.3). A Low tier LoV with a negative modifier fizzles out; check this is not too punishing.
+- **Excess damage is ignored** when a LoV is absorbed. An alternative (carrying excess through) is worth trying later; see `docs/FUTURE_IDEAS.md`.
+- **Turn limit** default and range (section 1).
+- **Chalk fatigue** length and rate, and the tiebreak (section 2.1).
+- **Defence strength:** if one defence dominates, rebalance its cost (section 6.8).
+- All placeholder numbers, including LoV tiers, push distance and chalkling stats.
 
-**Questions raised but not yet answered**
-1. **Rush on 1-turn drawings.** Rounding up means rushing a 1-turn drawing has no time benefit, only worse modifier odds. Intended?
-2. **Dismissing a LoF.** Dismissals resolve before LoV movement, so a LoV arriving in the same tick that a dismissal completes passes through. Intended?
-3. **Multi-object paths.** If a LoV crosses several objects in one tick, does it resolve each in order along its path, and does it continue along the reflected path after a reflection?
-4. **Bind point geometry.** Is the triangle chosen by the player when drawing the LoW, or are bind points precomputed?
-5. **Defence validity.** With free-form defences, is any layout illegal, or do drawing time and cost naturally constrain what people build?
-6. **Presets for new players.** Which of the novel's defences ship as presets, and how thin sources (Hill) are filled in.
+**Open questions:** none outstanding as of 2026-10-23.
+
+**Settled 2026-10-23:** board model, LoV frequency tiers, chalkling stats, glyph cap, binding, steady rounding, rush on 1-turn drawings, rush/steady odds, turn limit, decision timer, end-game pressure, bind point rules, LoF dismissal timing (intended), LoV paths and absorption, LoV-on-LoV collisions, pushing chalklings, minimum damage, defence legality, presets, and double breach.
 
 **Notion sync status**
-- The latest decisions (section 2 turn structure, section 3 resolution order, information model, win/draw conditions, rush rounding, free-form defences and the bind point framework) have **not yet been written to Notion**. An attempted update did not go through (no approval received). Planned Notion edits: expand the "Structure of the game" page; add the bind point framework to the top of the Defences page and strip story-flavoured phrasing from it; update the rush rounding on the "Start drawing" page; update the LoV draw-time formula in the Lines database.
+- The latest decisions have **not yet been written to Notion**: section 1 (board, turn limit, end of duel), section 2 (turn structure, timer, end game), section 3 resolution order, the information model, LoV frequency tiers and collisions, chalkling stats, glyphs and binding, the placeholder numbers, rush/steady rounding and odds, free-form defences, the bind point rules and saved presets. Planned Notion edits: expand the "Structure of the game" page; add the bind point rules to the top of the Defences page and strip story-flavoured phrasing from it; update the rush/steady pages under Actions; update the LoV and LoM entries in the Lines database; remove Hill from the overview table on the Defences page (its section is already gone).
 - Notion hierarchy to preserve: Rithmatic duels > { Lines (database; Line of Warding > Defences), Actions (database; Add to drawing > {Buff LoM, Repair LoW / LoF}), Structure of the game }.
