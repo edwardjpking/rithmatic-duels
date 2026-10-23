@@ -1,0 +1,16 @@
+{
+    "name": "RithmaticDuels.Presentation",
+    "rootNamespace": "RithmaticDuels.Presentation",
+    "references": [
+        "RithmaticDuels.Rules"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

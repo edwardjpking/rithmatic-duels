@@ -7,3 +7,17 @@ Players commit to drawing lines (Warding, Forbiddance, Vigor, Making) without kn
 - Design document: [docs/DESIGN.md](docs/DESIGN.md)
 
 *This is an unofficial fan project. The Rithmatist is the work of Brandon Sanderson.*
+
+## Opening the project
+
+1. In Unity Hub, choose **Add > Add project from disk** and select this folder. The project targets Unity 6 (see `ProjectSettings/ProjectVersion.txt`); Hub will offer to open it with whichever Unity 6 editor you have installed.
+2. On first open Unity generates the remaining project settings and a `Packages/packages-lock.json`. Commit those.
+3. Run the tests from **Window > General > Test Runner > EditMode > Run All**.
+
+## Layout
+
+| Folder | Assembly | Purpose |
+|---|---|---|
+| `Assets/Scripts/Rules` | `RithmaticDuels.Rules` | Plain C# rules engine (no `UnityEngine`): turns, lines, actions, modifiers. |
+| `Assets/Scripts/Presentation` | `RithmaticDuels.Presentation` | MonoBehaviours for input and visuals; calls into the rules engine. |
+| `Assets/Tests/EditMode` | `RithmaticDuels.Rules.Tests` | EditMode unit tests for the rules engine (Unity Test Framework / NUnit). |
