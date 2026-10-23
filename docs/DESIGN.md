@@ -20,7 +20,7 @@ This document consolidates the design notes held in Notion (under the top-level 
 - **Win condition:** a player loses if their *main Line of Warding* is breached.
 - **Turn limit:** default 60 turns, configurable per duel from 30 to 120 before it starts. The turn count starts on the first turn after **both** main LoW are complete; setup turns are not counted or capped.
 - **End of the duel:** if nobody has breached the other's main LoW by the turn limit, a tiebreak decides it (section 2.1). Only an exact tie is a draw.
-- **Double breach:** if both main LoW are breached in the same tick, the duel is a draw. Most of the time one breach happens slightly earlier; only a breach at exactly the same time is a draw.
+- **Double breach:** if both main LoW are breached in the same tick, the breach that happens earlier within the tick (by time of impact along the moving line's path) wins. Only breaches at exactly the same moment are a draw.
 - Stalling needs no special rule: with a turn limit and a tiebreak, mutual stalling benefits nobody, so at least one player is making a mistake by doing it.
 
 ### 1.1 The board
