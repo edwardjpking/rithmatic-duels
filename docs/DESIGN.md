@@ -208,7 +208,7 @@ Each turn a player picks one of these (availability depends on state):
 
 | Action | Rules |
 |---|---|
-| **Start drawing** | Only available with no drawing in progress. Choose one of the 4 line types. Optionally **rush** or **steady** (below). |
+| **Start drawing** | Only available with no drawing in progress. Choose one of the 4 line types. Optionally **rush** or **steady** (below). The turn spent starting is not progress: a 1-turn drawing completes on the next turn, after one Continue drawing. The only exception is a rushed 1-turn drawing (section 5.2). |
 | **Continue drawing** | Advance the current drawing. Uses the action for the turn. |
 | **Cancel drawing** | Abandon the current drawing and lose all progress. Uses the action for the turn. |
 | **Add to drawing** | Buff LoM: 2 turns per stat buff. Repair LoW / LoF: 2 turns per point of durability. |
@@ -383,6 +383,28 @@ A preset gives **no** reduction in drawing time, only in thinking time. It queue
 - All placeholder numbers, including LoV tiers, push distance and chalkling stats.
 
 **Open questions:** none outstanding as of 2026-10-23.
+
+**Rules core defaults (not yet confirmed)**
+
+The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sections above leave open. Each is one setting in `RulesConfig` or one marked spot in code, and should be replaced once decided.
+
+| Rule | Current default | Where |
+|---|---|---|
+| Do Add to drawing and Dismiss LoF use the one-drawing slot? | Yes: they occupy it, advance with Continue drawing, and can be cancelled. Like Start drawing, the turn they are chosen is not progress. | `WorkInProgress`, `StartActionCountsAsProgress` |
+| Rush exception for drawings rushed down to 1 turn | Only a drawing whose base time is 1 turn completes immediately; a 2-turn drawing rushed to 1 turn still needs one Continue. | `Duel.ApplyChoice` |
+| Repair limit | Up to the line's durability at completion. A line at 0 durability cannot be repaired. | `RepairCappedAtMaxDurability` |
+| Repairs during chalk fatigue | Cannot be started, and a repair still in progress when fatigue begins fizzles on completion. | `ChalkFatigue.RepairsAllowed` |
+| When chalk fatigue wears down a main LoW | Every 3rd turn of the last 15 (turns 48, 51, 54, 57 and 60 of 60), in the damage step. It can breach. | `ChalkFatigue` |
+| Repairs, buffs and modifiers | Repairs and buffs do not roll a modifier. | `Duel.Complete` |
+| A "2x" modifier | Applies the modifier twice. | `*PerModifierStep` |
+| Negative modifier on a low-durability line | Durability never drops below 1 at completion. | `MinimumDurabilityAfterModifier` |
+| Which stat a chalkling's +ve modifier goes to | Chosen with the stat specification when the LoM is started. | `DrawingSpec.PositiveModifierStat` |
+| Chalkling -ve modifier with tied highest stats | Durability, then damage, then speed. | `Line.HighestStat` |
+| Which LoW is the main LoW | The player's first completed LoW that is not a Mark's Cross. | `Duel.Complete` |
+| LoW durability per point (section 4.1) | The rules core keeps one durability number per LoW, standing for its weakest point. The geometry layer tracks per-point durability and curvature scaling and reports damage to that weakest point. | `Line.Durability`, `IMovementResolver` |
+| Tiebreak with per-point durability | "Share of maximum durability left" uses the weakest point: its durability over that point's maximum. | `Duel.Tiebreak` |
+| Breach timing for chalk fatigue | Fatigue lands at the end of the tick, so a breach by a LoV earlier in the same tick comes first. | `Duel.ApplyChalkFatigue` |
+| What the opponent sees of a drawing in progress | Its kind (drawing, repair, buff, dismiss) and line type only; not spec, pace or progress. | `Duel.ViewWorkOf` |
 
 **Settled 2026-10-23:** board model, LoV frequency tiers, chalkling stats, glyph cap, binding, steady rounding, rush on 1-turn drawings, rush/steady odds, turn limit, decision timer, end-game pressure, bind point rules, LoF dismissal timing (intended), LoV paths and absorption, LoV-on-LoV collisions, pushing chalklings, minimum damage, defence legality, presets, and double breach.
 

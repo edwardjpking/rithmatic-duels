@@ -1,0 +1,281 @@
+using System;
+using System.Collections.Generic;
+
+namespace RithmaticDuels.Rules
+{
+    /// <summary>
+    /// Every tunable number in the rules lives here. All values are placeholders (DESIGN.md).
+    /// Public fields keep this serializable by Unity, so a ScriptableObject in the presentation
+    /// layer can wrap it and designers can rebalance without touching code.
+    ///
+    /// Fields tagged PROVISIONAL implement a default for a rule DESIGN.md has not settled. They are
+    /// listed under "Rules core defaults" in DESIGN.md section 7 and can be flipped here once decided.
+    /// </summary>
+    [Serializable]
+    public sealed class RulesConfig
+    {
+        /// <summary>Turns before the tiebreak decides the duel (DESIGN.md section 1). Chosen per duel within the range below.</summary>
+        public int TurnLimit = 60;
+        public int MinTurnLimit = 30;
+        public int MaxTurnLimit = 120;
+
+        /// <summary>The turn count starts on the first turn after both main LoW are complete.</summary>
+        public bool TurnLimitStartsAfterBothMainWards = true;
+
+        /// <summary>Per-turn decision time, enforced by the presentation layer. 0 means off (hotseat and AI practice only).</summary>
+        public float DecisionTimerSeconds = 30f;
+        public float MinDecisionTimerSeconds = 10f;
+        public float MaxDecisionTimerSeconds = 120f;
+
+        /// <summary>No drawing or job ever takes fewer turns than this.</summary>
+        public int MinimumWorkTurns = 1;
+
+        /// <summary>
+        /// The turn spent on Start drawing does not itself count as progress, so a 1-turn drawing completes
+        /// on the tick after it was started (DESIGN.md section 5.1). Only a rushed 1-turn drawing completes
+        /// at once. PROVISIONAL: the same applies to Add to drawing and Dismiss LoF.
+        /// </summary>
+        public bool StartActionCountsAsProgress = false;
+
+        /// <summary>Rushing a 1-turn drawing makes it complete in the same tick it is started.</summary>
+        public bool RushedOneTurnDrawingsCompleteImmediately = true;
+
+        /// <summary>PROVISIONAL: a negative modifier can never take a fresh line below this durability.</summary>
+        public int MinimumDurabilityAfterModifier = 1;
+
+        /// <summary>PROVISIONAL: repairs cannot take a line above its durability at completion (including its modifier).</summary>
+        public bool RepairCappedAtMaxDurability = true;
+
+        public ChalkFatigueConfig ChalkFatigue = new ChalkFatigueConfig();
+        public BoardConfig Board = new BoardConfig();
+
+        public WardingConfig Warding = new WardingConfig();
+        public ForbiddanceConfig Forbiddance = new ForbiddanceConfig();
+        public VigorConfig Vigor = new VigorConfig();
+        public MakingConfig Making = new MakingConfig();
+        public AddToDrawingConfig AddToDrawing = new AddToDrawingConfig();
+
+        public PaceConfig Rush = new PaceConfig { TimeMultiplier = 0.5, Rounding = RoundingMode.Up };
+        public PaceConfig Steady = new PaceConfig { TimeMultiplier = 1.5, Rounding = RoundingMode.Up };
+
+        // Odds are integer weights over a shared denominator so rolls are exact. 24 fits 1/8, 1/4, 1/6, 1/12 and 1/3.
+        // Each entry is a separate outcome; whatever weight is left over is "no modifier" (DESIGN.md section 5.2).
+        public ModifierOdds NormalOdds = ModifierOdds.Over(24, Outcome(-1, 3), Outcome(+1, 3));
+        public ModifierOdds RushOdds = ModifierOdds.Over(24, Outcome(-2, 4), Outcome(-1, 6));
+        public ModifierOdds SteadyOdds = ModifierOdds.Over(24, Outcome(-1, 2), Outcome(+1, 8), Outcome(+2, 4));
+
+        public PaceConfig PaceSettings(DrawingPace pace)
+        {
+            switch (pace)
+            {
+                case DrawingPace.Rush: return Rush;
+                case DrawingPace.Steady: return Steady;
+                default: return null;
+            }
+        }
+
+        public ModifierOdds OddsFor(DrawingPace pace)
+        {
+            switch (pace)
+            {
+                case DrawingPace.Rush: return RushOdds;
+                case DrawingPace.Steady: return SteadyOdds;
+                default: return NormalOdds;
+            }
+        }
+
+        /// <summary>Returns null when the per-duel settings are in range, otherwise what is wrong.</summary>
+        public string Validate()
+        {
+            if (TurnLimit < MinTurnLimit || TurnLimit > MaxTurnLimit)
+                return "Turn limit must be between " + MinTurnLimit + " and " + MaxTurnLimit + ".";
+            if (DecisionTimerSeconds != 0f && (DecisionTimerSeconds < MinDecisionTimerSeconds || DecisionTimerSeconds > MaxDecisionTimerSeconds))
+                return "Decision timer must be off or between " + MinDecisionTimerSeconds + " and " + MaxDecisionTimerSeconds + " seconds.";
+            return null;
+        }
+
+        private static ModifierOutcome Outcome(int steps, int weight)
+        {
+            return new ModifierOutcome { Steps = steps, Weight = weight };
+        }
+    }
+
+    /// <summary>Board scale placeholders for the geometry layer (DESIGN.md section 1.1).</summary>
+    [Serializable]
+    public sealed class BoardConfig
+    {
+        public float Width = 32f;
+        public float Height = 20f;
+        /// <summary>Distance from a player's own short edge to the centre of their main LoW.</summary>
+        public float MainWardInset = 6f;
+    }
+
+    /// <summary>End-game pressure over the last turns of the duel (DESIGN.md section 2.1).</summary>
+    [Serializable]
+    public sealed class ChalkFatigueConfig
+    {
+        public int LastTurns = 15;
+        /// <summary>Every main LoW loses DurabilityLoss once every this many fatigue turns.</summary>
+        public int IntervalTurns = 3;
+        public int DurabilityLoss = 1;
+        public bool RepairsAllowed = false;
+    }
+
+    [Serializable]
+    public sealed class WardingConfig
+    {
+        public int Durability = 12;
+        public int DurabilityPerModifierStep = 2;
+        /// <summary>Main LoW draw time is (bind points) div this.</summary>
+        public int BindPointsPerDrawTurn = 2;
+        public int MarksCrossDrawTurns = 1;
+        public int MarksCrossBindPoints = 4;
+        public int MaxBindPoints = 12;
+
+        // Geometry-layer placeholders (DESIGN.md section 4.1). Durability is per point, scaled by
+        // clamp(sqrt(curvature / ReferenceCurvature), MinCurvatureScale, MaxCurvatureScale).
+        public float ReferenceCurvature = 1f / 3f;
+        public float MinCurvatureScale = 0.5f;
+        public float MaxCurvatureScale = 2f;
+        /// <summary>A hit damages the LoW within this distance either side of the impact.</summary>
+        public float HitHalfWidth = 0.5f;
+        public float DefaultMainRadius = 3f;
+        public float MarksCrossRadius = 1f;
+    }
+
+    [Serializable]
+    public sealed class ForbiddanceConfig
+    {
+        public int BaseDurability = 3;
+        public int DurabilityPerBindPoint = 3;
+        public int DurabilityPerModifierStep = 2;
+        /// <summary>Draw time is this minus (bind points × DrawTurnsSavedPerBindPoint), floored at the minimum.</summary>
+        public int BaseDrawTurns = 4;
+        public int DrawTurnsSavedPerBindPoint = 1;
+        public int DismissTurns = 2;
+    }
+
+    [Serializable]
+    public sealed class VigorTierConfig
+    {
+        public int DrawTurns;
+        public int Speed;
+        public int Damage;
+    }
+
+    [Serializable]
+    public sealed class VigorConfig
+    {
+        public VigorTierConfig Low = new VigorTierConfig { DrawTurns = 1, Speed = 3, Damage = 1 };
+        public VigorTierConfig Medium = new VigorTierConfig { DrawTurns = 2, Speed = 5, Damage = 2 };
+        public VigorTierConfig High = new VigorTierConfig { DrawTurns = 3, Speed = 7, Damage = 3 };
+        public int DamagePerModifierStep = 1;
+        /// <summary>Damage never goes below this. A LoV left at 0 damage fizzles out.</summary>
+        public int MinimumDamage = 0;
+        /// <summary>A surviving chalkling is pushed PushPerDamage × damage / its max durability units, capped.</summary>
+        public float PushPerDamage = 2f;
+        public float MaxPush = 3f;
+
+        public VigorTierConfig Tier(VigorTier tier)
+        {
+            switch (tier)
+            {
+                case VigorTier.Low: return Low;
+                case VigorTier.High: return High;
+                default: return Medium;
+            }
+        }
+    }
+
+    [Serializable]
+    public sealed class MakingConfig
+    {
+        public int BaseDurability = 1;
+        public int DurabilityPerBuff = 2;
+        public int BaseDamage = 0;
+        public int DamagePerBuff = 1;
+        public int BaseSpeed = 0;
+        public int SpeedPerBuff = 1;
+        /// <summary>Free durability per bind point the chalkling is bound to.</summary>
+        public int DurabilityPerBoundBindPoint = 2;
+        // Geometry-layer placeholders (DESIGN.md section 4.4), kept here so all numbers live in one place.
+        public float TetherDistance = 2f;
+        public float Radius = 0.25f;
+        public float AttackRange = 0.5f;
+        public int AttacksPerTick = 1;
+        /// <summary>"+1 to a stat of choice / -1 to the highest stat", per modifier step.</summary>
+        public int StatPerModifierStep = 1;
+        public int DrawTurnsPerStatBuff = 1;
+        public int DrawTurnsPerGlyph = 1;
+        /// <summary>A chalkling carries this many glyphs for free, plus one more per StatBuffsPerExtraGlyph buffs.</summary>
+        public int FreeGlyphs = 1;
+        public int StatBuffsPerExtraGlyph = 3;
+    }
+
+    [Serializable]
+    public sealed class AddToDrawingConfig
+    {
+        public int TurnsPerStatBuff = 2;
+        public int TurnsPerDurabilityPoint = 2;
+    }
+
+    public enum RoundingMode
+    {
+        Up,
+        Down,
+        Nearest,
+    }
+
+    [Serializable]
+    public sealed class PaceConfig
+    {
+        public double TimeMultiplier = 1.0;
+        public RoundingMode Rounding = RoundingMode.Up;
+    }
+
+    [Serializable]
+    public sealed class ModifierOutcome
+    {
+        /// <summary>Signed modifier strength: -2 is "2x -ve", +1 is "+ve".</summary>
+        public int Steps;
+        public int Weight;
+    }
+
+    [Serializable]
+    public sealed class ModifierOdds
+    {
+        public int Denominator = 24;
+        public List<ModifierOutcome> Outcomes = new List<ModifierOutcome>();
+
+        public static ModifierOdds Over(int denominator, params ModifierOutcome[] outcomes)
+        {
+            return new ModifierOdds { Denominator = denominator, Outcomes = new List<ModifierOutcome>(outcomes) };
+        }
+
+        /// <summary>Weight left for "no modifier".</summary>
+        public int NoModifierWeight
+        {
+            get
+            {
+                int used = 0;
+                foreach (var outcome in Outcomes) used += outcome.Weight;
+                return Denominator - used;
+            }
+        }
+
+        public int Roll(IRandomSource random)
+        {
+            if (Denominator <= 0 || NoModifierWeight < 0)
+                throw new InvalidOperationException("Modifier odds weights must be non-negative and sum to at most the denominator.");
+
+            int roll = random.NextInt(Denominator);
+            int cumulative = 0;
+            foreach (var outcome in Outcomes)
+            {
+                cumulative += outcome.Weight;
+                if (roll < cumulative) return outcome.Steps;
+            }
+            return 0;
+        }
+    }
+}
