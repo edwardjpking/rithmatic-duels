@@ -236,17 +236,21 @@ A set of default bind-point presets gives the standard circles (4, 6 and 9 point
 |---|---|---|
 | Four-point circle | 4 | Ballintain, Sumsion |
 | Six-point circle | 6 | Eskridge, Matson |
-| Nine-point circle | 9 | Easton, Hill, Shoaff, Taylor |
+| Nine-point circle | 9 | Easton, Shoaff, Taylor |
 | Ellipse | 2 | Jordan, Osborn |
 
-Main LoW draw time is bind points div 2 (1 turn for an ellipse, 2 for four-point, 3 for six-point, 4 for nine-point). Everything attached is drawn on top of that. The Notion Defences page includes a diagram for each preset.
+Main LoW draw time is bind points div 2 (1 turn for an ellipse, 2 for four-point, 3 for six-point, 4 for nine-point). Everything attached is drawn on top of that. Diagrams below are copied from the Notion Defences page (images in `docs/images/defences/`). Defences too thinly described in the novel to draw (such as Hill) have been removed.
 
 ### 6.4 Four-point circles
+
+<img src="images/defences/four-point-circle.png" alt="Four-point circle bind points" width="260">
 
 **Ballintain** (simple, quick to set up, little internal support)
 - Two LoF, each joining a pair of neighbouring bind points.
 - A circular LoW at each of two opposite bind points.
 - One defensive chalkling bound to one of the two remaining bind points.
+
+<img src="images/defences/ballintain.png" alt="Ballintain defence" width="260">
 
 **Sumsion**
 - A long LoF lying tangent to the front bind point.
@@ -254,23 +258,33 @@ Main LoW draw time is bind points div 2 (1 turn for an ellipse, 2 for four-point
 - Defensive chalklings bound to the bind points on either side.
 - A line crossing the rear bind point perpendicular to the curve as an anchor.
 
+<img src="images/defences/sumsion.png" alt="Sumsion defence" width="260">
+
 ### 6.5 Six-point circles
 
 Six bind points at the corners of a regular hexagon within the circle. More versatile and sturdier than two- or four-point circles.
+
+<img src="images/defences/six-point-circle.png" alt="Six-point circle bind points" width="260">
 
 **Eskridge**
 - Three internal LoF, each joining two neighbouring bind points, leaving three open gaps to draw in.
 - Defensive chalklings at the top and bottom bind points.
 - Circular LoW at the remaining bind points, each with an internal LoF pointing at the opponent to help turn aside LoV.
 
+<img src="images/defences/eskridge.png" alt="Eskridge defence" width="260">
+
 **Matson** (chalkling-heavy)
 - Two parallel LoF, each joining a pair of neighbouring bind points.
 - The two remaining bind points (opposite each other) each carry a circular LoW with a Mark's Cross.
 - A defensive chalkling at every bind point across all three circles except where the small circles join the large one: ten chalklings in total.
 
+<img src="images/defences/matson.png" alt="Matson defence" width="260">
+
 ### 6.6 Nine-point circles
 
 Nine bind points derived from a triangle: the midpoints of its sides plus the points where its altitudes meet the circle.
+
+<img src="images/defences/nine-point-circle.png" alt="Nine-point circle construction" width="260">
 
 **Easton**
 - A circular LoW at every bind point.
@@ -278,13 +292,14 @@ Nine bind points derived from a triangle: the midpoints of its sides plus the po
 - Drawbacks: the cost of a nine-point circle, and the LoF restrict the player's own chalklings.
 - Variants: add defensive chalklings to the outer circles. An advanced version adds a Mark's Cross to each outer circle, cuts the internal LoF from six to three, and binds chalklings to some outer bind points.
 
-**Hill**
-- Uses LoF, but can be adapted to work without them. No further detail available.
+<img src="images/defences/easton.png" alt="Easton defence" width="260">
 
 **Shoaff**
 - Elliptical LoW at each bind point, with a defensive chalkling bound at the opposite end of each ellipse.
 - Only two short LoF, as anchors, so it is vulnerable to LoV.
 - Strong against chalkling-based offence; suits LoV-focused players.
+
+<img src="images/defences/shoaff.png" alt="Shoaff defence" width="260">
 
 **Taylor**
 - Two concentric circular LoW.
@@ -294,18 +309,26 @@ Nine bind points derived from a triangle: the midpoints of its sides plus the po
 - A very large investment of drawing time.
 - If the **outer** concentric circle is breached, that counts as a loss.
 
+<img src="images/defences/taylor.png" alt="Taylor defence" width="260">
+
 ### 6.7 Ellipses
+
+<img src="images/defences/ellipse.png" alt="Elliptical LoW bind points" width="260">
 
 **Jordan**
 - A large cage of LoF surrounds the defence.
 - Many offensive chalklings are drawn inside and released in waves by dismissing the front LoF, which is redrawn once they have moved out.
 - A line through each of the two bind points acts as an anchor.
 
+<img src="images/defences/jordan.png" alt="Jordan defence" width="260">
+
 **Osborn**
 - The only standard ellipse-based preset.
 - A defensive chalkling at the upper bind point.
 - A single anchor line through the rear bind point.
 - Optionally, a circular LoW with a Mark's Cross on each side. These must not touch the ellipse, since there are no bind points on its sides.
+
+<img src="images/defences/osborn.png" alt="Osborn defence" width="260">
 
 ### 6.8 Saved defence presets
 
@@ -327,7 +350,7 @@ Players can save their own defences as presets and pick one at the start of a du
 1. **Dismissing a LoF.** Dismissals resolve before LoV movement, so a LoV arriving in the same tick that a dismissal completes passes through. Intended?
 2. **Multi-object paths.** If a LoV crosses several objects in one tick, does it resolve each in order along its path, and does it continue along the reflected path after a reflection? *(Suggested default: yes to both.)*
 3. **Defence validity.** With free-form defences, is any layout illegal, or do drawing time and cost naturally constrain what people build?
-4. **Presets for new players.** Which of the novel's defences ship as presets, and how thin sources (Hill) are filled in.
+4. **Presets for new players.** Which of the defences below ship as presets for new players.
 5. **Preset drawing time.** Does picking a saved defence preset still cost the normal drawing time for each line (current default), or is any of it skipped?
 6. **Minimum LoV damage.** A Low tier LoV (damage 1) with a -1 modifier deals 0 damage. Allowed, or floor at 1?
 7. **LoV pushing chalklings.** How far a LoV pushes a chalkling it hits, and whether the LoV is spent by the hit.
@@ -336,5 +359,5 @@ Players can save their own defences as presets and pick one at the start of a du
 **Settled 2026-10-23:** board model, LoV frequency tiers, chalkling stats, glyph cap, binding, steady rounding, rush on 1-turn drawings, rush/steady odds, turn limit, decision timer, end-game pressure and the bind point rules. The earlier questions on rush on 1-turn drawings and bind point geometry are answered in sections 5.2 and 6.1.
 
 **Notion sync status**
-- The latest decisions have **not yet been written to Notion**: section 1 (board, turn limit, end of duel), section 2 (turn structure, timer, end game), section 3 resolution order, the information model, LoV frequency tiers, chalkling stats, glyphs and binding, rush/steady rounding and odds, free-form defences, the bind point rules and saved presets. Planned Notion edits: expand the "Structure of the game" page; add the bind point rules to the top of the Defences page and strip story-flavoured phrasing from it; update the rush/steady pages under Actions; update the LoV and LoM entries in the Lines database.
+- The latest decisions have **not yet been written to Notion**: section 1 (board, turn limit, end of duel), section 2 (turn structure, timer, end game), section 3 resolution order, the information model, LoV frequency tiers, chalkling stats, glyphs and binding, rush/steady rounding and odds, free-form defences, the bind point rules and saved presets. Planned Notion edits: expand the "Structure of the game" page; add the bind point rules to the top of the Defences page and strip story-flavoured phrasing from it; update the rush/steady pages under Actions; update the LoV and LoM entries in the Lines database; remove Hill from the overview table on the Defences page (its section is already gone).
 - Notion hierarchy to preserve: Rithmatic duels > { Lines (database; Line of Warding > Defences), Actions (database; Add to drawing > {Buff LoM, Repair LoW / LoF}), Structure of the game }.
