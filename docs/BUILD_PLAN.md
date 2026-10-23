@@ -22,4 +22,4 @@ The order the game is being built in. Each step ends with something you can open
 5. The first time you open the project after the Input System package was added, Unity asks whether to enable its backends. Choose **Yes**; the editor restarts.
 6. To change any rules number while playtesting, add a **Duel Controller** component to an object in a scene (GameObject > Create Empty, then Add Component) and edit its fields in the Inspector. Set **Seed** to replay a duel exactly.
 
-The placement rules that `DESIGN.md` doesn't settle yet (where you may draw, sizes of attached circles and so on) are listed under "Rules core defaults" in its section 7.
+The placement rules that `DESIGN.md` doesn't settle yet (sizes of attached circles, tangent length and so on) are listed under "Rules core defaults" in its section 7.

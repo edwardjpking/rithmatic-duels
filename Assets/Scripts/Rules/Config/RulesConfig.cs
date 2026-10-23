@@ -127,7 +127,7 @@ namespace RithmaticDuels.Rules
         public float TangentForbiddanceLength = 3f;
         /// <summary>Two LoV collide when they come this close.</summary>
         public float VigorContactDistance = 0.3f;
-        /// <summary>Free placements (LoF, LoV, unbound chalklings) must start on the player's own half of the board.</summary>
+        /// <summary>Free placements (LoF, LoV, unbound chalklings) must be on the player's own half of the board (DESIGN.md section 1.1).</summary>
         public bool DrawOnOwnHalfOnly = true;
         /// <summary>Per-point durability is tracked at this many points around each LoW.</summary>
         public int WardSamples = 120;
