@@ -13,3 +13,7 @@ Ideas to return to once the basic features are implemented. None of these are cu
 - **Combine the three stat models.** Long term, mix point buy (current rule), fixed archetypes and extra stats.
 - **Archetypes** (for example Guard, Raider, Decoy) with fixed stats and draw times: useful for teaching new players and for speed in faster duels.
 - **More stats** such as range, vision or attack speed, if the chalkling mechanic feels lacking in depth.
+
+## Line of Vigor
+
+- **Excess damage carry-through.** Today a LoV is absorbed by the first non-LoF line it hits and any damage beyond what that line had left is ignored. Try letting the excess carry on (for example, a LoV that destroys a chalkling continues with the leftover damage).
