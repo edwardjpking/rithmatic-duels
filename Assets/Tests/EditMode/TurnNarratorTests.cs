@@ -1,6 +1,5 @@
 using System.Linq;
 using NUnit.Framework;
-using RithmaticDuels.Rules.Prototype;
 
 namespace RithmaticDuels.Rules.Tests
 {

@@ -404,6 +404,16 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 | Tiebreak with per-point durability | "Share of maximum durability left" uses the weakest point: its durability over that point's maximum. | `Duel.Tiebreak` |
 | Breach timing for chalk fatigue | Fatigue lands at the end of the tick, so a breach by a LoV earlier in the same tick comes first. | `Duel.ApplyChalkFatigue` |
 | What the opponent sees of a drawing in progress | Its kind (drawing, repair, buff, dismiss) and line type only; not spec, pace or progress. | `Duel.ViewWorkOf` |
+| Where free placements may go | A free LoF, a LoV's starting point and an unbound chalkling must be on the player's own half of the board. | `GeometryConfig.DrawOnOwnHalfOnly` |
+| Elliptical main LoW | Semi-axes 3.5 and 2.5, long axis toward the opponent, bind points at its two ends. | `GeometryConfig.Ellipse*` |
+| Default bind points | 4: a right isosceles triangle inscribed in the circle. 6: an inscribed equilateral triangle. 9: a triangle whose nine-point circle is the LoW. Other counts are spaced evenly. One bind point always faces the opponent. | `BindPoints.ForCircle` |
+| Other LoW and Mark's Cross | A circle (radius 1.5, or 1 for a Mark's Cross) touching the main LoW from outside at a chosen bind point. A Mark's Cross's inner crossed LoF are not modelled yet. | `GeometryConfig.AttachedWardRadius`, `ChalkBoard` |
+| LoF placement and bind points | Between two bind points of the main LoW (2 bind points), tangent at one (1, length 3), or free (0). The placement sets the bind point count. | `ChalkBoard.ValidatePlacement` |
+| Bound chalklings | Bound to one bind point of the main LoW, sitting just outside it. | `ChalkBoard` |
+| LoV leaving the board | It is removed. | `ChalkBoard.FlyVigor` |
+| LoV-on-LoV contact | Two LoV collide when they come within 0.3 units while closing on each other. | `GeometryConfig.VigorContactDistance` |
+| A LoW point reaching 0 mid-tick | The line stops blocking at once, so a later LoV in the same tick passes through. | `ChalkBoard` |
+| Repairs and chalk fatigue on a LoW | They apply to every point of the line. | `ChalkBoard.Sync` |
 
 **Settled 2026-10-23:** board model, LoV frequency tiers, chalkling stats, glyph cap, binding, steady rounding, rush on 1-turn drawings, rush/steady odds, turn limit, decision timer, end-game pressure, bind point rules, LoF dismissal timing (intended), LoV paths and absorption, LoV-on-LoV collisions, pushing chalklings, minimum damage, defence legality, presets, double breach, and that starting a drawing does not count as progress.
 

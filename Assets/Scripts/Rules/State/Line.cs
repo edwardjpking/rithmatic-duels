@@ -146,6 +146,13 @@ namespace RithmaticDuels.Rules
             }
         }
 
+        /// <summary>Set by the geometry layer, which tracks durability per point (see <see cref="DurabilityOverride"/>).</summary>
+        internal void SetDurability(int durability, int maxDurability)
+        {
+            MaxDurability = Math.Max(1, maxDurability);
+            Durability = Math.Max(0, Math.Min(durability, MaxDurability));
+        }
+
         private int Modified(int baseValue, int perStep, RulesConfig config)
         {
             return Math.Max(config.MinimumDurabilityAfterModifier, baseValue + ModifierSteps * perStep);

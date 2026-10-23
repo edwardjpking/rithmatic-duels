@@ -305,6 +305,12 @@ namespace RithmaticDuels.Rules
 
         private void ApplyMovementResult(MovementResult movement, TurnReport report, float[] breachTime)
         {
+            foreach (var setting in movement.DurabilityOverrides)
+            {
+                var line = FindLine(setting.LineId);
+                if (line != null && line.IsActive && line.HasDurability) line.SetDurability(setting.Durability, setting.MaxDurability);
+            }
+
             foreach (int lineId in movement.DestroyedLineIds)
             {
                 var line = FindLine(lineId);
