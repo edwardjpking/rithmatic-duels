@@ -13,7 +13,8 @@ The order the game is being built in. Each step ends with something you can open
 
 1. Open the project in Unity and press **Play** in any scene, including a new empty one. The duel screen appears in the Game view.
 2. Player A chooses an action and locks it in, then hands over to Player B. When both have locked in, the tick resolves and the log shows what happened.
-3. To change any rules number while playtesting, add a **Duel Controller** component to an object in a scene (GameObject > Create Empty, then Add Component) and edit its fields in the Inspector. Set **Seed** to replay a duel exactly.
+3. The first time you open the project after pulling this branch, Unity installs the Input System package and asks whether to enable its backends. Choose **Yes**; the editor restarts. This replaces the deprecated Input Manager.
+4. To change any rules number while playtesting, add a **Duel Controller** component to an object in a scene (GameObject > Create Empty, then Add Component) and edit its fields in the Inspector. Set **Seed** to replay a duel exactly.
 
 ### What the placeholder lane does
 
