@@ -31,11 +31,11 @@ namespace RithmaticDuels.Rules
         public int MinimumWorkTurns = 1;
 
         /// <summary>
-        /// The turn spent on Start drawing does not itself count as progress, so a 1-turn drawing completes
-        /// on the tick after it was started (DESIGN.md section 5.1). Only a rushed 1-turn drawing completes
-        /// at once. PROVISIONAL: the same applies to Add to drawing and Dismiss LoF.
+        /// The turn spent on Start drawing counts as the first turn of progress, so a 2-turn drawing needs
+        /// one Continue and a 1-turn drawing completes in the tick it is started (DESIGN.md section 5.1).
+        /// PROVISIONAL: the same applies to Add to drawing and Dismiss LoF.
         /// </summary>
-        public bool StartActionCountsAsProgress = false;
+        public bool StartActionCountsAsProgress = true;
 
         /// <summary>Rushing a 1-turn drawing makes it complete in the same tick it is started.</summary>
         public bool RushedOneTurnDrawingsCompleteImmediately = true;

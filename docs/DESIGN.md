@@ -208,7 +208,7 @@ Each turn a player picks one of these (availability depends on state):
 
 | Action | Rules |
 |---|---|
-| **Start drawing** | Only available with no drawing in progress. Choose one of the 4 line types. Optionally **rush** or **steady** (below). The turn spent starting is not progress: a 1-turn drawing completes on the next turn, after one Continue drawing. The only exception is a rushed 1-turn drawing (section 5.2). |
+| **Start drawing** | Only available with no drawing in progress. Choose one of the 4 line types. Optionally **rush** or **steady** (below). The turn spent starting counts as the first turn of progress: a 1-turn drawing completes in the tick it is started, and a 2-turn drawing needs one Continue drawing. |
 | **Continue drawing** | Advance the current drawing. Uses the action for the turn. |
 | **Cancel drawing** | Abandon the current drawing and lose all progress. Uses the action for the turn. |
 | **Add to drawing** | Buff LoM: 2 turns per stat buff. Repair LoW / LoF: 2 turns per point of durability. |
@@ -221,7 +221,7 @@ When a drawing completes, a modifier is applied at random. The base odds are P(-
 
 When starting a drawing the player may choose:
 
-- **Rush:** drawing time reduced by 50%, **rounded up**. **Exception:** rushing a 1-turn drawing makes it complete **immediately**, in the same tick it is started (step 1 of section 3).
+- **Rush:** drawing time reduced by 50%, **rounded up**. Because the start turn counts as progress, any drawing rushed down to 1 turn (a 1-turn or 2-turn drawing) completes in the tick it is started (step 1 of section 3). Rushing a 1-turn drawing therefore saves no time and only worsens the odds.
 - **Steady:** drawing time increased by 50%, **rounded up** (1 → 2, 2 → 3, 3 → 5, 4 → 6), so steady always costs at least one extra turn.
 
 Each figure below is a **separate outcome**; "none" takes the remainder.
@@ -373,7 +373,7 @@ A preset gives **no** reduction in drawing time, only in thinking time. It queue
 - The previously blank stats (LoW damage and speed, LoF damage and speed, board scale, LoV speeds, LoW per-point and curvature scaling, chalkling size, range, tether and push) were filled with first-pass placeholders on 2026-10-23. They are meant to be tested and tuned, not trusted.
 
 **Balance watchlist (monitor closely in testing)**
-- **Instant rush on 1-turn drawings** (section 5.2). The user is suspicious of the balance of this mechanic.
+- **Rush on short drawings** (section 5.2). Since 2026-10-24 every 1-turn drawing completes the tick it starts, so the old instant-rush exception no longer gives anything. Rushing a 2-turn drawing now makes it instant; check whether that is too strong.
 - **Double-effect odds of 1/6** for rush and steady (section 5.2). Check whether this feels too swingy.
 - **LoV damage dropping to 0** (section 4.3). A Low tier LoV with a negative modifier fizzles out; check this is not too punishing.
 - **Excess damage is ignored** when a LoV is absorbed. An alternative (carrying excess through) is worth trying later; see `docs/FUTURE_IDEAS.md`.
@@ -390,8 +390,7 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 
 | Rule | Current default | Where |
 |---|---|---|
-| Do Add to drawing and Dismiss LoF use the one-drawing slot? | Yes: they occupy it, advance with Continue drawing, and can be cancelled. Like Start drawing, the turn they are chosen is not progress. | `WorkInProgress`, `StartActionCountsAsProgress` |
-| Rush exception for drawings rushed down to 1 turn | Only a drawing whose base time is 1 turn completes immediately; a 2-turn drawing rushed to 1 turn still needs one Continue. | `Duel.ApplyChoice` |
+| Do Add to drawing and Dismiss LoF use the one-drawing slot? | Yes: they occupy it, advance with Continue drawing, and can be cancelled. Like Start drawing, the turn they are chosen counts as progress. | `WorkInProgress`, `StartActionCountsAsProgress` |
 | Repair limit | Up to the line's durability at completion. A line at 0 durability cannot be repaired. | `RepairCappedAtMaxDurability` |
 | Repairs during chalk fatigue | Cannot be started, and a repair still in progress when fatigue begins fizzles on completion. | `ChalkFatigue.RepairsAllowed` |
 | When chalk fatigue wears down a main LoW | Every 3rd turn of the last 15 (turns 48, 51, 54, 57 and 60 of 60), in the damage step. It can breach. | `ChalkFatigue` |
@@ -415,5 +414,5 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 | A LoW point reaching 0 mid-tick | The line stops blocking at once, so a later LoV in the same tick passes through. | `ChalkBoard` |
 | Repairs and chalk fatigue on a LoW | They apply to every point of the line. | `ChalkBoard.Sync` |
 
-**Settled 2026-10-23:** board model, LoV frequency tiers, chalkling stats, glyph cap, binding, steady rounding, rush on 1-turn drawings, rush/steady odds, turn limit, decision timer, end-game pressure, bind point rules, LoF dismissal timing (intended), LoV paths and absorption, LoV-on-LoV collisions, pushing chalklings, minimum damage, defence legality, presets, double breach, that starting a drawing does not count as progress, and that free placements are limited to the player's own half.
+**Settled 2026-10-23:** board model, LoV frequency tiers, chalkling stats, glyph cap, binding, steady rounding, rush on 1-turn drawings, rush/steady odds, turn limit, decision timer, end-game pressure, bind point rules, LoF dismissal timing (intended), LoV paths and absorption, LoV-on-LoV collisions, pushing chalklings, minimum damage, defence legality, presets, double breach, that starting a drawing counts as progress (changed 2026-10-24; it previously did not), and that free placements are limited to the player's own half.
 

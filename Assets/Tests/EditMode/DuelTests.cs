@@ -96,15 +96,23 @@ namespace RithmaticDuels.Rules.Tests
         // ---- Draw times, rush and steady ----
 
         [Test]
-        public void OneTurnDrawingCompletesOnTheTickAfterItStarts()
+        public void OneTurnDrawingCompletesTheTickItStarts()
         {
             var duel = NewDuel();
-            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(2)), Pass);
+            var report = duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(2)), Pass);
+            Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.DrawingCompleted && e.Player == Player.A));
+            Assert.AreEqual(1, duel.Lines.Count);
+        }
+
+        [Test]
+        public void TwoTurnDrawingNeedsOneContinue()
+        {
+            var duel = NewDuel();
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Forbiddance(2)), Pass); // 2 turns
             Assert.AreEqual(0, duel.Lines.Count);
             Assert.AreEqual(1, duel.GetPlayer(Player.A).Work.TurnsRemaining);
 
-            var report = duel.ResolveTurn(Continue, Pass);
-            Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.DrawingCompleted && e.Player == Player.A));
+            duel.ResolveTurn(Continue, Pass);
             Assert.AreEqual(1, duel.Lines.Count);
         }
 
@@ -113,7 +121,6 @@ namespace RithmaticDuels.Rules.Tests
         {
             var duel = NewDuel();
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), Pass); // 3 turns
-            duel.ResolveTurn(Continue, Pass);
             duel.ResolveTurn(Continue, Pass);
             Assert.AreEqual(0, duel.Lines.Count);
             duel.ResolveTurn(Continue, Pass);
@@ -131,20 +138,21 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void RushingATwoTurnDrawingLeavesOneTurnToGo()
+        public void RushingATwoTurnDrawingCompletesTheTickItStarts()
         {
             var duel = NewDuel();
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Forbiddance(2), DrawingPace.Rush), Pass);
-            Assert.AreEqual(0, duel.Lines.Count);
-            Assert.AreEqual(1, duel.GetPlayer(Player.A).Work.TotalTurns);
+            Assert.AreEqual(1, duel.Lines.Count);
         }
 
         [Test]
-        public void StartingCanBeConfiguredToCountAsProgress()
+        public void StartingCanBeConfiguredNotToCountAsProgress()
         {
-            _config.StartActionCountsAsProgress = true;
+            _config.StartActionCountsAsProgress = false;
             var duel = NewDuel();
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(2)), Pass);
+            Assert.AreEqual(0, duel.Lines.Count);
+            duel.ResolveTurn(Continue, Pass);
             Assert.AreEqual(1, duel.Lines.Count);
         }
 
@@ -164,7 +172,7 @@ namespace RithmaticDuels.Rules.Tests
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), Pass);
             duel.ResolveTurn(Continue, Pass);
             duel.ResolveTurn(Pass, Pass);
-            Assert.AreEqual(1, duel.GetPlayer(Player.A).Work.Progress);
+            Assert.AreEqual(2, duel.GetPlayer(Player.A).Work.Progress);
         }
 
         [Test]
@@ -187,7 +195,6 @@ namespace RithmaticDuels.Rules.Tests
             duel.ResolveTurn(
                 PlayerAction.Start(DrawingSpec.Warding(2), DrawingPace.Rush),
                 PlayerAction.Start(DrawingSpec.Warding(2), DrawingPace.Steady));
-            duel.ResolveTurn(Pass, Continue);
             duel.ResolveTurn(Pass, Continue);
 
             Assert.AreEqual(-1, duel.GetPlayer(Player.A).MainWard.ModifierSteps);
@@ -461,7 +468,6 @@ namespace RithmaticDuels.Rules.Tests
 
             duel.ResolveTurn(PlayerAction.Dismiss(lof.Id), Pass);
             Assert.AreEqual(LineType.Forbiddance, duel.ViewWorkOf(Player.A).LineType);
-            duel.ResolveTurn(Continue, Pass);
             Assert.AreEqual(LineStatus.Active, lof.Status);
             var report = duel.ResolveTurn(Continue, Pass);
             Assert.AreEqual(LineStatus.Dismissed, lof.Status);
@@ -481,8 +487,7 @@ namespace RithmaticDuels.Rules.Tests
 
             duel.ResolveTurn(PlayerAction.Dismiss(lof.Id), Pass);
             duel.ResolveTurn(Continue, Pass);
-            duel.ResolveTurn(Continue, Pass);
-            CollectionAssert.AreEqual(new[] { LineStatus.Active, LineStatus.Active, LineStatus.Dismissed }, seen);
+            CollectionAssert.AreEqual(new[] { LineStatus.Active, LineStatus.Dismissed }, seen);
         }
 
         [Test]
@@ -510,7 +515,7 @@ namespace RithmaticDuels.Rules.Tests
 
             duel.ResolveTurn(PlayerAction.Repair(ward.Id, 2), Pass);
             Assert.AreEqual(4, duel.GetPlayer(Player.A).Work.TotalTurns);
-            for (int i = 0; i < 3; i++) duel.ResolveTurn(Continue, Pass);
+            for (int i = 0; i < 2; i++) duel.ResolveTurn(Continue, Pass);
             Assert.AreEqual(8, ward.Durability, "repair lands only on completion");
             duel.ResolveTurn(Continue, Pass);
             Assert.AreEqual(10, ward.Durability);
@@ -542,9 +547,9 @@ namespace RithmaticDuels.Rules.Tests
             _movement.NextDamage.Add(new DamageEvent(lof.Id, 2));
             duel.ResolveTurn(Pass, Pass);
 
-            duel.ResolveTurn(PlayerAction.Repair(lof.Id, 1), Pass);
+            // The repair takes 2 turns; the LoF breaks in the tick it is started.
             _movement.NextDamage.Add(new DamageEvent(lof.Id, 99));
-            duel.ResolveTurn(Continue, Pass);
+            duel.ResolveTurn(PlayerAction.Repair(lof.Id, 1), Pass);
             var report = duel.ResolveTurn(Continue, Pass);
             Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.WorkFizzled));
             Assert.AreEqual(0, lof.Durability);

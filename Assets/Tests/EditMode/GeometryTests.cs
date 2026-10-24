@@ -285,8 +285,7 @@ namespace RithmaticDuels.Rules.Tests
             _board.SetPendingPlacement(Player.A, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(14f, 10f), V(26f, 10f)));
             _board.SetPendingPlacement(Player.B, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(18f, 10f), V(6f, 10f)));
             var low = PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low));
-            _duel.ResolveTurn(low, low);
-            _duel.ResolveTurn(Continue, Continue); // both complete, fly 3 each and meet in the middle
+            _duel.ResolveTurn(low, low); // both complete, fly 3 each and meet in the middle
 
             Assert.IsFalse(_duel.Lines.Any(l => l.Type == LineType.Vigor && l.IsActive));
             Assert.That(_board.LastTickNotes.Single(), Does.Contain("cancelled"));
@@ -332,7 +331,7 @@ namespace RithmaticDuels.Rules.Tests
             var board = new ChalkBoard(config);
             var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), board);
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(2)), PlayerAction.Start(DrawingSpec.Warding(4)));
-            duel.ResolveTurn(Continue, Continue);
+            while (duel.GetPlayer(Player.B).HasWorkInProgress) duel.ResolveTurn(Pass, Continue);
 
             var ellipse = duel.GetPlayer(Player.A).MainWard;
             Assert.IsNotNull(ellipse);
