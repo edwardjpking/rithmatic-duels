@@ -46,9 +46,9 @@ A single-player sandbox for practising manoeuvres, like the training modes in fi
 
 A player picks an archetype before the duel. Each gives one strength and one cost, applied as changes to the rules numbers, so archetypes are pure data. They are called *player* archetypes to keep them separate from chalkling archetypes (section 3).
 
-**Open questions**
-- Is the opponent's archetype shown before the duel, or only worked out from play?
-- One archetype per duel, or can players mix a perk and a cost from different archetypes?
+**Decided (2026-10-24)**
+- Both players can see the opponent's archetype.
+- One archetype per player per duel; perks and costs are not mixed between archetypes.
 
 **Candidates for review** (30, to be cut down)
 
