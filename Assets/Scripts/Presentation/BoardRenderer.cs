@@ -21,6 +21,7 @@ namespace RithmaticDuels.Presentation
         private const float WardWidth = 0.08f;
         private const float MainWardWidth = 0.12f;
         private const float ForbiddanceWidth = 0.14f;
+        private const float BindPointSize = 0.4f;
 
         private Material _material;
 
@@ -75,7 +76,7 @@ namespace RithmaticDuels.Presentation
                     float health = (float)ward.SampleDurability(i) / Math.Max(1, ward.SampleMax(i));
                     Line(ward.SamplePoint(i), ward.SamplePoint(next), width, Color.Lerp(Damaged, colour, health));
                 }
-                foreach (var point in ward.BindPoints) Square(point, 0.12f, colour);
+                foreach (var point in ward.BindPoints) BindPoint(point, colour);
                 return;
             }
 
@@ -105,7 +106,9 @@ namespace RithmaticDuels.Presentation
         {
             var bindPoints = Board.BindPointsOf(preview.Player);
             foreach (int index in preview.BindPoints)
-                if (index >= 0 && index < bindPoints.Count) Square(bindPoints[index], 0.3f, PreviewColour);
+                if (index >= 0 && index < bindPoints.Count) Square(bindPoints[index], BindPointSize, PreviewColour);
+            if (preview.WardBindPoints != null)
+                foreach (var point in preview.WardBindPoints) BindPoint(point, PreviewColour);
 
             if (preview.Ward != null)
             {
@@ -162,6 +165,18 @@ namespace RithmaticDuels.Presentation
             Vertex(a - offset);
             Vertex(b - offset);
             Vertex(b + offset);
+        }
+
+        /// <summary>A bind point: a hollow square with a dot in the middle, so it stands out on top of its line.</summary>
+        private static void BindPoint(Vec2 centre, Color colour)
+        {
+            float h = BindPointSize / 2f;
+            const float width = 0.05f;
+            Line(centre + new Vec2(-h, -h), centre + new Vec2(h, -h), width, colour);
+            Line(centre + new Vec2(h, -h), centre + new Vec2(h, h), width, colour);
+            Line(centre + new Vec2(h, h), centre + new Vec2(-h, h), width, colour);
+            Line(centre + new Vec2(-h, h), centre + new Vec2(-h, -h), width, colour);
+            Square(centre, 0.1f, colour);
         }
 
         private static void Square(Vec2 centre, float size, Color colour)

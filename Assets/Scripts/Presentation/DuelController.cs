@@ -45,6 +45,7 @@ namespace RithmaticDuels.Presentation
         private Phase _phase;
         private Player _chooser;
         private LockedChoice _lockedA;
+        // Replaced with a fresh picker each time a player starts choosing, so no choice carries over.
         private readonly ActionPicker[] _pickers = { new ActionPicker(), new ActionPicker() };
         private readonly List<string> _log = new List<string>();
         private Vector2 _logScroll;
@@ -100,7 +101,7 @@ namespace RithmaticDuels.Presentation
                 return;
             }
             _log.Clear();
-            _log.Add("New duel (seed " + _currentSeed + "). Both players start by drawing a main Line of Warding.");
+            _log.Add("New duel (seed " + _currentSeed + "). Both players start by setting up a main Line of Warding.");
             _chooser = Player.A;
             _phase = Phase.Handover;
         }
@@ -139,10 +140,21 @@ namespace RithmaticDuels.Presentation
             // Read the click in screen pixels before scaling the GUI.
             GUI.matrix = Matrix4x4.identity;
             var current = Event.current;
-            if (current.type == EventType.MouseDown && current.button == 0 && HandleBoardClick(current.mousePosition))
+            Vec2? boardPoint = BoardPoint(current.mousePosition);
+            if (_duel != null && _phase == Phase.Choosing)
             {
-                current.Use();
-                GUIUtility.ExitGUI();
+                var picker = _pickers[(int)_chooser];
+                picker.SetHover(boardPoint);
+                bool changed = false;
+                if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 0)
+                    changed = picker.HandleBoardClick(_board, _chooser, boardPoint.Value);
+                else if (boardPoint.HasValue && current.type == EventType.ScrollWheel)
+                    changed = picker.HandleScroll(_board, _chooser, _rules, current.delta.y);
+                if (changed)
+                {
+                    current.Use();
+                    GUIUtility.ExitGUI();
+                }
             }
 
             // Scale everything so the GUI is readable at any resolution; lay out in a 1280x720-ish space.
@@ -185,14 +197,14 @@ namespace RithmaticDuels.Presentation
             GUILayout.EndArea();
         }
 
-        /// <summary>A left click in GUI pixels (y down). Returns true if the board used it.</summary>
-        private bool HandleBoardClick(Vector2 guiPixels)
+        /// <summary>The board point under a position in GUI pixels (y down), or null if it is off the board view.</summary>
+        private Vec2? BoardPoint(Vector2 guiPixels)
         {
-            if (_duel == null || _phase != Phase.Choosing || _camera == null) return false;
+            if (_camera == null) return null;
             var screen = new Vector3(guiPixels.x, Screen.height - guiPixels.y, 0f);
-            if (!_camera.pixelRect.Contains(screen)) return false;
+            if (!_camera.pixelRect.Contains(screen)) return null;
             var world = _camera.ScreenToWorldPoint(screen);
-            return _pickers[(int)_chooser].HandleBoardClick(_board, _chooser, new Vec2(world.x, world.y));
+            return new Vec2(world.x, world.y);
         }
 
         private void DrawHeader()
@@ -230,7 +242,11 @@ namespace RithmaticDuels.Presentation
         {
             GUILayout.Label(TurnNarrator.PlayerName(_chooser) + ", it's your turn to choose. The other player should look away.");
             if (GUILayout.Button("I'm " + TurnNarrator.PlayerName(_chooser) + ", show my choices", GUILayout.Height(50)))
-                Then(() => _phase = Phase.Choosing);
+                Then(() =>
+                {
+                    _pickers[(int)_chooser] = new ActionPicker();
+                    _phase = Phase.Choosing;
+                });
         }
 
         private void DrawChoosing()
