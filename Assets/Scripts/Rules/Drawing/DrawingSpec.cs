@@ -33,6 +33,12 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public ChalklingStat PositiveModifierStat;
 
+        /// <summary>
+        /// Extra turns for drawing away from the main LoW (DESIGN.md section 5.1). The geometry layer
+        /// works this out from the placement and checks it matches; rush and steady don't change it.
+        /// </summary>
+        public int TravelTurns;
+
         public int TotalStatBuffs { get { return DurabilityBuffs + DamageBuffs + SpeedBuffs; } }
 
         public static DrawingSpec Warding(int bindPoints)
@@ -74,6 +80,14 @@ namespace RithmaticDuels.Rules
         public DrawingSpec Clone()
         {
             return (DrawingSpec)MemberwiseClone();
+        }
+
+        /// <summary>A copy of this spec with the given travel turns.</summary>
+        public DrawingSpec WithTravel(int travelTurns)
+        {
+            var copy = Clone();
+            copy.TravelTurns = travelTurns;
+            return copy;
         }
     }
 }

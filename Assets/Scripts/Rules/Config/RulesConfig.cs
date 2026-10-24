@@ -37,6 +37,12 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public bool StartActionCountsAsProgress = true;
 
+        /// <summary>
+        /// Until a player's main LoW is drawn or being drawn, the only thing they can do is start it
+        /// (DESIGN.md section 2). On timeout they start a default one (TimeoutMainWardBindPoints).
+        /// </summary>
+        public bool MainWardFirst = true;
+
         /// <summary>Rushing a 1-turn drawing makes it complete in the same tick it is started.</summary>
         public bool RushedOneTurnDrawingsCompleteImmediately = true;
 
@@ -123,8 +129,21 @@ namespace RithmaticDuels.Rules
         public float EllipseSemiMinor = 2.5f;
         /// <summary>Radius of a LoW (other than a Mark's Cross) attached at a bind point of the main LoW.</summary>
         public float AttachedWardRadius = 1.5f;
-        /// <summary>Length of a LoF drawn as a tangent at one bind point.</summary>
+        /// <summary>Starting length of a LoF that is not bound at two points (tangent or free). The scroll wheel changes it within the range below.</summary>
         public float TangentForbiddanceLength = 3f;
+        public float MinForbiddanceLength = 1f;
+        public float MaxForbiddanceLength = 8f;
+        /// <summary>The scroll wheel changes ellipse flatness and LoF length by this much per notch.</summary>
+        public float ScrollStep = 0.25f;
+        /// <summary>A main LoW ellipse keeps its semi-major axis; the player sets its semi-minor axis within this range.</summary>
+        public float EllipseMinSemiMinor = 1.5f;
+        public float EllipseMaxSemiMinor = 3.25f;
+        /// <summary>
+        /// Travel cost (DESIGN.md section 5.1): each threshold the drawing lies beyond, measured from the
+        /// outline of the main LoW, adds one turn to its draw time. Lines on bind points and anything
+        /// inside the main LoW cost nothing extra.
+        /// </summary>
+        public float[] TravelTurnThresholds = { 2f, 4f, 7f };
         /// <summary>Two LoV collide when they come this close.</summary>
         public float VigorContactDistance = 0.3f;
         /// <summary>Free placements (LoF, LoV, unbound chalklings) must be on the player's own half of the board (DESIGN.md section 1.1).</summary>
@@ -154,6 +173,8 @@ namespace RithmaticDuels.Rules
         public int MarksCrossDrawTurns = 1;
         public int MarksCrossBindPoints = 4;
         public int MaxBindPoints = 12;
+        /// <summary>PROVISIONAL: the main LoW a player starts if their decision timer runs out before they have one.</summary>
+        public int TimeoutMainWardBindPoints = 4;
 
         // Geometry-layer placeholders (DESIGN.md section 4.1). Durability is per point, scaled by
         // clamp(sqrt(curvature / ReferenceCurvature), MinCurvatureScale, MaxCurvatureScale).
@@ -176,6 +197,8 @@ namespace RithmaticDuels.Rules
         public int BaseDrawTurns = 4;
         public int DrawTurnsSavedPerBindPoint = 1;
         public int DismissTurns = 2;
+        /// <summary>A LoV hitting a LoF reflects and deals this share of its damage to it, rounded up (DESIGN.md section 4.2).</summary>
+        public float VigorDamageMultiplier = 0.5f;
     }
 
     [Serializable]

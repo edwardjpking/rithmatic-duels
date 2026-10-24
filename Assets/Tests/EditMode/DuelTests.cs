@@ -13,7 +13,9 @@ namespace RithmaticDuels.Rules.Tests
         [SetUp]
         public void SetUp()
         {
-            _config = new RulesConfig();
+            // Most tests here exercise one rule at a time, so they don't have to draw main LoW first.
+            // The main-LoW-first rule has its own tests below.
+            _config = new RulesConfig { MainWardFirst = false };
             _movement = new ScriptedMovement();
         }
 
@@ -63,6 +65,53 @@ namespace RithmaticDuels.Rules.Tests
         {
             var duel = NewDuel();
             CollectionAssert.AreEqual(new[] { ActionKind.StartDrawing, ActionKind.Pass }, duel.AvailableActions(Player.A));
+        }
+
+        [Test]
+        public void WithMainWardFirstTheOpeningMenuIsOnlyStart()
+        {
+            _config.MainWardFirst = true;
+            var duel = NewDuel();
+            CollectionAssert.AreEqual(new[] { ActionKind.StartDrawing }, duel.AvailableActions(Player.A));
+            Assert.IsNotNull(duel.Validate(Player.A, Pass));
+            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low))));
+            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.MarksCross(_config))));
+            Assert.IsNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Warding(6))));
+        }
+
+        [Test]
+        public void WithMainWardFirstEverythingOpensUpOnceItIsStarted()
+        {
+            _config.MainWardFirst = true;
+            var duel = NewDuel();
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), PlayerAction.Start(DrawingSpec.Warding(2)));
+            CollectionAssert.AreEqual(
+                new[] { ActionKind.ContinueDrawing, ActionKind.CancelDrawing, ActionKind.Pass },
+                duel.AvailableActions(Player.A));
+            CollectionAssert.AreEqual(new[] { ActionKind.StartDrawing, ActionKind.Pass }, duel.AvailableActions(Player.B));
+
+            duel.ResolveTurn(PlayerAction.Cancel(), Pass);
+            CollectionAssert.AreEqual(new[] { ActionKind.StartDrawing }, duel.AvailableActions(Player.A));
+        }
+
+        [Test]
+        public void WithMainWardFirstTimeoutStartsADefaultMainWard()
+        {
+            _config.MainWardFirst = true;
+            var duel = NewDuel();
+            var action = duel.TimeoutAction(Player.A);
+            Assert.AreEqual(ActionKind.StartDrawing, action.Kind);
+            Assert.AreEqual(LineType.Warding, action.Spec.Type);
+            Assert.AreEqual(_config.Warding.TimeoutMainWardBindPoints, action.Spec.BindPoints);
+        }
+
+        [Test]
+        public void TravelTurnsAddToTheDrawTimeAfterPace()
+        {
+            var duel = NewDuel();
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6).WithTravel(2), DrawingPace.Rush), Pass);
+            Assert.AreEqual(2 + 2, duel.GetPlayer(Player.A).Work.TotalTurns);
+            Assert.IsNotNull(duel.Validate(Player.B, PlayerAction.Start(DrawingSpec.Warding(6).WithTravel(-1))));
         }
 
         [Test]
@@ -287,7 +336,7 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void LovCannotDamageForbiddanceButChalklingsCan()
+        public void LovAndChalklingsCanDamageForbiddance()
         {
             var duel = NewDuel();
             DrawMainWards(duel);
@@ -295,13 +344,14 @@ namespace RithmaticDuels.Rules.Tests
             var lov = DrawForB(duel, DrawingSpec.Vigor(VigorTier.High));
             var chalkling = DrawForB(duel, DrawingSpec.Making(damageBuffs: 2));
 
-            _movement.NextDamage.Add(new DamageEvent(lof.Id, 3, lov.Id));
+            // The geometry layer works out a LoV's reduced damage; the rules core applies what it reports.
+            _movement.NextDamage.Add(new DamageEvent(lof.Id, 2, lov.Id));
             duel.ResolveTurn(Pass, Pass);
-            Assert.AreEqual(12, lof.Durability);
+            Assert.AreEqual(10, lof.Durability);
 
             _movement.NextDamage.Add(new DamageEvent(lof.Id, 2, chalkling.Id));
             duel.ResolveTurn(Pass, Pass);
-            Assert.AreEqual(10, lof.Durability);
+            Assert.AreEqual(8, lof.Durability);
         }
 
         [Test]
@@ -573,7 +623,7 @@ namespace RithmaticDuels.Rules.Tests
 
         private string PlayScript(ulong seed)
         {
-            var duel = new Duel(new RulesConfig(), seed);
+            var duel = new Duel(_config, seed);
             var log = new List<string>();
             for (int i = 0; i < 30; i++)
             {

@@ -4,11 +4,13 @@ namespace RithmaticDuels.Rules.Geometry
     {
         /// <summary>Let the board choose a sensible default (used by tests and anything that skips placement).</summary>
         Default,
+        /// <summary>The main LoW, centred at PointA. An ellipse (2 bind points) has semi-minor axis SemiMinor.</summary>
+        MainWard,
         /// <summary>LoW (not the main one) or Mark's Cross: a circle touching the main LoW at a bind point, outside it.</summary>
         AtBindPoint,
         /// <summary>LoF joining two bind points of the main LoW.</summary>
         BetweenBindPoints,
-        /// <summary>LoF lying tangent to the main LoW at one bind point.</summary>
+        /// <summary>LoF lying tangent to the main LoW at one bind point, Length long (0 for the default).</summary>
         TangentAtBindPoint,
         /// <summary>LoF from PointA to PointB.</summary>
         FreeSegment,
@@ -30,8 +32,15 @@ namespace RithmaticDuels.Rules.Geometry
         public int BindPointB = -1;
         public Vec2 PointA;
         public Vec2 PointB;
+        public float SemiMinor;
+        public float Length;
 
         public static Placement Default() { return new Placement { Kind = PlacementKind.Default }; }
+
+        public static Placement MainWard(Vec2 centre, float semiMinor = 0f)
+        {
+            return new Placement { Kind = PlacementKind.MainWard, PointA = centre, SemiMinor = semiMinor };
+        }
 
         public static Placement AtBindPoint(int bindPoint)
         {
@@ -43,9 +52,9 @@ namespace RithmaticDuels.Rules.Geometry
             return new Placement { Kind = PlacementKind.BetweenBindPoints, BindPointA = a, BindPointB = b };
         }
 
-        public static Placement TangentAt(int bindPoint)
+        public static Placement TangentAt(int bindPoint, float length = 0f)
         {
-            return new Placement { Kind = PlacementKind.TangentAtBindPoint, BindPointA = bindPoint };
+            return new Placement { Kind = PlacementKind.TangentAtBindPoint, BindPointA = bindPoint, Length = length };
         }
 
         public static Placement Segment(Vec2 a, Vec2 b)

@@ -164,9 +164,13 @@ namespace RithmaticDuels.Rules.Tests
 
         private Line MainWard(Player player) { return _duel.GetPlayer(player).MainWard; }
 
-        /// <summary>Start a drawing for one player with a placement, and continue until it completes. The other passes.</summary>
+        /// <summary>
+        /// Start a drawing for one player with a placement, and continue until it completes. The other passes.
+        /// Travel turns are worked out from the placement, as the UI does.
+        /// </summary>
         private Line Draw(Player player, DrawingSpec spec, Placement placement, DrawingPace pace = DrawingPace.Normal)
         {
+            spec = spec.WithTravel(_board.TravelTurns(player, placement));
             Assert.IsNull(_board.ValidatePlacement(player, spec, placement));
             _board.SetPendingPlacement(player, spec, placement);
             var start = PlayerAction.Start(spec, pace);
@@ -232,12 +236,13 @@ namespace RithmaticDuels.Rules.Tests
         public void ForbiddanceReflectsVigorBack()
         {
             // B's wall on its own half, square to the line of fire.
-            Draw(Player.B, DrawingSpec.Forbiddance(0), Placement.Segment(V(20f, 5f), V(20f, 15f)));
+            var wall = Draw(Player.B, DrawingSpec.Forbiddance(0), Placement.Segment(V(20f, 6f), V(20f, 14f)));
             Draw(Player.A, DrawingSpec.Vigor(VigorTier.Medium), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
             for (int i = 0; i < 5; i++) PassTurn();
 
             Assert.AreEqual(12, MainWard(Player.B).Durability);
             Assert.AreEqual(10, MainWard(Player.A).Durability);
+            Assert.AreEqual(2, wall.Durability, "a reflected LoV deals half its damage (2), rounded up, to the LoF");
         }
 
         [Test]
@@ -357,12 +362,108 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void TravelTurnsGrowWithDistanceFromTheMainWard()
+        {
+            // A's four-point circle: centre (6, 10), radius 3, so its outline reaches x = 9.
+            Assert.AreEqual(0, _board.TravelTurns(Player.A, Placement.Aimed(V(6f, 10f), V(26f, 10f))), "inside");
+            Assert.AreEqual(0, _board.TravelTurns(Player.A, Placement.Aimed(V(10.5f, 10f), V(26f, 10f))));
+            Assert.AreEqual(1, _board.TravelTurns(Player.A, Placement.Aimed(V(12f, 10f), V(26f, 10f))));
+            Assert.AreEqual(2, _board.TravelTurns(Player.A, Placement.At(V(14f, 10f))));
+            Assert.AreEqual(3, _board.TravelTurns(Player.A, Placement.Aimed(V(16f, 18f), V(26f, 10f))));
+            Assert.AreEqual(0, _board.TravelTurns(Player.A, Placement.TangentAt(0)), "bind points cost nothing");
+            Assert.AreEqual(1, _board.TravelTurns(Player.A, Placement.Segment(V(12f, 4f), V(12f, 10f))), "nearest point counts");
+        }
+
+        [Test]
+        public void ADrawingFarFromTheMainWardTakesLonger()
+        {
+            var spec = DrawingSpec.Vigor(VigorTier.Low).WithTravel(_board.TravelTurns(Player.A, Placement.At(V(14f, 10f))));
+            _board.SetPendingPlacement(Player.A, spec, Placement.Aimed(V(14f, 10f), V(26f, 10f)));
+            _duel.ResolveTurn(PlayerAction.Start(spec), Pass);
+            Assert.AreEqual(1 + 2, _duel.GetPlayer(Player.A).Work.TotalTurns);
+        }
+
+        [Test]
+        public void TangentForbiddanceLengthCanBeChosen()
+        {
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(0, 5f));
+            Assert.AreEqual(5f, ((ForbiddanceBody)_board.BodyOf(tangent.Id)).Segment.Length, 1e-3);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(0, 20f)));
+        }
+
+        [Test]
+        public void AChordForbiddanceTakesHitsOnTheSmallerArcFirst()
+        {
+            // A's four-point circle: bind point 0 faces B at (9, 10); the chord to its neighbour cuts off the front arc.
+            var points = _board.BindPointsOf(Player.A);
+            int neighbour = 1;
+            var chord = Draw(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(0, neighbour));
+            int before = chord.Durability;
+
+            // B fires at the middle of that arc.
+            Vec2 middle = (points[0] + points[neighbour]) / 2f;
+            Vec2 onArc = V(6f, 10f) + (middle - V(6f, 10f)).Normalized * 3f;
+            Vec2 from = V(20f, onArc.Y);
+            Draw(Player.B, DrawingSpec.Vigor(VigorTier.Medium), Placement.Aimed(from, onArc));
+            for (int i = 0; i < 4; i++) PassTurn();
+
+            Assert.AreEqual(12, MainWard(Player.A).Durability, "the LoW behind the chord is untouched");
+            Assert.AreEqual(before - 2, chord.Durability, "the chord takes the full damage");
+        }
+
+        [Test]
+        public void AChordDoesNotShieldTheLargerArc()
+        {
+            var points = _board.BindPointsOf(Player.A);
+            var chord = Draw(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(0, 1));
+            int before = chord.Durability;
+
+            // Mirror the chord's arc across the line of fire: the same spot on the other side of the front bind point.
+            Vec2 middle = (points[0] + points[1]) / 2f;
+            Vec2 mirrored = V(6f, 10f) + (V(middle.X, 20f - middle.Y) - V(6f, 10f)).Normalized * 3f;
+            Draw(Player.B, DrawingSpec.Vigor(VigorTier.Medium), Placement.Aimed(V(20f, mirrored.Y), mirrored));
+            for (int i = 0; i < 4; i++) PassTurn();
+
+            Assert.AreEqual(before, chord.Durability);
+            Assert.AreEqual(10, MainWard(Player.A).Durability);
+        }
+
+        [Test]
+        public void TheMainWardCanBePlacedAndShapedOnItsOwnHalf()
+        {
+            var config = new RulesConfig();
+            var board = new ChalkBoard(config);
+            var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), board);
+
+            var ellipse = DrawingSpec.Warding(2);
+            Assert.IsNotNull(board.ValidatePlacement(Player.A, ellipse, Placement.MainWard(V(14f, 10f), 2f)), "crosses the centre line");
+            Assert.IsNotNull(board.ValidatePlacement(Player.A, ellipse, Placement.MainWard(V(6f, 1f), 2f)), "off the board");
+            Assert.IsNotNull(board.ValidatePlacement(Player.A, ellipse, Placement.MainWard(V(6f, 10f), 0.5f)), "too flat");
+            Assert.IsNull(board.ValidatePlacement(Player.A, DrawingSpec.Warding(4), Placement.MainWard(V(4f, 15f))));
+
+            var placement = Placement.MainWard(V(8f, 6f), 2f);
+            Assert.IsNull(board.ValidatePlacement(Player.A, ellipse, placement));
+            board.SetPendingPlacement(Player.A, ellipse, placement);
+            duel.ResolveTurn(PlayerAction.Start(ellipse), PlayerAction.Start(DrawingSpec.Warding(2)));
+
+            var main = board.MainWardOf(Player.A);
+            Assert.AreEqual(8f, main.Shape.Centre.X, 1e-4);
+            Assert.AreEqual(6f, main.Shape.Centre.Y, 1e-4);
+            Assert.AreEqual(2f, main.Shape.B, 1e-4);
+            Assert.AreEqual(2, main.BindPoints.Count);
+        }
+
+        [Test]
         public void PlacementsAreCheckedAgainstTheSpecAndTheBoard()
         {
             Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Forbiddance(1), Placement.BetweenBindPoints(0, 1)));
             Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(0, 0)));
             Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(20f, 10f), V(26f, 10f))));
-            Assert.IsNull(_board.ValidatePlacement(Player.B, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(20f, 10f), V(6f, 10f))));
+            // 3 units from B's main LoW: one travel turn.
+            Assert.IsNull(_board.ValidatePlacement(Player.B, DrawingSpec.Vigor(VigorTier.Low).WithTravel(1), Placement.Aimed(V(20f, 10f), V(6f, 10f))));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.B, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(20f, 10f), V(6f, 10f))));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Vigor(VigorTier.Low), null));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(10f, 2f), V(10f, 12f))), "too long");
             Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Making(), Placement.AtBindPoint(0)));
             Assert.IsNull(_board.ValidatePlacement(Player.A, DrawingSpec.Making(boundBindPoints: 1), Placement.AtBindPoint(0)));
         }
