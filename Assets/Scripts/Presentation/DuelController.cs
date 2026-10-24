@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using RithmaticDuels.Rules;
-using RithmaticDuels.Rules.Prototype;
+using RithmaticDuels.Rules.Geometry;
 using UnityEngine;
 
 namespace RithmaticDuels.Presentation
@@ -9,18 +9,15 @@ namespace RithmaticDuels.Presentation
     /// Scene entry point for a duel. Presentation only: it gathers player input and
     /// draws the board, and calls into RithmaticDuels.Rules for every game rule.
     ///
-    /// For now this is the rough hot-seat duel from build plan step 2: two players share one
-    /// screen, choose in turn while the other looks away, and read what happened in a text log.
-    /// It uses Unity's immediate-mode GUI (OnGUI) so it needs no scene setup, and the
-    /// <see cref="LaneMovementResolver"/> prototype stands in for the real board.
+    /// A hot-seat duel: two players share one screen and choose in turn while the other looks
+    /// away. Menus and the log use Unity's immediate-mode GUI (OnGUI), the board is drawn by
+    /// <see cref="BoardRenderer"/>, and new drawings are placed by clicking the board. No scene
+    /// setup is needed.
     /// </summary>
     public sealed class DuelController : MonoBehaviour
     {
         [Tooltip("Every rules number. All placeholders: change them here to playtest balance.")]
         [SerializeField] private RulesConfig _rules = new RulesConfig();
-
-        [Tooltip("Settings for the prototype lane that stands in for the board.")]
-        [SerializeField] private LaneConfig _lane = new LaneConfig();
 
         [Tooltip("Seed for modifier rolls, so a duel can be replayed. 0 picks a new seed each duel.")]
         [SerializeField] private int _seed = 0;
@@ -35,16 +32,23 @@ namespace RithmaticDuels.Presentation
 
         private static readonly Color Chalkboard = new Color(0.12f, 0.2f, 0.16f);
 
+        // Screen layout, as fractions of the GUI area: menus on the left, board on the right, log below.
+        private const float MenuWidth = 0.38f;
+        private const float LogTop = 0.72f;
+        private const float HeaderHeight = 34f;
+
         private Duel _duel;
-        private LaneMovementResolver _movement;
+        private ChalkBoard _board;
+        private Camera _camera;
+        private BoardRenderer _renderer;
         private ulong _currentSeed;
         private Phase _phase;
         private Player _chooser;
-        private PlayerAction _lockedA;
+        private LockedChoice _lockedA;
         private readonly ActionPicker[] _pickers = { new ActionPicker(), new ActionPicker() };
         private readonly List<string> _log = new List<string>();
         private Vector2 _logScroll;
-        private Vector2 _boardScroll;
+        private Vector2 _menuScroll;
         private string _error;
 
         /// <summary>
@@ -60,10 +64,21 @@ namespace RithmaticDuels.Presentation
 
         private void Start()
         {
-            var camera = Camera.main;
-            if (camera == null) camera = new GameObject("Main Camera").AddComponent<Camera>();
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = Chalkboard;
+            _camera = Camera.main;
+            if (_camera == null) _camera = new GameObject("Main Camera").AddComponent<Camera>();
+            _camera.orthographic = true;
+            _camera.clearFlags = CameraClearFlags.SolidColor;
+            _camera.backgroundColor = Chalkboard;
+            _camera.depth = 0f;
+
+            // The board camera only covers part of the screen, so a second camera clears the rest.
+            var backdrop = new GameObject("Backdrop Camera").AddComponent<Camera>();
+            backdrop.clearFlags = CameraClearFlags.SolidColor;
+            backdrop.backgroundColor = Chalkboard * 0.8f;
+            backdrop.cullingMask = 0;
+            backdrop.depth = -10f;
+
+            _renderer = gameObject.AddComponent<BoardRenderer>();
             NewDuel();
         }
 
@@ -72,11 +87,11 @@ namespace RithmaticDuels.Presentation
             // The hot-seat duel has no decision timer (DESIGN.md section 2).
             _rules.DecisionTimerSeconds = 0f;
             _currentSeed = _seed != 0 ? (ulong)_seed : (ulong)UnityEngine.Random.Range(1, int.MaxValue);
-            _movement = new LaneMovementResolver(_lane);
+            _board = new ChalkBoard(_rules);
             _error = null;
             try
             {
-                _duel = new Duel(_rules, _currentSeed, _movement);
+                _duel = new Duel(_rules, _currentSeed, _board);
             }
             catch (System.ArgumentException e)
             {
@@ -90,33 +105,94 @@ namespace RithmaticDuels.Presentation
             _phase = Phase.Handover;
         }
 
+        private void LateUpdate()
+        {
+            if (_camera == null || _renderer == null) return;
+            PlaceCamera();
+            _renderer.Board = _board;
+            _renderer.BoardCamera = _camera;
+            _renderer.Preview = _phase == Phase.Choosing && _duel != null ? _pickers[(int)_chooser].Preview : null;
+        }
+
+        /// <summary>Fit the whole board into the area right of the menus and above the log.</summary>
+        private void PlaceCamera()
+        {
+            float left = MenuWidth;
+            float bottom = 1f - LogTop;
+            float top = HeaderHeight * GuiScale() / Mathf.Max(1, Screen.height);
+            _camera.rect = new Rect(left, bottom, 1f - left, Mathf.Max(0.1f, 1f - bottom - top));
+
+            float width = _rules.Board.Width + 1f;
+            float height = _rules.Board.Height + 1f;
+            float aspect = _camera.pixelRect.width / Mathf.Max(1f, _camera.pixelRect.height);
+            _camera.orthographicSize = Mathf.Max(height / 2f, width / 2f / Mathf.Max(0.01f, aspect));
+            _camera.transform.position = new Vector3(_rules.Board.Width / 2f, _rules.Board.Height / 2f, -10f);
+        }
+
+        private static float GuiScale()
+        {
+            return Mathf.Max(1f, Screen.height / 720f);
+        }
+
         private void OnGUI()
         {
+            // Read the click in screen pixels before scaling the GUI.
+            GUI.matrix = Matrix4x4.identity;
+            var current = Event.current;
+            if (current.type == EventType.MouseDown && current.button == 0 && HandleBoardClick(current.mousePosition))
+            {
+                current.Use();
+                GUIUtility.ExitGUI();
+            }
+
             // Scale everything so the GUI is readable at any resolution; lay out in a 1280x720-ish space.
-            float scale = Mathf.Max(1f, Screen.height / 720f);
+            float scale = GuiScale();
             GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
             float width = Screen.width / scale;
             float height = Screen.height / scale;
 
-            GUILayout.BeginArea(new Rect(10, 10, width - 20, height - 20));
+            GUILayout.BeginArea(new Rect(10, 6, width - 20, HeaderHeight - 6));
             DrawHeader();
+            GUILayout.EndArea();
 
             if (_duel == null)
             {
+                GUILayout.BeginArea(new Rect(10, HeaderHeight, width - 20, height - HeaderHeight));
                 GUILayout.Label("Can't start a duel: " + _error);
+                GUILayout.EndArea();
+                return;
             }
-            else
+
+            float logTop = height * LogTop;
+            GUILayout.BeginArea(new Rect(10, HeaderHeight, width * MenuWidth - 20, logTop - HeaderHeight - 6));
+            _menuScroll = GUILayout.BeginScrollView(_menuScroll);
+            switch (_phase)
             {
-                switch (_phase)
-                {
-                    case Phase.Handover: DrawHandover(); break;
-                    case Phase.Choosing: DrawChoosing(width); break;
-                    default: DrawResults(); break;
-                }
-                if (_error != null) GUILayout.Label(_error);
-                DrawLog(height * 0.3f);
+                case Phase.Handover: DrawHandover(); break;
+                case Phase.Choosing: DrawChoosing(); break;
+                default: DrawResults(); break;
             }
+            if (_error != null) GUILayout.Label(_error);
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
+
+            GUILayout.BeginArea(new Rect(width * MenuWidth, HeaderHeight, width * (1f - MenuWidth) - 10, 24));
+            DrawWardStatus();
+            GUILayout.EndArea();
+
+            GUILayout.BeginArea(new Rect(10, logTop + 4, width - 20, height - logTop - 10));
+            DrawLog();
+            GUILayout.EndArea();
+        }
+
+        /// <summary>A left click in GUI pixels (y down). Returns true if the board used it.</summary>
+        private bool HandleBoardClick(Vector2 guiPixels)
+        {
+            if (_duel == null || _phase != Phase.Choosing || _camera == null) return false;
+            var screen = new Vector3(guiPixels.x, Screen.height - guiPixels.y, 0f);
+            if (!_camera.pixelRect.Contains(screen)) return false;
+            var world = _camera.ScreenToWorldPoint(screen);
+            return _pickers[(int)_chooser].HandleBoardClick(_board, _chooser, new Vec2(world.x, world.y));
         }
 
         private void DrawHeader()
@@ -132,43 +208,48 @@ namespace RithmaticDuels.Presentation
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("New duel", GUILayout.Width(100))) Then(NewDuel);
             GUILayout.EndHorizontal();
-            GUILayout.Space(6);
+        }
+
+        private void DrawWardStatus()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("A (white, left): " + WardStatus(Player.A));
+            GUILayout.FlexibleSpace();
+            GUILayout.Label("B (yellow, right): " + WardStatus(Player.B));
+            GUILayout.EndHorizontal();
+        }
+
+        private string WardStatus(Player player)
+        {
+            var ward = _duel.GetPlayer(player).MainWard;
+            if (ward == null) return "no main LoW yet";
+            return ward.IsActive ? "main LoW " + ward.Durability + "/" + ward.MaxDurability : "BREACHED";
         }
 
         private void DrawHandover()
         {
-            GUILayout.FlexibleSpace();
             GUILayout.Label(TurnNarrator.PlayerName(_chooser) + ", it's your turn to choose. The other player should look away.");
             if (GUILayout.Button("I'm " + TurnNarrator.PlayerName(_chooser) + ", show my choices", GUILayout.Height(50)))
                 Then(() => _phase = Phase.Choosing);
-            GUILayout.FlexibleSpace();
         }
 
-        private void DrawChoosing(float width)
+        private void DrawChoosing()
         {
-            GUILayout.BeginHorizontal();
-
-            GUILayout.BeginVertical(GUILayout.Width(width * 0.48f));
-            _boardScroll = GUILayout.BeginScrollView(_boardScroll);
-            DrawBoard(_chooser);
-            GUILayout.EndScrollView();
-            GUILayout.EndVertical();
-
-            GUILayout.BeginVertical("box");
             GUILayout.Label(TurnNarrator.PlayerName(_chooser) + ": choose your action");
-            var action = _pickers[(int)_chooser].Draw(_duel, _chooser);
-            GUILayout.EndVertical();
-
-            GUILayout.EndHorizontal();
-
-            if (action != null) Then(() => Lock(action));
+            GUILayout.Label(DescribeWork(_chooser, true));
+            GUILayout.Label("Opponent: " + DescribeWork(_chooser.Opponent(), false));
+            var choice = _pickers[(int)_chooser].Draw(_duel, _board, _chooser);
+            if (choice != null) Then(() => Lock(choice));
         }
 
-        private void Lock(PlayerAction action)
+        private void Lock(LockedChoice choice)
         {
+            if (choice.Action.Kind == ActionKind.StartDrawing)
+                _board.SetPendingPlacement(_chooser, choice.Action.Spec, choice.Placement);
+
             if (_chooser == Player.A)
             {
-                _lockedA = action;
+                _lockedA = choice;
                 _chooser = Player.B;
                 _phase = Phase.Handover;
                 return;
@@ -176,10 +257,10 @@ namespace RithmaticDuels.Presentation
 
             try
             {
-                var report = _duel.ResolveTurn(_lockedA, action);
+                var report = _duel.ResolveTurn(_lockedA.Action, choice.Action);
                 _error = null;
                 _log.Add("— Turn " + report.Turn + " —");
-                _log.AddRange(TurnNarrator.Describe(_duel, report, _movement.LastTickNotes));
+                _log.AddRange(TurnNarrator.Describe(_duel, report, _board.LastTickNotes));
                 _logScroll.y = float.MaxValue;
             }
             catch (System.InvalidOperationException e)
@@ -195,14 +276,6 @@ namespace RithmaticDuels.Presentation
 
         private void DrawResults()
         {
-            GUILayout.BeginHorizontal();
-            GUILayout.BeginVertical(GUILayout.ExpandWidth(true));
-            _boardScroll = GUILayout.BeginScrollView(_boardScroll);
-            DrawBoard(null);
-            GUILayout.EndScrollView();
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-
             if (_duel.Outcome != DuelOutcome.InProgress)
             {
                 GUILayout.Label(TurnNarrator.OutcomeName(_duel.Outcome));
@@ -216,29 +289,21 @@ namespace RithmaticDuels.Presentation
                     _phase = Phase.Handover;
                 });
             }
-        }
 
-        /// <summary>The board as text. Only the viewer's own work in progress is shown in full.</summary>
-        private void DrawBoard(Player? viewer)
-        {
+            GUILayout.Space(6);
+            GUILayout.Label("Trails show where each Line of Vigor went this turn.");
             foreach (var player in new[] { Player.A, Player.B })
             {
-                GUILayout.BeginVertical("box");
-                var state = _duel.GetPlayer(player);
-                var ward = state.MainWard;
-                GUILayout.Label(TurnNarrator.PlayerName(player) + (viewer == player ? " (you)" : "") + "   ·   main LoW: "
-                    + (ward == null ? "not drawn yet" : ward.IsActive ? ward.Durability + "/" + ward.MaxDurability : "BREACHED"));
-                GUILayout.Label(DescribeWork(player, viewer == player));
-
+                GUILayout.Label(TurnNarrator.PlayerName(player) + ": " + DescribeWork(player, false));
                 foreach (var line in _duel.Lines)
                 {
-                    if (line.Owner != player || !line.IsActive || line.IsMainWard) continue;
-                    GUILayout.Label("    " + DescribeLine(line));
+                    if (line.Owner != player || !line.IsActive || line.Type == LineType.Vigor) continue;
+                    GUILayout.Label("    " + TurnNarrator.LineName(line) + "  " + line.Durability + "/" + line.MaxDurability);
                 }
-                GUILayout.EndVertical();
             }
         }
 
+        /// <summary>A player's work in progress. Only shown in full to the player doing it.</summary>
         private string DescribeWork(Player player, bool showDetails)
         {
             var work = _duel.GetPlayer(player).Work;
@@ -258,23 +323,6 @@ namespace RithmaticDuels.Presentation
                 ? TurnNarrator.LineTypeName(work.Spec.Type) + " (" + SpecSummary(work.Spec) + ", " + work.Pace + ")"
                 : work.Kind + " " + TurnNarrator.LineName(_duel.FindLine(work.TargetLineId)) + " by " + work.Amount;
             return "Working on: " + what + ", " + work.Progress + " of " + work.TotalTurns + " turns done";
-        }
-
-        private string DescribeLine(Line line)
-        {
-            string name = TurnNarrator.LineName(line);
-            switch (line.Type)
-            {
-                case LineType.Vigor:
-                    return name + "  " + line.Tier + ", " + line.Damage + " damage, "
-                        + _movement.DistanceTravelled(line.Id).ToString("0.#") + " of "
-                        + _movement.LaneLength(_duel.Config).ToString("0.#") + " along the lane";
-                case LineType.Making:
-                    return name + "  " + line.Durability + "/" + line.MaxDurability + " durability, "
-                        + line.Damage + " damage, " + line.Speed + " speed, " + line.Glyphs + " glyph(s)";
-                default:
-                    return name + "  " + line.Durability + "/" + line.MaxDurability;
-            }
         }
 
         private static string SpecSummary(DrawingSpec spec)
@@ -300,10 +348,9 @@ namespace RithmaticDuels.Presentation
             GUIUtility.ExitGUI();
         }
 
-        private void DrawLog(float height)
+        private void DrawLog()
         {
-            GUILayout.Space(6);
-            _logScroll = GUILayout.BeginScrollView(_logScroll, "box", GUILayout.Height(height));
+            _logScroll = GUILayout.BeginScrollView(_logScroll, "box");
             foreach (var entry in _log) GUILayout.Label(entry);
             GUILayout.EndScrollView();
         }

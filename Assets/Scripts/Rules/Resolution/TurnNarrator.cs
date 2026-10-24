@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace RithmaticDuels.Rules.Prototype
+namespace RithmaticDuels.Rules
 {
     /// <summary>
     /// Turns a <see cref="TurnReport"/> into plain sentences for the hot-seat duel log. Both players

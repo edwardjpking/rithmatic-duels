@@ -48,6 +48,7 @@ namespace RithmaticDuels.Rules
 
         public ChalkFatigueConfig ChalkFatigue = new ChalkFatigueConfig();
         public BoardConfig Board = new BoardConfig();
+        public GeometryConfig Geometry = new GeometryConfig();
 
         public WardingConfig Warding = new WardingConfig();
         public ForbiddanceConfig Forbiddance = new ForbiddanceConfig();
@@ -108,6 +109,28 @@ namespace RithmaticDuels.Rules
         public float Height = 20f;
         /// <summary>Distance from a player's own short edge to the centre of their main LoW.</summary>
         public float MainWardInset = 6f;
+    }
+
+    /// <summary>
+    /// Placeholders the geometry layer needs that DESIGN.md does not give yet. PROVISIONAL: each is listed
+    /// under "Rules core defaults" in DESIGN.md section 7.
+    /// </summary>
+    [Serializable]
+    public sealed class GeometryConfig
+    {
+        /// <summary>A main LoW with 2 bind points is an ellipse with these semi-axes, long axis toward the opponent.</summary>
+        public float EllipseSemiMajor = 3.5f;
+        public float EllipseSemiMinor = 2.5f;
+        /// <summary>Radius of a LoW (other than a Mark's Cross) attached at a bind point of the main LoW.</summary>
+        public float AttachedWardRadius = 1.5f;
+        /// <summary>Length of a LoF drawn as a tangent at one bind point.</summary>
+        public float TangentForbiddanceLength = 3f;
+        /// <summary>Two LoV collide when they come this close.</summary>
+        public float VigorContactDistance = 0.3f;
+        /// <summary>Free placements (LoF, LoV, unbound chalklings) must be on the player's own half of the board (DESIGN.md section 1.1).</summary>
+        public bool DrawOnOwnHalfOnly = true;
+        /// <summary>Per-point durability is tracked at this many points around each LoW.</summary>
+        public int WardSamples = 120;
     }
 
     /// <summary>End-game pressure over the last turns of the duel (DESIGN.md section 2.1).</summary>

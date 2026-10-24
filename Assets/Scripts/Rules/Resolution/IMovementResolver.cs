@@ -20,15 +20,35 @@ namespace RithmaticDuels.Rules
         }
     }
 
+    /// <summary>
+    /// Sets a line's durability and maximum outright, before any damage this tick. The geometry layer uses
+    /// it for a LoW, whose durability is per point: the rules core keeps the weakest point's values.
+    /// </summary>
+    public struct DurabilityOverride
+    {
+        public int LineId;
+        public int Durability;
+        public int MaxDurability;
+
+        public DurabilityOverride(int lineId, int durability, int maxDurability)
+        {
+            LineId = lineId;
+            Durability = durability;
+            MaxDurability = maxDurability;
+        }
+    }
+
     public sealed class MovementResult
     {
         public List<DamageEvent> Damage { get; private set; }
         public List<int> DestroyedLineIds { get; private set; }
+        public List<DurabilityOverride> DurabilityOverrides { get; private set; }
 
         public MovementResult()
         {
             Damage = new List<DamageEvent>();
             DestroyedLineIds = new List<int>();
+            DurabilityOverrides = new List<DurabilityOverride>();
         }
     }
 
