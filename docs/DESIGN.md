@@ -75,6 +75,7 @@ The end game is pressured in two ways, similar to tiebreaks and overtime pressur
 ### Information
 
 - Players can **see what the opponent is drawing in progress**, but not its exact specifications.
+- **On the board (decided 2026-10-25):** a drawing in progress is shown where it will go, faint and dashed in its owner's colour, for both players. It is only a picture and has no effect on the game until it is complete. Its place and shape show (a LoF's length, a LoW's size and bind points, a LoV's start and direction, where a chalkling will stand); its pace, progress, chalkling stats, glyph and modifier stay hidden. It appears once the turn it was started in resolves. Looks: LoF a dashed bar; LoW a dashed outline with faint bind points (and dashed braces for a Mark's Cross); LoV a dotted wave at its start, pointing the way it will go; LoM a hollow diamond, with a dashed tether if bound; bind points under way on the main LoW faint bind point markers. Dismissing a LoF takes 1 turn and finishes in the tick it is started, so it is never seen in progress.
 - They must infer as much as they can from what is visible on the ground and from knowledge of the lines and tactics.
 - Defence choice is not announced. A player learns the opponent's defensive strategy only from what has been drawn.
 
@@ -442,7 +443,7 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 | LoW durability per point (section 4.1) | The rules core keeps one durability number per LoW, standing for its weakest point. The geometry layer tracks per-point durability and curvature scaling and reports damage to that weakest point. | `Line.Durability`, `IMovementResolver` |
 | Tiebreak with per-point durability | "Share of maximum durability left" uses the weakest point: its durability over that point's maximum. | `Duel.Tiebreak` |
 | Breach timing for chalk fatigue | Fatigue lands at the end of the tick, so a breach by a LoV earlier in the same tick comes first. | `Duel.ApplyChalkFatigue` |
-| What the opponent sees of a drawing in progress | Its kind (drawing, dismiss, bind points) and line type only; not spec, pace or progress. | `Duel.ViewWorkOf` |
+| What the opponent sees of a drawing in progress | Its kind and line type, plus its place and shape on the board (section 2, Information); not stats, pace, progress or modifier. | `Duel.ViewWorkOf`, `ChalkBoard.WorkInProgressOf` |
 | Elliptical main LoW | Semi-major axis 3.5, long axis toward the opponent, bind points at its two ends. Semi-minor axis set by the player within 1.5 to 3.25 (default 2.5). | `GeometryConfig.Ellipse*` |
 | Main LoW on timeout before it is set up | A four-point circle in the default spot. With no bind points under way, timeout restarts them at the set-up count. | `Warding.TimeoutMainWardBindPoints`, `Duel.TimeoutAction` |
 | Travel cost bands | +1 turn past each of 2, 4 and 7 units from the main LoW's outline. | `GeometryConfig.TravelTurnThresholds` |
@@ -477,7 +478,7 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 
 **Sixth round, 2026-10-25:** a LoF's only roles are mirror/shield and, between two bind points of one LoW, halving damage on the smaller arc (section 4.2); no LoF may cross a LoW and no LoW may overlap another line (section 4.2); only rushed drawings that would take 1 turn at normal pace finish at stage 2 (section 3); glyphs are just Attack and Defend, one free glyph per chalkling, and bound chalklings must Defend (section 4.4); the LoF toughening an arc takes the same halved damage as the LoW.
 
-**Seventh round, 2026-10-25:** Add to drawing is removed, so no repairs or chalkling buffs (section 5.1); hovering a LoV shows its damage on a hit; the rush helper text says when rushing only gains the early finish (section 3); bind points are drawn as circles; bind points that can't be picked for the LoW or LoF being placed are filled in red (section 4.2).
+**Seventh round, 2026-10-25:** Add to drawing is removed, so no repairs or chalkling buffs (section 5.1); hovering a LoV shows its damage on a hit; the rush helper text says when rushing only gains the early finish (section 3); bind points are drawn as circles; bind points that can't be picked for the LoW or LoF being placed are filled in red (section 4.2); drawings in progress, the opponent's included, show faintly where they will go (section 2, Information); the scroll bars are restyled with a hover highlight.
 
 **Settled 2026-10-24:** the start turn counts as progress, main LoW setup comes first (shape, position on own half, then bind points), travel cost for drawing away from the main LoW, variable LoF length, and LoF damage (half from LoV that reflect off them, full when shielding the smaller arc between their bind points, and chalklings hit them before the LoW).
 

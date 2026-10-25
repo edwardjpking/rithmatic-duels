@@ -28,6 +28,7 @@ namespace RithmaticDuels.Rules.Geometry
         private readonly PendingPlacement[] _pending = new PendingPlacement[2];
         private readonly List<string> _notes = new List<string>();
         private readonly List<VigorTrail> _trails = new List<VigorTrail>();
+        private readonly WorkSketch[] _sketches = new WorkSketch[2];
 
         private struct PendingPlacement
         {
@@ -68,6 +69,12 @@ namespace RithmaticDuels.Rules.Geometry
         public IReadOnlyList<string> LastTickNotes { get { return _notes; } }
 
         public IReadOnlyList<VigorTrail> LastTickTrails { get { return _trails; } }
+
+        /// <summary>
+        /// What a player has under way, as everyone sees it on the board. Null if nothing. Taken at the end
+        /// of each tick, so a choice made for the coming turn doesn't show until that turn resolves.
+        /// </summary>
+        public WorkSketch WorkInProgressOf(Player player) { return _sketches[(int)player]; }
 
         /// <summary>Centre of a player's main LoW: inset from their own short edge (A on the left).</summary>
         public Vec2 Home(Player player)
@@ -673,6 +680,57 @@ namespace RithmaticDuels.Rules.Geometry
         {
             Sync(duel, result);
             CentreWallUp = CentreWallStandsOn(duel.Turn + 1);
+            foreach (Player player in new[] { Player.A, Player.B })
+                _sketches[(int)player] = Sketch(player, duel.GetPlayer(player).Work);
+        }
+
+        /// <summary>Where a player's work in progress will go, using the same geometry as the finished line.</summary>
+        private WorkSketch Sketch(Player owner, WorkInProgress work)
+        {
+            if (work == null) return null;
+            var sketch = new WorkSketch { Owner = owner, Kind = work.Kind };
+            switch (work.Kind)
+            {
+                case WorkKind.BindPoints:
+                    var main = MainWardOf(owner);
+                    sketch.Type = LineType.Warding;
+                    if (main != null) sketch.BindPoints = MainBindPoints(owner, main.Shape, main.Line.BindPointsDrawn + work.Amount);
+                    return sketch;
+                case WorkKind.Drawing:
+                    break;
+                default:
+                    // Work on a line already down (dismissing a LoF) finishes in the tick it starts, so is never seen.
+                    return null;
+            }
+
+            var spec = work.Spec;
+            sketch.Type = spec.Type;
+            var pending = _pending[(int)owner];
+            var placement = pending.IsSet && pending.Type == spec.Type ? ResolvePending(owner, pending) : Placement.Default();
+            switch (spec.Type)
+            {
+                case LineType.Warding:
+                    IReadOnlyList<Vec2> bindPoints;
+                    sketch.Ward = WardGeometry(owner, spec, placement, out bindPoints);
+                    if (sketch.Ward == null) return null;
+                    sketch.BindPoints = bindPoints;
+                    if (spec.IsMarksCross) sketch.Braces = MarksCrossBraces(sketch.Ward, bindPoints);
+                    break;
+                case LineType.Forbiddance:
+                    sketch.Segment = ForbiddanceGeometry(owner, placement) ?? ForbiddanceGeometry(owner, Placement.Default());
+                    break;
+                case LineType.Vigor:
+                    Vec2 direction;
+                    sketch.Point = VigorStart(owner, placement, out direction);
+                    sketch.Direction = direction;
+                    break;
+                default:
+                    Vec2? tether;
+                    sketch.Point = ChalklingSpot(owner, spec, placement, out tether);
+                    sketch.Tether = tether;
+                    break;
+            }
+            return sketch;
         }
 
         // ---- Keeping bodies in step with the duel's lines ----
@@ -715,8 +773,14 @@ namespace RithmaticDuels.Rules.Geometry
             var pending = _pending[(int)line.Owner];
             _pending[(int)line.Owner] = default(PendingPlacement);
             if (!pending.IsSet || pending.Type != line.Type) return Placement.Default();
-            var placement = pending.Placement;
-            var points = BindPointsOf(line.Owner);
+            return ResolvePending(line.Owner, pending);
+        }
+
+        /// <summary>The pending placement with its bind points found again where they were when it was started.</summary>
+        private Placement ResolvePending(Player owner, PendingPlacement pending)
+        {
+            var placement = pending.Placement.Clone();
+            var points = BindPointsOf(owner);
             if (placement.BindPositionA.HasValue) placement.BindPointA = NearestIndex(points, placement.BindPositionA.Value, placement.BindPointA);
             if (placement.BindPositionB.HasValue) placement.BindPointB = NearestIndex(points, placement.BindPositionB.Value, placement.BindPointB);
             return placement;
@@ -751,23 +815,43 @@ namespace RithmaticDuels.Rules.Geometry
                     return new ForbiddanceBody(line, segment, chordOf);
 
                 case LineType.Vigor:
-                    if (placement.Kind == PlacementKind.Aimed)
-                        return new VigorBody(line, placement.PointA, placement.PointB - placement.PointA);
-                    return new VigorBody(line, Home(owner) + Facing(owner) * (FrontDistance(owner) + 1f), Facing(owner));
+                    Vec2 direction;
+                    Vec2 start = VigorStart(owner, placement, out direction);
+                    return new VigorBody(line, start, direction);
 
                 default:
-                    var allPoints = BindPointsOf(owner);
-                    int bindPoint = placement.Kind == PlacementKind.AtBindPoint ? placement.BindPointA
-                        : placement.Kind == PlacementKind.Default && line.Spec.BindPoints > 0 ? 0 : -1;
-                    if (bindPoint >= 0 && bindPoint < allPoints.Count)
-                    {
-                        Vec2 point = allPoints[bindPoint];
-                        Vec2 normal = BindPointNormal(owner, point);
-                        return new ChalklingBody(line, point + normal * (_config.Making.Radius + 0.05f), point);
-                    }
-                    if (placement.Kind == PlacementKind.FreePoint) return new ChalklingBody(line, placement.PointA, null);
-                    return new ChalklingBody(line, Home(owner) + Facing(owner) * (FrontDistance(owner) + 1f), null);
+                    Vec2? tether;
+                    Vec2 spot = ChalklingSpot(owner, line.Spec, placement, out tether);
+                    return new ChalklingBody(line, spot, tether);
             }
+        }
+
+        private Vec2 VigorStart(Player owner, Placement placement, out Vec2 direction)
+        {
+            if (placement.Kind == PlacementKind.Aimed)
+            {
+                direction = placement.PointB - placement.PointA;
+                return placement.PointA;
+            }
+            direction = Facing(owner);
+            return Home(owner) + Facing(owner) * (FrontDistance(owner) + 1f);
+        }
+
+        /// <summary>Where a chalkling stands, and the bind point it is tethered to if it is bound.</summary>
+        private Vec2 ChalklingSpot(Player owner, DrawingSpec spec, Placement placement, out Vec2? tether)
+        {
+            var allPoints = BindPointsOf(owner);
+            int bindPoint = placement.Kind == PlacementKind.AtBindPoint ? placement.BindPointA
+                : placement.Kind == PlacementKind.Default && spec.BindPoints > 0 ? 0 : -1;
+            if (bindPoint >= 0 && bindPoint < allPoints.Count)
+            {
+                Vec2 point = allPoints[bindPoint];
+                tether = point;
+                return point + BindPointNormal(owner, point) * (_config.Making.Radius + 0.05f);
+            }
+            tether = null;
+            if (placement.Kind == PlacementKind.FreePoint) return placement.PointA;
+            return Home(owner) + Facing(owner) * (FrontDistance(owner) + 1f);
         }
 
         private WardShape WardGeometry(Player owner, DrawingSpec spec, Placement placement, out IReadOnlyList<Vec2> bindPoints, bool? isMain = null)
