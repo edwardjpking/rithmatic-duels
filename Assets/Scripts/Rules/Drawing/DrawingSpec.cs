@@ -21,11 +21,11 @@ namespace RithmaticDuels.Rules
         /// <summary>LoV only.</summary>
         public VigorTier Tier;
 
-        /// <summary>LoM only: stat buffs spent on each chalkling stat, and glyphs drawn.</summary>
+        /// <summary>LoM only: stat buffs spent on each chalkling stat, and the glyph drawn (always Defend when bound).</summary>
         public int DurabilityBuffs;
         public int DamageBuffs;
         public int SpeedBuffs;
-        public int Glyphs;
+        public Glyph Glyph;
 
         /// <summary>
         /// LoM only. PROVISIONAL: the stat a positive modifier ("+1 to a stat of choice") goes to is
@@ -48,6 +48,9 @@ namespace RithmaticDuels.Rules
 
         public int TotalStatBuffs { get { return DurabilityBuffs + DamageBuffs + SpeedBuffs; } }
 
+        /// <summary>LoM only: a bound chalkling must carry the Defend glyph.</summary>
+        public bool IsBound { get { return Type == LineType.Making && BindPoints > 0; } }
+
         public static DrawingSpec Warding(int bindPoints)
         {
             return new DrawingSpec { Type = LineType.Warding, BindPoints = bindPoints };
@@ -69,7 +72,7 @@ namespace RithmaticDuels.Rules
         }
 
         public static DrawingSpec Making(
-            int durabilityBuffs = 0, int damageBuffs = 0, int speedBuffs = 0, int glyphs = 0,
+            int durabilityBuffs = 0, int damageBuffs = 0, int speedBuffs = 0, Glyph glyph = Glyph.Attack,
             int boundBindPoints = 0, ChalklingStat positiveModifierStat = ChalklingStat.Durability)
         {
             return new DrawingSpec
@@ -78,7 +81,8 @@ namespace RithmaticDuels.Rules
                 DurabilityBuffs = durabilityBuffs,
                 DamageBuffs = damageBuffs,
                 SpeedBuffs = speedBuffs,
-                Glyphs = glyphs,
+                // A bound chalkling always carries Defend.
+                Glyph = boundBindPoints > 0 ? Glyph.Defend : glyph,
                 BindPoints = boundBindPoints,
                 PositiveModifierStat = positiveModifierStat,
             };

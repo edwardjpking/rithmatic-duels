@@ -89,6 +89,8 @@ A player picks an archetype before the duel. Each gives one strength and one cos
 
 **Constraint from the user:** glyphs must not let chalklings manipulate lines directly. The focus is chalkling-against-chalkling fighting and chalkling movement.
 
+**Removed from the base game (2026-10-25):** Go (arrow, travel in its direction), Wait (horizontal line) and Turn (acute angle with arrow). The base game keeps only Attack and Defend, one per chalkling; these could come back here, along with the old glyph cap (1 free glyph plus 1 per 3 stat buffs, +1 draw turn per extra glyph).
+
 **Candidates for review**
 
 | Glyph | Suggested shape | Effect |

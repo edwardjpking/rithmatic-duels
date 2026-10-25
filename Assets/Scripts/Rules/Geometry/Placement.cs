@@ -26,7 +26,7 @@ namespace RithmaticDuels.Rules.Geometry
 
     /// <summary>
     /// Where a drawing will go, chosen when it is started and kept secret like the rest of its spec.
-    /// Bind points are indices into the owner's main LoW bind points, in the order
+    /// Bind points are indices into the bind points of all the owner's LoW, in the order
     /// <see cref="ChalkBoard.BindPointsOf"/> returns them.
     /// </summary>
     public sealed class Placement
@@ -39,6 +39,9 @@ namespace RithmaticDuels.Rules.Geometry
         public float SemiMinor;
         public float Length;
         public float Size;
+        /// <summary>Where BindPointA and BindPointB were when the drawing was started (set by the board).</summary>
+        public Vec2? BindPositionA;
+        public Vec2? BindPositionB;
 
         public static Placement Default() { return new Placement { Kind = PlacementKind.Default }; }
 

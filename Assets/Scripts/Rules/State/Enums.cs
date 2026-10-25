@@ -36,6 +36,13 @@ namespace RithmaticDuels.Rules
         Speed,
     }
 
+    /// <summary>The glyph a chalkling carries (DESIGN.md section 4.4). Each chalkling carries exactly one.</summary>
+    public enum Glyph
+    {
+        Attack,
+        Defend,
+    }
+
     public enum DuelOutcome
     {
         InProgress,

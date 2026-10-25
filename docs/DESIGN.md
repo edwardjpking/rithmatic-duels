@@ -85,7 +85,7 @@ While players choose, time is frozen. LoV that have been drawn and are not yet d
 Once both players have locked in their choices (decided 2026-10-25):
 
 1. **Dismissal.** Any LoF being dismissed this tick disappears instantly.
-2. **Rushed lines are finished.** Any rushed drawing that finishes this tick is added to the board and gains its durability. This is a small bonus to rushing: a rushed LoV flies, and a rushed LoF or LoW blocks, in the same tick it is finished.
+2. **Rushed lines are finished.** Any rushed drawing that finishes this tick, and would have taken only 1 turn at normal pace (travel turns included), is added to the board and gains its durability (decided 2026-10-25). This is a small bonus to rushing short drawings: a rushed LoV flies, and a rushed LoF or LoW blocks, in the same tick it is finished. Longer rushed drawings already save time, so they finish at stage 4 like everything else.
 3. **Animated lines act.** LoV and LoM (chalklings) already on the board move and attack. Damage from the collisions is processed as they happen:
    - **LoV hits LoF:** the LoV is reflected according to the laws of reflection for EM waves and carries on, dealing half its damage to the LoF (section 4.2). LoF are the only lines that do not absorb a LoV.
    - **LoV hits LoW or a chalkling (LoM):** the LoV is absorbed and deals its damage at the point of impact. Excess damage is ignored. A chalkling that survives is pushed back (section 4.3).
@@ -113,16 +113,17 @@ Four line types. Each completed drawing receives a random modifier (section 5). 
 | Damage | 0 (a LoW never attacks) |
 | Movement speed | 0 (fixed in place) |
 
-**Ellipse shape.** A main LoW ellipse keeps a semi-major axis of 3.5 (long axis toward the opponent). The player sets its semi-minor axis between 1.5 and 3.25 (default 2.5).
+**Ellipse shape.** A main LoW ellipse keeps a semi-major axis of 3.5 (long axis toward the opponent). The player sets its semi-minor axis between 1.5 and 3.25 (default 2.5). The scroll wheel steps between the sizes that give each whole-number durability at its weakest point, so every notch changes that durability by exactly 1, and the menu shows it (decided 2026-10-25). The same goes for the size of any other LoW.
 
 **Durability is per point.** A hit damages the LoW within 0.5 units either side of the impact; the LoW is breached when any point reaches 0. Placeholder curvature scaling: durability at a point = 12 x clamp(sqrt(k / k_ref), 0.5, 2), where k is the local curvature and k_ref = 1/3 is the curvature of the default circle. So smaller circles are stronger per point, larger circles weaker, and an ellipse is strongest at its bind points and weakest along its sides.
 
 **Time to draw**
 - Main LoW: the outline is instant at the end of the setup; its bind points take (number of bind points) div 2 turns (integer division). So 2 bind points = 1 turn, 4 = 2, 6 = 3, 9 = 4 (section 2).
 - Any other LoW: the same formula, minimum 1 turn.
-- Other LoW added during the duel are bound at one bind point of the main LoW, outside it. With 2 bind points it is an ellipse sticking straight out from the bind point (semi-major axis 2); the player sets how round it is with the scroll wheel (semi-minor 0.75 to 1.75, starting at 1.25). With 4, 6 or 9 it is a circle whose radius the player sets with the scroll wheel (1 to 2.5, starting at 1.5). Decided 2026-10-25; sizes are placeholders.
+- Other LoW added during the duel are bound at one bind point of any of the player's LoW (the main LoW, another LoW or a Mark's Cross; decided 2026-10-25), outside that LoW. With 2 bind points it is an ellipse sticking straight out from the bind point (semi-major axis 2); the player sets how round it is with the scroll wheel (semi-minor 0.75 to 1.75, starting at 1.25). With 4, 6 or 9 it is a circle whose radius the player sets with the scroll wheel (1 to 2.5, starting at 1.5). Decided 2026-10-25; sizes are placeholders.
 - Other LoW added during the duel take (bind points div 2) turns, scaled by their outline length over that of the default attached circle (radius 1.5), rounded to the nearest turn, minimum 1 (decided 2026-10-25; the formula is a placeholder). So a radius 1 four-point circle takes 1 turn, radius 1.5 takes 2, radius 2.5 takes 3.
-- Each bind point of the main LoW can have at most one more LoW bound to it, a Mark's Cross included (two counting the main LoW; decided 2026-10-25). A LoW that is destroyed frees its bind point.
+- **Every bind point of every LoW can be used** (decided 2026-10-25): for LoF, bound chalklings and further LoW, not only the main LoW's. Where two LoW touch, they share that bind point.
+- At most two LoW may pass through any one bind point, a Mark's Cross included: the LoW it belongs to and one more (decided 2026-10-25). A full bind point is crossed out and can't be picked for another LoW. A LoW that is destroyed frees its bind point.
 - Mark's Cross: 2 turns, for the whole thing: its small circle (radius 1) and the two crossed LoF inside it (decided 2026-10-25). The crossed LoF join opposite bind points of the small circle, so they line up with them.
 
 **Features**
@@ -142,15 +143,18 @@ Four line types. Each completed drawing receives a random modifier (section 5). 
 |---|---|
 | Durability | 3 + (number of bind points) x 3 |
 | Modifier | +2 durability / -2 durability |
-| Time to draw | ceil(length / 2) - (number of bind points), minimum 1 (decided 2026-10-25; the 2 units per turn is a placeholder) |
+| Time to draw | Between two bind points: 1 turn up to length 3, otherwise 2 (decided 2026-10-25, placeholders). Tangent or free: ceil(length / 2) - (number of bind points), minimum 1 (the 2 units per turn is a placeholder). |
 | Damage | 0 |
 | Movement speed | 0 |
 
 **Length:** a LoF bound between two bind points runs between them. Any other LoF (tangent at one bind point, or free) has a length the player chooses with the scroll wheel, from 1 to 8 units (default 3). Longer lines take longer to draw (the table above); length does not change durability yet.
 
+**Shape (decided 2026-10-25):** a LoF is a rectangle 0.14 units wide (placeholder). All of it must be on the player's own half, so a LoF slanting toward the centre line is capped at the length where its corner first touches the line. Collisions still use its centre line.
+
 **Damage (decided 2026-10-24):**
 - **LoV hits LoF:** the LoV reflects (section 3) and the LoF takes **half the LoV's damage, rounded up**.
-- **LoF between two bind points:** a LoV that hits the main LoW on the **smaller arc** cut off by that LoF deals its **full** damage to the LoF instead, and the LoW takes none. The LoV is absorbed as usual. If the hit breaks the LoF, leftover damage is dropped (like excess damage elsewhere). Once the LoF is broken, the arc is no longer shielded.
+- **Roles (decided 2026-10-25).** A LoF outside a LoW (free, tangent, or between bind points of two different LoW) is only a shield and mirror: it reflects LoV and is destroyed once its durability reaches 0. A LoF between two bind points of a single LoW also toughens the **smaller arc** it cuts off: a LoV that hits that LoW on that arc deals only **half its damage, rounded up** (placeholder, `Forbiddance.ChordArcDamageMultiplier`) to the LoW, and the LoF takes the same halved damage. Once the LoF is broken, the arc is no longer toughened. The LoV is absorbed as usual. That is the extent of a LoF's uses.
+- **No crossing (decided 2026-10-25).** A LoF may not cross any LoW, free LoF included. It may only sit against one as a tangent or run between bind points inside one. LoW may touch each other but not overlap, and a new LoW can't overlap a LoF.
 - **Chalklings:** a chalkling attacking a LoW must damage a LoF in its way first, including a LoF between two bind points shielding the arc it attacks. (Built with chalkling behaviour, build plan step 5.)
 
 **Features:** LoF also act as anchors and structural supports within defences. LoF can be dismissed (action costing 1 turn, so it takes effect in the tick it is chosen). A *Mark's Cross* is a small four-point circle containing a crossed pair of LoF, used to brace a larger circle.
@@ -205,7 +209,7 @@ A chalkling has three stats: **Durability**, **Damage** and **Speed**. When the 
 |---|---|
 | Durability when bound | +2 per bind point the chalkling is bound to (binding gives free durability) |
 | Modifier | +1 to a stat of choice / -1 to the highest stat |
-| Time to draw | 1 turn per 4 stat points (rounded up), + 1 per glyph after the free one (minimum 1) (decided 2026-10-25) |
+| Time to draw | 1 turn per 4 stat points (rounded up), minimum 1; the glyph is free (decided 2026-10-25) |
 
 **Binding.** A chalkling can be bound to a bind point. A bound chalkling cannot move further than its tether distance from its bind point, and gains free durability as above.
 
@@ -221,15 +225,12 @@ A chalkling has three stats: **Durability**, **Damage** and **Speed**. When the 
 
 More stats (such as range or attack speed) and fixed archetypes for teaching and fast duels may be added later; see `docs/FUTURE_IDEAS.md`.
 
-**Glyphs** are instructions given to a chalkling once complete. A chalkling may carry **1 glyph for free, plus 1 more per 3 stat buffs**. (So the cheapest defensive chalkling is 0 buffs + the Defend glyph = 1 turn.) A chalkling's durability is never below 1.
+**Glyphs** are instructions given to a chalkling once complete. There are only two (simplified 2026-10-25): Attack and Defend. Each chalkling carries **one glyph, at no cost**. An unbound chalkling carries either Attack or Defend; a **bound chalkling must carry Defend** (decided 2026-10-25). (So the cheapest defensive chalkling is 0 buffs and bound = 1 turn.) The earlier glyph cap (1 free plus 1 per 3 stat buffs) no longer applies. A chalkling's durability is never below 1.
 
 | Glyph | Shape | Effect |
 |---|---|---|
-| Go | Arrow | Travel in the arrow's direction |
 | Attack | "X" | Attack |
-| Wait | Horizontal line | Wait |
-| Turn | Acute angle with arrow | Turn in the arrow's direction |
-| Defend | Diamond | Bound chalklings patrol around the bind point they are tethered to and attack any chalkling not bound to the same circle |
+| Defend | Diamond | Bound chalklings patrol around the bind point they are tethered to and attack any chalkling not bound to the same circle. What Defend does for an unbound chalkling is still open (settle it with chalkling behaviour, build plan step 5). |
 
 A chalkling with the Defend glyph and bound to a bind point is a **defensive chalkling**.
 
@@ -410,7 +411,9 @@ A preset gives **no** reduction in drawing time, only in thinking time. It queue
 
 **Balance watchlist (monitor closely in testing)**
 - **Rush on short drawings** (section 5.2). Since 2026-10-24 every 1-turn drawing completes the tick it starts, so the old instant-rush exception no longer gives anything. Rushing a 2-turn drawing now makes it instant; check whether that is too strong.
-- **Rushed lines finish before animated lines act** (section 3). Check whether this bonus to rushing is too small or too big, and whether stages 3 and 4 should swap.
+- **Rushed lines finish before animated lines act** (section 3). Check whether this bonus to rushing is too small or too big, and whether stages 3 and 4 should swap. Since 2026-10-25 it only applies to drawings that take 1 turn at normal pace.
+- **Small vs large LoW health** (section 4.1). The weakest-point durability varies hugely between a small LoW and a large one; revisit the curvature scaling when balancing.
+- **Glyphs** (section 4.4). Unbound chalklings choosing Attack or Defend may later be replaced by "bound chalklings defend, unbound ones attack".
 - **Double-effect odds of 1/6** for rush and steady (section 5.2). Check whether this feels too swingy.
 - **LoV damage dropping to 0** (section 4.3). A Low tier LoV with a negative modifier fizzles out; check this is not too punishing.
 - **Excess damage is ignored** when a LoV is absorbed. An alternative (carrying excess through) is worth trying later; see `docs/FUTURE_IDEAS.md`.
@@ -447,8 +450,9 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 | Travel for repairs, buffs and dismissal | None. | `Duel.ApplyChoice` |
 | LoF length range | 1 to 8 units, 0.25 per scroll notch. | `GeometryConfig.*ForbiddanceLength`, `ScrollStep` |
 | LoV damage to a LoF it reflects off | Half, rounded up (a Low LoV still deals 1). | `Forbiddance.VigorDamageMultiplier` |
-| LoF between bind points through the centre | Both arcs are the same size; it shields the half facing the opponent. | `ChalkBoard.ChordShields` |
-| Several LoF shielding the same arc | The first one drawn takes the hit. | `ChalkBoard.ShieldingChord` |
+| LoF between bind points through the centre | Both arcs are the same size; it toughens the half facing the opponent. | `ChalkBoard.ChordShields` |
+| Several LoF toughening the same arc | The reduction applies once, not once per LoF, and the first one drawn takes the halved damage. | `ChalkBoard.ShieldingChord` |
+| "Toughness increase and damage reduced" on a chord's arc | One effect: hits on the arc are halved. There is no separate durability bonus. | `Forbiddance.ChordArcDamageMultiplier` |
 | Default bind points | 4: a right isosceles triangle inscribed in the circle. 6: an inscribed equilateral triangle. 9: a triangle whose nine-point circle is the LoW. Other counts are spaced evenly. One bind point always faces the opponent. | `BindPoints.ForCircle` |
 | Other LoW and Mark's Cross | Touching the main LoW from outside at a chosen bind point: an ellipse for 2 bind points, otherwise a circle, sized as in section 4.1 (a Mark's Cross is a circle of radius 1). A Mark's Cross's crossed LoF join its opposite bind points. They are part of the same line (one durability), and only matter once chalklings move, since a LoV meets the circle first. | `GeometryConfig.AttachedWard*`, `GeometryConfig.AttachedEllipse*`, `ChalkBoard` |
 | Main LoW preset spots (only with `MainWardAtHome` off) | On the midline of the player's half: the default spot (6 from the edge), the centre of the half, and as far forward as fits. Snap distance 0.6. | `ChalkBoard.MainWardPresets`, `GeometryConfig.MainWardSnapDistance` |
@@ -469,6 +473,10 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 **Third round, 2026-10-25:** dismissing a LoF takes 1 turn; the tick order is dismissal, rushed lines finished, animated lines act, other lines finished (section 3); any LoW can be added during the duel, with 2-bind-point ones as ellipses and sizes set by the scroll wheel (section 4.1).
 
 **Fourth round, 2026-10-25:** nothing may be drawn on or reaching into the opponent's half, and sizes are capped to fit (section 1.1); the main LoW is fixed at the back preset (section 2); a Mark's Cross's LoF line up with its bind points; one extra LoW per bind point; extra LoW take longer the bigger they are (section 4.1); a centre LoF for the first 10 turns (section 1.1); every turn counts toward the limit (section 1); Continue drawing is selected by default while a drawing is in progress.
+
+**Fifth round, 2026-10-25:** the bind points of every LoW can be used (section 4.1); full bind points can't be picked for another LoW; a LoF is a rectangle that must stay wholly on its half (section 4.2); LoW sizes step through whole-number durabilities (section 4.1); a LoF between two bind points takes 1 turn up to length 3, otherwise 2 (section 4.2); bind point markers turn to follow their LoW's outline.
+
+**Sixth round, 2026-10-25:** a LoF's only roles are mirror/shield and, between two bind points of one LoW, halving damage on the smaller arc (section 4.2); no LoF may cross a LoW and no LoW may overlap another line (section 4.2); only rushed drawings that would take 1 turn at normal pace finish at stage 2 (section 3); glyphs are just Attack and Defend, one free glyph per chalkling, and bound chalklings must Defend (section 4.4); the LoF toughening an arc takes the same halved damage as the LoW.
 
 **Settled 2026-10-24:** the start turn counts as progress, main LoW setup comes first (shape, position on own half, then bind points), travel cost for drawing away from the main LoW, variable LoF length, and LoF damage (half from LoV that reflect off them, full when shielding the smaller arc between their bind points, and chalklings hit them before the LoW).
 

@@ -59,6 +59,13 @@ namespace RithmaticDuels.Rules
         /// <summary>Rushing a 1-turn drawing makes it complete in the same tick it is started.</summary>
         public bool RushedOneTurnDrawingsCompleteImmediately = true;
 
+        /// <summary>
+        /// A rushed drawing joins the board before animated lines act (stage 2 of DESIGN.md section 3) only if
+        /// it would take at most this many turns at normal pace, travel included (decided 2026-10-25).
+        /// Other rushed drawings finish with everything else.
+        /// </summary>
+        public int RushedEarlyMaxNormalTurns = 1;
+
         /// <summary>PROVISIONAL: a negative modifier can never take a fresh line below this durability.</summary>
         public int MinimumDurabilityAfterModifier = 1;
 
@@ -158,6 +165,8 @@ namespace RithmaticDuels.Rules
         public float AttachedEllipseMaxSemiMinor = 1.75f;
         /// <summary>Starting length of a LoF that is not bound at two points (tangent or free). The scroll wheel changes it within the range below.</summary>
         public float TangentForbiddanceLength = 3f;
+        /// <summary>A LoF is a rectangle this wide. All of it must be on the player's half (DESIGN.md section 1.1).</summary>
+        public float ForbiddanceWidth = 0.14f;
         public float MinForbiddanceLength = 1f;
         public float MaxForbiddanceLength = 8f;
         /// <summary>The scroll wheel changes ellipse flatness, attached LoW radius and LoF length by this much per notch.</summary>
@@ -251,12 +260,25 @@ namespace RithmaticDuels.Rules
         /// <summary>
         /// Draw time is ceil(length / LengthPerDrawTurn) minus (bind points × DrawTurnsSavedPerBindPoint),
         /// floored at the minimum (DESIGN.md section 4.2). A spec with no length uses Geometry.TangentForbiddanceLength.
+        /// A LoF between two bind points uses the two values below instead.
         /// </summary>
         public float LengthPerDrawTurn = 2f;
         public int DrawTurnsSavedPerBindPoint = 1;
+        /// <summary>
+        /// A LoF between two bind points takes ShortChordTurns if it is at most ShortChordLength long,
+        /// otherwise LongChordTurns (decided 2026-10-25; placeholders).
+        /// </summary>
+        public float ShortChordLength = 3f;
+        public int ShortChordTurns = 1;
+        public int LongChordTurns = 2;
         public int DismissTurns = 1;
         /// <summary>A LoV hitting a LoF reflects and deals this share of its damage to it, rounded up (DESIGN.md section 4.2).</summary>
         public float VigorDamageMultiplier = 0.5f;
+        /// <summary>
+        /// A LoF joining two bind points of one LoW toughens the smaller arc it cuts off: a LoV hitting that
+        /// arc deals this share of its damage, rounded up (decided 2026-10-25; the share is a placeholder).
+        /// </summary>
+        public float ChordArcDamageMultiplier = 0.5f;
     }
 
     [Serializable]
@@ -309,12 +331,8 @@ namespace RithmaticDuels.Rules
         public int AttacksPerTick = 1;
         /// <summary>"+1 to a stat of choice / -1 to the highest stat", per modifier step.</summary>
         public int StatPerModifierStep = 1;
-        /// <summary>Draw time is ceil(stat buffs / StatBuffsPerDrawTurn) plus DrawTurnsPerGlyph for each glyph beyond the free ones.</summary>
+        /// <summary>Draw time is ceil(stat buffs / StatBuffsPerDrawTurn), at least the minimum. The one glyph is free.</summary>
         public int StatBuffsPerDrawTurn = 4;
-        public int DrawTurnsPerGlyph = 1;
-        /// <summary>A chalkling carries this many glyphs for free, plus one more per StatBuffsPerExtraGlyph buffs.</summary>
-        public int FreeGlyphs = 1;
-        public int StatBuffsPerExtraGlyph = 3;
     }
 
     [Serializable]

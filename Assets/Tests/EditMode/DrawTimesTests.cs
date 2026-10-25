@@ -33,11 +33,20 @@ namespace RithmaticDuels.Rules.Tests
         [TestCase(0, 4.5f, 3)]
         [TestCase(0, 8f, 4)]
         [TestCase(1, 5f, 2)]
-        [TestCase(2, 4.2f, 1)]
-        [TestCase(2, 1f, 1)]
         public void ForbiddanceTimeScalesWithLengthLessBindPoints(int bindPoints, float length, int expected)
         {
             var spec = DrawingSpec.Forbiddance(bindPoints);
+            spec.Length = length;
+            Assert.AreEqual(expected, DrawTimes.BaseTurns(spec, _config));
+        }
+
+        [TestCase(1f, 1)]
+        [TestCase(3f, 1)]
+        [TestCase(3.1f, 2)]
+        [TestCase(6f, 2)]
+        public void ForbiddanceBetweenTwoBindPointsTakesOneTurnUpToLengthThree(float length, int expected)
+        {
+            var spec = DrawingSpec.Forbiddance(2);
             spec.Length = length;
             Assert.AreEqual(expected, DrawTimes.BaseTurns(spec, _config));
         }
@@ -48,16 +57,31 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(2, DrawTimes.BaseTurns(DrawingSpec.Forbiddance(0), _config)); // 3 units
         }
 
-        [TestCase(3, 0, 0, 0, 1)]
-        [TestCase(4, 0, 0, 0, 1)]
-        [TestCase(2, 2, 1, 0, 2)]
-        [TestCase(2, 2, 2, 2, 3)]
-        [TestCase(6, 3, 0, 3, 5)]
-        [TestCase(0, 0, 0, 1, 1)]
-        [TestCase(0, 0, 0, 0, 1)]
-        public void MakingTakesOnePerFourStatBuffsPlusOnePerExtraGlyph(int durability, int damage, int speed, int glyphs, int expected)
+        [TestCase(3, 0, 0, 1)]
+        [TestCase(4, 0, 0, 1)]
+        [TestCase(2, 2, 1, 2)]
+        [TestCase(6, 3, 0, 3)]
+        [TestCase(0, 0, 0, 1)]
+        public void MakingTakesOnePerFourStatBuffs(int durability, int damage, int speed, int expected)
         {
-            Assert.AreEqual(expected, DrawTimes.BaseTurns(DrawingSpec.Making(durability, damage, speed, glyphs), _config));
+            // The glyph is free, whichever it is.
+            Assert.AreEqual(expected, DrawTimes.BaseTurns(DrawingSpec.Making(durability, damage, speed, Glyph.Defend), _config));
+        }
+
+        [Test]
+        public void ABoundChalklingMustDefend()
+        {
+            Assert.AreEqual(Glyph.Defend, DrawingSpec.Making(glyph: Glyph.Attack, boundBindPoints: 1).Glyph);
+            var spec = DrawingSpec.Making(boundBindPoints: 1);
+            spec.Glyph = Glyph.Attack;
+            Assert.IsNotNull(DrawTimes.Validate(spec, _config));
+        }
+
+        [TestCase(Glyph.Attack)]
+        [TestCase(Glyph.Defend)]
+        public void AnUnboundChalklingCanAttackOrDefend(Glyph glyph)
+        {
+            Assert.IsNull(DrawTimes.Validate(DrawingSpec.Making(glyph: glyph), _config));
         }
 
         [TestCase(VigorTier.Low, 1)]
@@ -105,18 +129,6 @@ namespace RithmaticDuels.Rules.Tests
         {
             _config.Forbiddance.LengthPerDrawTurn = 1f;
             Assert.AreEqual(2, DrawTimes.BaseTurns(DrawingSpec.Forbiddance(1), _config));
-        }
-
-        [TestCase(0, 1, true)]
-        [TestCase(0, 2, false)]
-        [TestCase(2, 2, false)]
-        [TestCase(3, 2, true)]
-        [TestCase(5, 3, false)]
-        [TestCase(6, 3, true)]
-        public void ChalklingsGetOneFreeGlyphPlusOnePerThreeStatBuffs(int buffs, int glyphs, bool valid)
-        {
-            string reason = DrawTimes.Validate(DrawingSpec.Making(durabilityBuffs: buffs, glyphs: glyphs), _config);
-            Assert.AreEqual(valid, reason == null, reason);
         }
 
         [Test]

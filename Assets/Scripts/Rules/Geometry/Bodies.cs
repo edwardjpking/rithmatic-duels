@@ -31,8 +31,7 @@ namespace RithmaticDuels.Rules.Geometry
         public IReadOnlyList<Vec2> BindPoints { get; internal set; }
         /// <summary>A Mark's Cross's crossed LoF inside its circle. Empty for any other LoW.</summary>
         public IReadOnlyList<Segment> Braces { get; internal set; } = new Segment[0];
-        /// <summary>The main LoW bind point this LoW is bound at, or -1 for the main LoW itself.</summary>
-        public int AttachedAt { get; internal set; } = -1;
+
         public float Perimeter { get; private set; }
         public int SampleCount { get { return _params.Length; } }
 
@@ -71,7 +70,6 @@ namespace RithmaticDuels.Rules.Geometry
             _max = new int[samples];
             _durability = new int[samples];
 
-            var warding = config.Warding;
             Vec2 previous = shape.PointAt(0f);
             for (int i = 0; i < samples; i++)
             {
@@ -81,14 +79,30 @@ namespace RithmaticDuels.Rules.Geometry
                 _arc[i] = i == 0 ? 0f : _arc[i - 1] + Vec2.Distance(previous, point);
                 previous = point;
 
-                // Durability at a point = base x clamp(sqrt(k / k_ref), min, max), plus the modifier.
-                double scale = Math.Sqrt(shape.CurvatureAt(t) / warding.ReferenceCurvature);
-                scale = Math.Max(warding.MinCurvatureScale, Math.Min(warding.MaxCurvatureScale, scale));
-                int value = (int)Math.Round(warding.Durability * scale) + line.ModifierSteps * warding.DurabilityPerModifierStep;
-                _max[i] = Math.Max(config.MinimumDurabilityAfterModifier, value);
+                _max[i] = PointDurability(shape, t, line.ModifierSteps, config);
                 _durability[i] = _max[i];
             }
             Perimeter = _arc[samples - 1] + Vec2.Distance(previous, shape.PointAt(0f));
+        }
+
+        /// <summary>Durability at a point = base x clamp(sqrt(k / k_ref), min, max), plus the modifier.</summary>
+        public static int PointDurability(WardShape shape, float t, int modifierSteps, RulesConfig config)
+        {
+            var warding = config.Warding;
+            double scale = Math.Sqrt(shape.CurvatureAt(t) / warding.ReferenceCurvature);
+            scale = Math.Max(warding.MinCurvatureScale, Math.Min(warding.MaxCurvatureScale, scale));
+            int value = (int)Math.Round(warding.Durability * scale) + modifierSteps * warding.DurabilityPerModifierStep;
+            return Math.Max(config.MinimumDurabilityAfterModifier, value);
+        }
+
+        /// <summary>The durability of the weakest point a LoW of this shape would have with no modifier.</summary>
+        public static int WeakestDurability(WardShape shape, RulesConfig config)
+        {
+            int samples = Math.Max(8, config.Geometry.WardSamples);
+            int weakest = int.MaxValue;
+            for (int i = 0; i < samples; i++)
+                weakest = Math.Min(weakest, PointDurability(shape, (float)(2.0 * Math.PI * i / samples), 0, config));
+            return weakest;
         }
 
         public Vec2 SamplePoint(int index) { return Shape.PointAt(_params[index]); }
@@ -122,13 +136,17 @@ namespace RithmaticDuels.Rules.Geometry
     {
         public Segment Segment { get; private set; }
 
-        /// <summary>True for a LoF joining two bind points of its owner's main LoW, which shields the arc between them.</summary>
-        public bool IsChord { get; private set; }
+        /// <summary>
+        /// For a LoF joining two bind points of one of its owner's LoW, that LoW's line id: it shields the
+        /// arc between them. -1 for any other LoF.
+        /// </summary>
+        public int ChordOf { get; private set; }
+        public bool IsChord { get { return ChordOf >= 0; } }
 
-        public ForbiddanceBody(Line line, Segment segment, bool isChord = false) : base(line)
+        public ForbiddanceBody(Line line, Segment segment, int chordOf = -1) : base(line)
         {
             Segment = segment;
-            IsChord = isChord;
+            ChordOf = chordOf;
         }
     }
 

@@ -24,16 +24,19 @@ namespace RithmaticDuels.Rules
                     break;
                 case LineType.Forbiddance:
                     float length = spec.Length > 0f ? spec.Length : config.Geometry.TangentForbiddanceLength;
-                    turns = (int)Math.Ceiling(length / config.Forbiddance.LengthPerDrawTurn - 1e-4)
-                        - spec.BindPoints * config.Forbiddance.DrawTurnsSavedPerBindPoint;
+                    if (spec.BindPoints == 2)
+                        turns = length <= config.Forbiddance.ShortChordLength + 1e-4f
+                            ? config.Forbiddance.ShortChordTurns : config.Forbiddance.LongChordTurns;
+                    else
+                        turns = (int)Math.Ceiling(length / config.Forbiddance.LengthPerDrawTurn - 1e-4)
+                            - spec.BindPoints * config.Forbiddance.DrawTurnsSavedPerBindPoint;
                     break;
                 case LineType.Vigor:
                     turns = config.Vigor.Tier(spec.Tier).DrawTurns;
                     break;
                 case LineType.Making:
                     int perTurn = Math.Max(1, config.Making.StatBuffsPerDrawTurn);
-                    turns = (spec.TotalStatBuffs + perTurn - 1) / perTurn
-                        + Math.Max(0, spec.Glyphs - config.Making.FreeGlyphs) * config.Making.DrawTurnsPerGlyph;
+                    turns = (spec.TotalStatBuffs + perTurn - 1) / perTurn;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(spec));
@@ -60,11 +63,6 @@ namespace RithmaticDuels.Rules
             return Math.Max(config.MinimumWorkTurns, Round(baseTurns * settings.TimeMultiplier, settings.Rounding));
         }
 
-        /// <summary>Most glyphs a chalkling with this many stat buffs may carry.</summary>
-        public static int MaxGlyphs(int statBuffs, RulesConfig config)
-        {
-            return config.Making.FreeGlyphs + statBuffs / config.Making.StatBuffsPerExtraGlyph;
-        }
 
         /// <summary>Returns null when the spec is valid, otherwise a reason it is not.</summary>
         public static string Validate(DrawingSpec spec, RulesConfig config)
@@ -81,11 +79,9 @@ namespace RithmaticDuels.Rules
                         return "A Line of Warding has at most " + config.Warding.MaxBindPoints + " bind points.";
                     break;
                 case LineType.Making:
-                    if (spec.DurabilityBuffs < 0 || spec.DamageBuffs < 0 || spec.SpeedBuffs < 0 || spec.Glyphs < 0)
-                        return "Stat buffs and glyphs cannot be negative.";
-                    if (spec.Glyphs > MaxGlyphs(spec.TotalStatBuffs, config))
-                        return "A chalkling may carry " + config.Making.FreeGlyphs + " glyph plus one per "
-                            + config.Making.StatBuffsPerExtraGlyph + " stat buffs.";
+                    if (spec.DurabilityBuffs < 0 || spec.DamageBuffs < 0 || spec.SpeedBuffs < 0)
+                        return "Stat buffs cannot be negative.";
+                    if (spec.IsBound && spec.Glyph != Glyph.Defend) return "A bound chalkling must carry the Defend glyph.";
                     break;
             }
             return null;

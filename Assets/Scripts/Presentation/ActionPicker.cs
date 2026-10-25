@@ -18,6 +18,8 @@ namespace RithmaticDuels.Presentation
         public IReadOnlyList<Vec2> WardBindPoints;
         /// <summary>A previewed Mark's Cross's crossed LoF.</summary>
         public IReadOnlyList<Segment> Braces;
+        /// <summary>Bind points that already have their LoW, shown crossed out while placing another LoW.</summary>
+        public IReadOnlyList<Vec2> FullBindPoints;
         /// <summary>Preset spots for the main LoW, drawn as markers that can be clicked.</summary>
         public IReadOnlyList<Vec2> Presets;
         /// <summary>Show the midline of the player's half, which the main LoW snaps to.</summary>
@@ -55,6 +57,7 @@ namespace RithmaticDuels.Presentation
         private static readonly string[] PaceLabels = { "Normal", "Rush", "Steady" };
         private static readonly string[] TierLabels = { "Low", "Medium", "High" };
         private static readonly string[] StatLabels = { "Durability", "Damage", "Speed" };
+        private static readonly string[] GlyphLabels = { "Attack glyph", "Defend glyph" };
         private static readonly string[] ShapeLabels = { "Circle", "Ellipse" };
         private static readonly string[] CircleBindPointLabels = { "4", "6", "9" };
         private static readonly int[] CircleBindPointCounts = { 4, 6, 9 };
@@ -86,11 +89,16 @@ namespace RithmaticDuels.Presentation
         private int _durabilityBuffs;
         private int _damageBuffs;
         private int _speedBuffs;
-        private int _glyphs;
+        private Glyph? _glyph;
         private ChalklingStat? _modifierStat;
         private int _targetLineId = -1;
         private int _amount = 1;
         private ChalklingStat? _buffStat;
+
+        // What the player has typed into each chalkling stat box (see StatEntry).
+        private readonly TypedStat _durabilityEntry = new TypedStat();
+        private readonly TypedStat _damageEntry = new TypedStat();
+        private readonly TypedStat _speedEntry = new TypedStat();
 
         // Sizes set with the scroll wheel. Negative means "not touched yet", so the config default is used.
         private float _semiMinor = -1f;
@@ -244,7 +252,7 @@ namespace RithmaticDuels.Presentation
             if (board.MainWardOf(player) == null && config.MainWardFirst)
             {
                 if (!_mainShape.HasValue || config.Geometry.MainWardAtHome) return false;
-                _pointA = board.SnapMainWard(player, MainShapeSpec(), point, MainSemiMinor(config));
+                _pointA = board.SnapMainWard(player, MainShapeSpec(), point, MainSemiMinor(board, player));
                 return true;
             }
 
@@ -285,18 +293,16 @@ namespace RithmaticDuels.Presentation
             if (board.MainWardOf(player) == null && config.MainWardFirst)
             {
                 if (_mainShape != MainShape.Ellipse) return false;
-                _semiMinor = Mathf.Clamp(SemiMinor(config) + step, geometry.EllipseMinSemiMinor, geometry.EllipseMaxSemiMinor);
+                // Each notch moves to the next whole-number durability of the ellipse's weakest point.
+                _semiMinor = StepAlong(MainSteps(board, player), SemiMinor(board, player), delta < 0f ? 1 : -1);
                 return true;
             }
 
             if (_lineType == LineType.Warding && _attachedWardChoice > 0)
             {
                 var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
-                float min, max, start;
-                board.AttachedSizeRange(spec, out min, out max, out start);
-                // Never bigger than fits on the player's half at the chosen bind point.
-                if (_bindA >= 0) max = board.MaxAttachedSize(player, spec, _bindA);
-                _attachedSize = Mathf.Clamp(AttachedSize(board, player, spec) + step, min, max);
+                // Each notch moves to the next whole-number durability, never bigger than fits on the player's half.
+                _attachedSize = StepAlong(AttachedSteps(board, player, spec), AttachedSize(board, player, spec), delta < 0f ? 1 : -1);
                 return true;
             }
 
@@ -349,7 +355,7 @@ namespace RithmaticDuels.Presentation
             }
 
             var shapeSpec = MainShapeSpec();
-            float semiMinor = MainSemiMinor(config);
+            float semiMinor = MainSemiMinor(board, player);
             // A shape or size change can push a placed outline off its half, so keep it inside.
             if (_pointA.HasValue) _pointA = board.ClampMainWard(player, shapeSpec, _pointA.Value, semiMinor);
 
@@ -367,6 +373,7 @@ namespace RithmaticDuels.Presentation
                 preview.Ward = board.PreviewWard(player, bindPoints > 0 ? DrawingSpec.Warding(bindPoints) : shapeSpec, Placement.MainWard(_pointA.Value, semiMinor), out points);
                 preview.WardChosen = true;
                 if (bindPoints > 0) preview.WardBindPoints = points;
+                GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability.");
             }
             Preview = preview;
 
@@ -396,9 +403,9 @@ namespace RithmaticDuels.Presentation
             return DrawingSpec.Warding(_mainShape == MainShape.Ellipse ? 2 : 4);
         }
 
-        private float MainSemiMinor(RulesConfig config)
+        private float MainSemiMinor(ChalkBoard board, Player player)
         {
-            return _mainShape == MainShape.Ellipse ? SemiMinor(config) : 0f;
+            return _mainShape == MainShape.Ellipse ? SemiMinor(board, player) : 0f;
         }
 
         private PlayerAction DrawStart(RulesConfig config, ChalkBoard board, Player player, out Placement placement, out string hint)
@@ -450,7 +457,12 @@ namespace RithmaticDuels.Presentation
                         preview.Ward = board.PreviewWard(player, spec, placement, out points);
                         preview.WardBindPoints = points;
                         if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
+                        if (preview.Ward != null) GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability, before its modifier.");
                     }
+                    var full = new List<Vec2>();
+                    var allPoints = board.BindPointsOf(player);
+                    for (int i = 0; i < allPoints.Count; i++) if (board.BindPointFull(player, i)) full.Add(allPoints[i]);
+                    preview.FullBindPoints = full;
                     break;
 
                 case LineType.Forbiddance:
@@ -568,24 +580,27 @@ namespace RithmaticDuels.Presentation
         {
             var making = config.Making;
             GUILayout.Label("Spend points on stats. Every " + making.StatBuffsPerDrawTurn + " points take a turn to draw.");
-            Stepper("Durability " + (making.BaseDurability + _durabilityBuffs * making.DurabilityPerBuff), ref _durabilityBuffs, 0, 12);
-            Stepper("Damage " + (making.BaseDamage + _damageBuffs * making.DamagePerBuff), ref _damageBuffs, 0, 12);
-            Stepper("Speed " + (making.BaseSpeed + _speedBuffs * making.SpeedPerBuff), ref _speedBuffs, 0, 12);
-            int maxGlyphs = DrawTimes.MaxGlyphs(_durabilityBuffs + _damageBuffs + _speedBuffs, config);
-            _glyphs = Mathf.Clamp(_glyphs, 0, maxGlyphs);
-            Stepper("Glyphs " + _glyphs + " of " + maxGlyphs + " (first free)", ref _glyphs, 0, maxGlyphs);
+            GUILayout.Label("Type the stat you want, or use - and +.");
+            StatEntry("Durability", _durabilityEntry, ref _durabilityBuffs, making.BaseDurability, making.DurabilityPerBuff);
+            StatEntry("Damage", _damageEntry, ref _damageBuffs, making.BaseDamage, making.DamagePerBuff);
+            StatEntry("Speed", _speedEntry, ref _speedBuffs, making.BaseSpeed, making.SpeedPerBuff);
             GUILayout.Label("A positive modifier goes to:");
             Choose(ref _modifierStat, StatLabels);
             Choose(ref _chalklingMode, ChalklingLabels);
+            // One glyph, Attack or Defend; a bound chalkling must Defend.
+            bool bound = _chalklingMode == ChalklingMode.Bound;
+            if (bound) GUILayout.Label("Bound, so it carries the Defend glyph.");
+            else if (_chalklingMode.HasValue) Choose(ref _glyph, GlyphLabels);
             GUILayout.Label("Chalklings stand still until chalkling behaviour is built.");
-            if (!_modifierStat.HasValue || !_chalklingMode.HasValue)
+            if (!_modifierStat.HasValue || !_chalklingMode.HasValue || (!bound && !_glyph.HasValue))
             {
-                hint = !_modifierStat.HasValue ? "Choose where a positive modifier goes." : "Choose whether it is bound.";
+                hint = !_modifierStat.HasValue ? "Choose where a positive modifier goes."
+                    : !_chalklingMode.HasValue ? "Choose whether it is bound." : "Choose its glyph.";
                 return null;
             }
             hint = null;
-            bool bound = _chalklingMode == ChalklingMode.Bound;
-            return DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, _glyphs, bound ? 1 : 0, _modifierStat.Value);
+            var glyph = bound ? Glyph.Defend : _glyph.Value;
+            return DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, glyph, bound ? 1 : 0, _modifierStat.Value);
         }
 
         private void DrawTiming(RulesConfig config, DrawingSpec spec)
@@ -673,9 +688,46 @@ namespace RithmaticDuels.Presentation
             return index >= 0 ? targets[index] : null;
         }
 
-        private float SemiMinor(RulesConfig config)
+        /// <summary>The main ellipse's chosen semi-minor axis, on one of its whole-number durability steps.</summary>
+        private float SemiMinor(ChalkBoard board, Player player)
         {
-            return _semiMinor > 0f ? _semiMinor : config.Geometry.EllipseSemiMinor;
+            return Nearest(MainSteps(board, player), _semiMinor > 0f ? _semiMinor : board.Config.Geometry.EllipseSemiMinor);
+        }
+
+        // Size steps are slow to work out, so each is kept until what it depends on changes.
+        private List<float> _mainSteps;
+        private List<float> _attachedSteps;
+        private string _attachedStepsKey;
+
+        private List<float> MainSteps(ChalkBoard board, Player player)
+        {
+            if (_mainSteps == null) _mainSteps = board.MainEllipseSizes(player);
+            return _mainSteps;
+        }
+
+        private List<float> AttachedSteps(ChalkBoard board, Player player, DrawingSpec spec)
+        {
+            string key = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count;
+            if (_attachedSteps == null || key != _attachedStepsKey)
+            {
+                _attachedSteps = board.AttachedSizes(player, spec, _bindA);
+                _attachedStepsKey = key;
+            }
+            return _attachedSteps;
+        }
+
+        private static float Nearest(List<float> steps, float value)
+        {
+            float best = steps[0];
+            foreach (float step in steps) if (Mathf.Abs(step - value) < Mathf.Abs(best - value)) best = step;
+            return best;
+        }
+
+        /// <summary>The step after (direction 1) or before (-1) the one nearest the value, stopping at the ends.</summary>
+        private static float StepAlong(List<float> steps, float value, int direction)
+        {
+            int index = steps.IndexOf(Nearest(steps, value)) + direction;
+            return steps[index < 0 ? 0 : index >= steps.Count ? steps.Count - 1 : index];
         }
 
         private float Length(RulesConfig config)
@@ -700,12 +752,13 @@ namespace RithmaticDuels.Presentation
             return Mathf.Clamp(Length(config), config.Geometry.MinForbiddanceLength, MaxLength(config, board, player));
         }
 
-        /// <summary>The chosen size of an attached LoW, cut back if it would reach off the player's half.</summary>
+        /// <summary>
+        /// The chosen size of an attached LoW, on one of its whole-number durability steps and cut back if it
+        /// would reach off the player's half.
+        /// </summary>
         private float AttachedSize(ChalkBoard board, Player player, DrawingSpec spec)
         {
-            float size = board.AttachedSize(spec, Placement.AtBindPoint(0, _attachedSize));
-            if (_bindA >= 0) size = Mathf.Min(size, board.MaxAttachedSize(player, spec, _bindA));
-            return size;
+            return Nearest(AttachedSteps(board, player, spec), board.AttachedSize(spec, Placement.AtBindPoint(0, _attachedSize)));
         }
 
         /// <summary>Select the bind point nearest the click. With <paramref name="two"/>, alternate between two picks.</summary>
@@ -714,8 +767,11 @@ namespace RithmaticDuels.Presentation
             var bindPoints = board.BindPointsOf(player);
             int nearest = -1;
             float best = PickRadius;
+            bool forWard = _lineType == LineType.Warding;
             for (int i = 0; i < bindPoints.Count; i++)
             {
+                // A bind point that already has its LoW can't take another, so it can't be picked for one.
+                if (forWard && board.BindPointFull(player, i)) continue;
                 float distance = Vec2.Distance(bindPoints[i], point);
                 if (distance < best) { best = distance; nearest = i; }
             }
@@ -759,6 +815,96 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A label with - and + buttons. A button that would go past the limits is greyed out.</summary>
+        /// <summary>The most buffs one chalkling stat can take in the point buy.</summary>
+        private const int MaxStatBuffs = 12;
+
+        /// <summary>The text in one stat box, kept between frames so a half-typed number isn't wiped.</summary>
+        private sealed class TypedStat
+        {
+            public string Text = "";
+            // The buffs the box last showed, so a change from the - and + buttons refreshes it.
+            public int ShownBuffs = -1;
+        }
+
+        /// <summary>
+        /// One chalkling stat: a box the player can type the stat they want into, and - and + buttons.
+        /// Both go through the same rule: the stat is base + buffs × perBuff, with 0 to MaxStatBuffs buffs.
+        /// A typed number moves to the nearest value the point buy can make (for example 4 becomes 5 when
+        /// durability goes 1, 3, 5...), and the box shows that value once the player presses Enter or clicks away.
+        /// </summary>
+        private static void StatEntry(string name, TypedStat entry, ref int buffs, int baseValue, int perBuff)
+        {
+            int value = baseValue + buffs * perBuff;
+            string control = "stat-" + name;
+            bool focused = GUI.GetNameOfFocusedControl() == control;
+            if (focused && Event.current.type == EventType.KeyDown
+                && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter))
+            {
+                GUI.FocusControl(null);
+                focused = false;
+                Event.current.Use();
+            }
+            // Show the real value unless the player is typing, or the buttons changed it since they typed.
+            if (!focused || entry.ShownBuffs != buffs)
+            {
+                entry.Text = value.ToString();
+                entry.ShownBuffs = buffs;
+            }
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(name, GUILayout.Width(100));
+            GUI.SetNextControlName(control);
+            string typed = GUILayout.TextField(entry.Text, 3, GUILayout.Width(50));
+            if (typed != entry.Text)
+            {
+                entry.Text = FilterDigits(typed);
+                int wanted;
+                if (int.TryParse(entry.Text, out wanted))
+                {
+                    buffs = BuffsFor(wanted, baseValue, perBuff, 0, MaxStatBuffs);
+                    entry.ShownBuffs = buffs;
+                }
+            }
+            string note = perBuff > 1 ? "steps of " + perBuff : "";
+            GUILayout.Label(note, GUILayout.Width(70));
+            int step = 0;
+            bool enabled = GUI.enabled;
+            GUI.enabled = enabled && buffs > 0;
+            if (GUILayout.Button("-", GUILayout.Width(30))) step = -1;
+            GUI.enabled = enabled && buffs < MaxStatBuffs;
+            if (GUILayout.Button("+", GUILayout.Width(30))) step = 1;
+            GUI.enabled = enabled;
+            GUILayout.EndHorizontal();
+
+            int next = Mathf.Clamp(buffs + step, 0, MaxStatBuffs);
+            bool changed = next != buffs;
+            buffs = next;
+            if (changed) GUIUtility.ExitGUI();
+        }
+
+        /// <summary>
+        /// The number of buffs whose stat (base + buffs × perBuff) is nearest the wanted value, kept between
+        /// min and max. A tie goes to the higher value.
+        /// </summary>
+        private static int BuffsFor(int wanted, int baseValue, int perBuff, int min, int max)
+        {
+            if (perBuff <= 0) return min;
+            int above = wanted - baseValue;
+            int buffs = (above * 2 + perBuff) / (perBuff * 2);
+            if (above < 0) buffs = min;
+            return Mathf.Clamp(buffs, min, max);
+        }
+
+        private static string FilterDigits(string text)
+        {
+            var kept = new System.Text.StringBuilder();
+            foreach (char c in text)
+            {
+                if (c >= '0' && c <= '9') kept.Append(c);
+            }
+            return kept.ToString();
+        }
+
         private static void Stepper(string label, ref int value, int min, int max)
         {
             GUILayout.BeginHorizontal();

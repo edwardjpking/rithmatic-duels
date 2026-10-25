@@ -223,9 +223,28 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void ARushedVigorFliesTheTickItIsFinished()
         {
-            // DESIGN.md section 3: rushed lines join the board before animated lines act.
+            // DESIGN.md section 3: rushed lines join the board before animated lines act,
+            // here widened to drawings of up to 3 normal-pace turns.
+            _config.RushedEarlyMaxNormalTurns = 3;
             var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)), DrawingPace.Rush);
             Assert.AreEqual(17f, ((VigorBody)_board.BodyOf(vigor.Id)).Position.X, 1e-3);
+        }
+
+        [Test]
+        public void OnlyRushedOneTurnDrawingsFinishBeforeMovement()
+        {
+            // By default only a drawing that takes 1 turn at normal pace joins at stage 2.
+            var high = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)), DrawingPace.Rush);
+            Assert.AreEqual(10f, ((VigorBody)_board.BodyOf(high.Id)).Position.X, 1e-3, "a rushed High LoV waits until stage 4");
+        }
+
+        [Test]
+        public void ARushedOneTurnVigorFliesStraightAway()
+        {
+            // Travel turns count: a Low LoV drawn far from the main LoW takes 2 turns, so it would wait.
+            // Close to the main LoW, so no travel turns: 1 turn at normal pace.
+            var low = Draw(Player.A, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(10f, 10f), V(26f, 10f)), DrawingPace.Rush);
+            Assert.AreEqual(13f, ((VigorBody)_board.BodyOf(low.Id)).Position.X, 1e-3, "a rushed Low LoV flies straight away");
         }
 
         [Test]
@@ -412,7 +431,7 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void TheCentreWallReflectsVigorForItsTurns()
         {
-            var config = new RulesConfig { MainWardFirst = false };
+            var config = new RulesConfig { MainWardFirst = false, RushedEarlyMaxNormalTurns = 3 };
             config.CentreWall.Turns = 4;
             var board = new ChalkBoard(config);
             var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), board);
@@ -431,6 +450,103 @@ namespace RithmaticDuels.Rules.Tests
 
             for (int i = 0; i < 2; i++) duel.ResolveTurn(Pass, Pass);
             Assert.IsFalse(board.CentreWallUp, "gone from turn 5");
+        }
+
+        [Test]
+        public void BindPointsOfOtherWardsCanBeUsed()
+        {
+            // A Mark's Cross at the front bind point (x=9) adds its other three bind points to the list;
+            // the one where it touches the main LoW is shared and listed once.
+            int before = _board.BindPointsOf(Player.A).Count;
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var points = _board.BindPointsOf(Player.A);
+            Assert.AreEqual(before + 3, points.Count);
+
+            // Its front bind point at x=11 takes a tangent LoF and another LoW.
+            int front = Enumerable.Range(0, points.Count).Single(i => Math.Abs(points[i].X - 11f) < 1e-3f);
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(front, 2f));
+            var segment = ((ForbiddanceBody)_board.BodyOf(tangent.Id)).Segment;
+            Assert.AreEqual(11f, segment.A.X, 1e-3);
+            Assert.AreEqual(11f, segment.B.X, 1e-3);
+
+            var ward = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(front, 1f));
+            Assert.AreEqual(12f, ((WardBody)_board.BodyOf(ward.Id)).Shape.Centre.X, 1e-3);
+            Assert.IsTrue(_board.BindPointFull(Player.A, front));
+            Assert.IsTrue(_board.BindPointFull(Player.A, 0), "the main LoW's front bind point has its Mark's Cross");
+        }
+
+        [Test]
+        public void AChordOfAnyWardShieldsIt()
+        {
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var points = _board.BindPointsOf(Player.A);
+            int top = Enumerable.Range(0, points.Count).Single(i => Math.Abs(points[i].X - 10f) < 1e-3f && points[i].Y > 10.5f);
+            int bottom = Enumerable.Range(0, points.Count).Single(i => Math.Abs(points[i].X - 10f) < 1e-3f && points[i].Y < 9.5f);
+            var chord = Draw(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(top, bottom));
+            Assert.AreEqual(cross.Id, ((ForbiddanceBody)_board.BodyOf(chord.Id)).ChordOf);
+        }
+
+        [Test]
+        public void AForbiddanceIsARectangleThatMustStayOnItsHalf()
+        {
+            float half = _config.Geometry.ForbiddanceWidth / 2f;
+            // Upright at x=16 - half: its edge just touches the centre line.
+            var touching = Placement.Segment(V(16f - half, 4f), V(16f - half, 7f));
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), touching), touching));
+            var over = Placement.Segment(V(16f - half / 2f, 4f), V(16f - half / 2f, 7f));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), over), over));
+
+            // Slanting toward the line from x=14: capped where its corner first reaches it.
+            Vec2 direction = new Vec2(1f, 1f).Normalized;
+            float max = _board.MaxForbiddanceLength(Player.A, Placement.Segment(V(14f, 4f), V(14f, 4f)), direction);
+            Vec2 end = V(14f, 4f) + direction * max;
+            float cornerX = end.X + Math.Abs(direction.Perp.X) * half;
+            Assert.AreEqual(16f, cornerX, 1e-3);
+        }
+
+        [Test]
+        public void LowSizesStepThroughWholeNumberDurabilities()
+        {
+            var sizes = _board.MainEllipseSizes(Player.A);
+            var values = sizes.Select(size => _board.WeakestDurability(WardShape.Ellipse(V(6f, 10f), _config.Geometry.EllipseSemiMajor, size, 0f))).ToList();
+            CollectionAssert.AllItemsAreUnique(values);
+            for (int i = 1; i < values.Count; i++) Assert.AreEqual(values[i - 1] + 1, values[i], "one step is one point of durability");
+            Assert.Greater(values.Count, 2);
+
+            var circles = _board.AttachedSizes(Player.A, DrawingSpec.Warding(4), 0);
+            var circleValues = circles.Select(r => _board.WeakestDurability(WardShape.Circle(V(0f, 0f), r))).ToList();
+            CollectionAssert.AllItemsAreUnique(circleValues);
+        }
+
+        [Test]
+        public void ForbiddanceCannotCrossAWard()
+        {
+            // Through the main LoW (centre (6, 10), radius 3), from outside to inside.
+            var through = Placement.Segment(V(1f, 10f), V(7f, 10f));
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), through), through), Does.Contain("cross"));
+            // Wholly inside, or wholly outside, is fine; so is a tangent.
+            var inside = Placement.Segment(V(5f, 9f), V(7f, 9f));
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), inside), inside));
+            var tangent = Placement.TangentAt(0, 4f);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(1), tangent), tangent));
+            // A free line touching the circle from outside, along its top.
+            var along = Placement.Segment(V(4f, 13f), V(8f, 13f));
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), along), along));
+        }
+
+        [Test]
+        public void WardsCannotOverlap()
+        {
+            // A Mark's Cross on top (bind point facing up) and then a big circle on its side bind point would
+            // curl back into the main LoW.
+            var points = _board.BindPointsOf(Player.A);
+            int top = Enumerable.Range(0, points.Count).Single(i => points[i].Y > 12.9f);
+            Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(top));
+            points = _board.BindPointsOf(Player.A);
+            int side = Enumerable.Range(0, points.Count).Single(i => Math.Abs(points[i].Y - 14f) < 1e-3f && points[i].X > 6.5f);
+            var big = Placement.AtBindPoint(side, 2.5f);
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Warding(4), big), big), Does.Contain("overlap"));
+            Assert.Less(_board.MaxAttachedSize(Player.A, DrawingSpec.Warding(4), side), 2.5f);
         }
 
         [Test]
@@ -542,7 +658,7 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void AChordForbiddanceTakesHitsOnTheSmallerArcFirst()
+        public void AChordForbiddanceToughensTheSmallerArc()
         {
             // A's four-point circle: bind point 0 faces B at (9, 10); the chord to its neighbour cuts off the front arc.
             var points = _board.BindPointsOf(Player.A);
@@ -557,8 +673,8 @@ namespace RithmaticDuels.Rules.Tests
             Draw(Player.B, DrawingSpec.Vigor(VigorTier.Medium), Placement.Aimed(from, onArc));
             for (int i = 0; i < 4; i++) PassTurn();
 
-            Assert.AreEqual(12, MainWard(Player.A).Durability, "the LoW behind the chord is untouched");
-            Assert.AreEqual(before - 2, chord.Durability, "the chord takes the full damage");
+            Assert.AreEqual(11, MainWard(Player.A).Durability, "the arc takes half the LoV's 2 damage");
+            Assert.AreEqual(before - 1, chord.Durability, "the chord takes the same halved damage");
         }
 
         [Test]

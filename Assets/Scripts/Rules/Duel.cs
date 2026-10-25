@@ -225,8 +225,10 @@ namespace RithmaticDuels.Rules
             bool fatigued = fatigueTurn > 0;
             // 1. LoF are dismissed.
             CompleteWhere(w => w.Kind == WorkKind.Dismiss, report, fatigued);
-            // 2. Rushed drawings that finish this tick go down.
-            CompleteWhere(w => w.Kind == WorkKind.Drawing && w.Pace == DrawingPace.Rush, report, fatigued);
+            // 2. Rushed drawings that finish this tick go down, if they would have taken 1 turn at normal pace
+            // (longer drawings already get their time cut by rushing).
+            CompleteWhere(w => w.Kind == WorkKind.Drawing && w.Pace == DrawingPace.Rush
+                && DrawTimes.Turns(w.Spec, DrawingPace.Normal, Config) <= Config.RushedEarlyMaxNormalTurns, report, fatigued);
             // Optionally (LinesFinishBeforeMovement) everything else finishes before movement too.
             if (Config.LinesFinishBeforeMovement) CompleteWhere(w => true, report, fatigued);
 

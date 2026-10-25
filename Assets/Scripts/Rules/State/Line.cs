@@ -43,7 +43,7 @@ namespace RithmaticDuels.Rules
         public int DurabilityBuffs { get; private set; }
         public int DamageBuffs { get; private set; }
         public int SpeedBuffs { get; private set; }
-        public int Glyphs { get; private set; }
+        public Glyph Glyph { get; private set; }
         public int TotalStatBuffs { get { return DurabilityBuffs + DamageBuffs + SpeedBuffs; } }
 
         public bool IsActive { get { return Status == LineStatus.Active; } }
@@ -81,7 +81,7 @@ namespace RithmaticDuels.Rules
                     DurabilityBuffs = spec.DurabilityBuffs;
                     DamageBuffs = spec.DamageBuffs;
                     SpeedBuffs = spec.SpeedBuffs;
-                    Glyphs = spec.Glyphs;
+                    Glyph = spec.Glyph;
                     MaxDurability = making.BaseDurability + spec.DurabilityBuffs * making.DurabilityPerBuff
                         + spec.BindPoints * making.DurabilityPerBoundBindPoint;
                     Damage = making.BaseDamage + spec.DamageBuffs * making.DamagePerBuff;
