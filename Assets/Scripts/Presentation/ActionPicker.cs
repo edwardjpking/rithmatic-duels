@@ -477,8 +477,13 @@ namespace RithmaticDuels.Presentation
                             if (_pointA.HasValue && toward.HasValue && Vec2.Distance(_pointA.Value, toward.Value) > 1e-3f)
                             {
                                 Vec2 end = _pointA.Value + (toward.Value - _pointA.Value).Normalized * FittedLength(config, board, player);
-                                preview.Segment = new Segment(_pointA.Value, end);
-                                if (_pointB.HasValue) placement = Placement.Segment(_pointA.Value, end);
+                                // Where even the shortest line wouldn't fit (it would overlap the centre line or a LoW), show none.
+                                if (ForbiddanceFits(board, player, spec, Placement.Segment(_pointA.Value, end)))
+                                {
+                                    preview.Segment = new Segment(_pointA.Value, end);
+                                    if (_pointB.HasValue) placement = Placement.Segment(_pointA.Value, end);
+                                }
+                                else hint = "No Line of Forbiddance fits here. Start it somewhere else.";
                             }
                             preview.From = _pointA;
                             break;
