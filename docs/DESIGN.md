@@ -49,13 +49,20 @@ Each turn:
 
 **Decision timer.** Each turn has a time limit for choosing, configured by the players before the duel starts: default 30 seconds, settable from 10 to 120 seconds, or off (for hotseat and practice against the AI; online duels require a value). On timeout, the player's action is **Continue drawing** if a drawing is in progress, otherwise **Pass the turn**.
 
-**Duel start.** Both players start by working on a defence (see section 6). Each player's first action must be starting their main LoW, and nothing else is available until they have: no other line, and no passing. They choose, in order:
+**Pre-game setup (decided 2026-10-25).** Each player secretly sets up their main LoW before anything else; no other line and no passing is available. They choose, on one screen:
 
 1. **Shape:** a circle, or an ellipse. The ellipse's flatness is variable (adjusted with the mouse scroll wheel); flatter ellipses are weaker along their sides (section 4.1).
 2. **Position:** anywhere on their own half, with the whole shape on that half. The outline follows the mouse but never leaves the player's half, and it snaps to preset spots (back, centre and front of the half) and to the half's midline when close. The chosen spot is drawn solid; the outline under the mouse stays dashed, so a new click moves it.
-3. **Bind points:** 4, 6 or 9 for a circle. An ellipse always has 2, at the ends of its long axis.
+3. **Bind points:** 4, 6 or 9 for a circle. An ellipse always has 2, at the ends of its long axis. (More flexible bind point counts and positions are planned.)
 
-Once the main LoW is started, the full menu is open (including Continue, Cancel and Pass). Cancelling it returns the player to this setup. The turn count begins once both main LoW are complete. Players can pick a saved defence preset (section 6.8) so they do not have to select each line every duel.
+The main LoW can't be rushed or steadied. When both players have locked in:
+
+- **Both outlines are drawn immediately**, with no modifier. This is the start of the duel: the outline is a real LoW that can be hit and breached. The turn count begins on the next turn.
+- **Each player's bind points start drawing** straight away. This is the time-consuming step: (bind points) div 2 turns, the setup turn counting as the first. Bind points can't be rushed or steadied and roll no modifier (a modifier for bind points may be considered later).
+- **Nothing else can be drawn until the bind points are complete.** Meanwhile a player can Continue, Cancel or Pass.
+- **Cancelling the bind points** leaves the outline in place and scraps the bind points. The player can start new bind points immediately (in the same turn, possibly a different count) or pass and start them on a later turn.
+
+Players can pick a saved defence preset (section 6.8) so they do not have to select each line every duel. Players can pick a saved defence preset (section 6.8) so they do not have to select each line every duel.
 
 ### 2.1 End game: chalk fatigue and tiebreak
 
@@ -107,7 +114,7 @@ Four line types. Each completed drawing receives a random modifier (section 5). 
 **Durability is per point.** A hit damages the LoW within 0.5 units either side of the impact; the LoW is breached when any point reaches 0. Placeholder curvature scaling: durability at a point = 12 x clamp(sqrt(k / k_ref), 0.5, 2), where k is the local curvature and k_ref = 1/3 is the curvature of the default circle. So smaller circles are stronger per point, larger circles weaker, and an ellipse is strongest at its bind points and weakest along its sides.
 
 **Time to draw**
-- Main LoW: (number of bind points) div 2 (integer division). So 2 bind points = 1 turn, 4 = 2, 6 = 3, 9 = 4.
+- Main LoW: the outline is instant at the end of the setup; its bind points take (number of bind points) div 2 turns (integer division). So 2 bind points = 1 turn, 4 = 2, 6 = 3, 9 = 4 (section 2).
 - Any other LoW: the same formula, minimum 1 turn.
 - Mark's Cross: 2 turns, for the whole thing: its small circle (radius 1) and the two crossed LoF inside it (decided 2026-10-25).
 
@@ -232,7 +239,8 @@ Each turn a player picks one of these (availability depends on state):
 | **Cancel drawing** | Abandon the current drawing and lose all progress, then choose another action for the same turn (start a new drawing, add to one, dismiss a LoF, or pass). Cancelling does not use up the turn (decided 2026-10-25). |
 | **Add to drawing** | Buff LoM: 2 turns per stat buff. Repair LoW / LoF: 2 turns per point of durability. |
 | **Dismiss LoF** | Duration 2 turns. Select one LoF to dismiss (by clicking it on the board). |
-| **Pass the turn** | Do nothing. Not available before the main LoW is started. |
+| **Pass the turn** | Do nothing. Not available during the setup. |
+| **Draw bind points** | Only while the main LoW has no bind points (after cancelling them): start drawing them again (section 2). |
 
 **Travel cost (decided 2026-10-24).** Drawing away from the main LoW takes extra time to get into position. The distance is measured from the main LoW's outline to the nearest point of the new drawing (a LoV's starting point, an unbound chalkling, or the nearest point of a free LoF). Anything inside the main LoW or on its bind points costs nothing extra. Placeholder bands: up to 2 units +0 turns, over 2 units +1, over 4 units +2, over 7 units +3. Travel turns are added after rush or steady, which do not change them.
 
@@ -420,13 +428,13 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 | Negative modifier on a low-durability line | Durability never drops below 1 at completion. | `MinimumDurabilityAfterModifier` |
 | Which stat a chalkling's +ve modifier goes to | Chosen with the stat specification when the LoM is started. | `DrawingSpec.PositiveModifierStat` |
 | Chalkling -ve modifier with tied highest stats | Durability, then damage, then speed. | `Line.HighestStat` |
-| Which LoW is the main LoW | The player's first completed LoW that is not a Mark's Cross. | `Duel.Complete` |
+| Which LoW is the main LoW | The one set up in the pre-game setup. (With the setup switched off, the first completed LoW that is not a Mark's Cross.) | `Duel.ApplyChoice`, `Duel.Complete` |
 | LoW durability per point (section 4.1) | The rules core keeps one durability number per LoW, standing for its weakest point. The geometry layer tracks per-point durability and curvature scaling and reports damage to that weakest point. | `Line.Durability`, `IMovementResolver` |
 | Tiebreak with per-point durability | "Share of maximum durability left" uses the weakest point: its durability over that point's maximum. | `Duel.Tiebreak` |
 | Breach timing for chalk fatigue | Fatigue lands at the end of the tick, so a breach by a LoV earlier in the same tick comes first. | `Duel.ApplyChalkFatigue` |
 | What the opponent sees of a drawing in progress | Its kind (drawing, repair, buff, dismiss) and line type only; not spec, pace or progress. | `Duel.ViewWorkOf` |
 | Elliptical main LoW | Semi-major axis 3.5, long axis toward the opponent, bind points at its two ends. Semi-minor axis set by the player within 1.5 to 3.25 (default 2.5). | `GeometryConfig.Ellipse*` |
-| Main LoW on timeout before it is started | A four-point circle in the default spot. | `Warding.TimeoutMainWardBindPoints` |
+| Main LoW on timeout before it is set up | A four-point circle in the default spot. With no bind points under way, timeout restarts them at the set-up count. | `Warding.TimeoutMainWardBindPoints`, `Duel.TimeoutAction` |
 | Travel cost bands | +1 turn past each of 2, 4 and 7 units from the main LoW's outline. | `GeometryConfig.TravelTurnThresholds` |
 | Travel for repairs, buffs and dismissal | None. | `Duel.ApplyChoice` |
 | LoF length range | 1 to 8 units, 0.25 per scroll notch. | `GeometryConfig.*ForbiddanceLength`, `ScrollStep` |
@@ -446,7 +454,9 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 
 **Settled 2026-10-23:** board model, LoV frequency tiers, chalkling stats, glyph cap, binding, steady rounding, rush on 1-turn drawings, rush/steady odds, turn limit, decision timer, end-game pressure, bind point rules, LoF dismissal timing (intended), LoV paths and absorption, LoV-on-LoV collisions, pushing chalklings, minimum damage, defence legality, presets, double breach, that starting a drawing counts as progress (changed 2026-10-24; it previously did not), and that free placements are limited to the player's own half.
 
-**Settled 2026-10-25:** cancelling doesn't use up the turn; LoF draw time scales with length; a Mark's Cross includes its crossed LoF and takes 2 turns; only a Mark's Cross can be added during the duel; chalkling time is 1 turn per 4 stat points plus 1 per extra glyph; the main LoW can't be rushed or steadied; rules are shown visually where possible.
+**Settled 2026-10-25:** the pre-game setup (shape, position and bind points chosen together; outline instant with no modifier; bind points drawn first with no rush, steady or modifier; nothing else drawn until they're done; cancelling keeps the outline).
+
+**Also settled 2026-10-25:** cancelling doesn't use up the turn; LoF draw time scales with length; a Mark's Cross includes its crossed LoF and takes 2 turns; only a Mark's Cross can be added during the duel; chalkling time is 1 turn per 4 stat points plus 1 per extra glyph; the main LoW can't be rushed or steadied; rules are shown visually where possible.
 
 **Settled 2026-10-24:** the start turn counts as progress, main LoW setup comes first (shape, position on own half, then bind points), travel cost for drawing away from the main LoW, variable LoF length, and LoF damage (half from LoV that reflect off them, full when shielding the smaller arc between their bind points, and chalklings hit them before the LoW).
 

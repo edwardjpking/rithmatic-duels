@@ -48,6 +48,12 @@ namespace RithmaticDuels.Rules
 
         public bool IsActive { get { return Status == LineStatus.Active; } }
 
+        /// <summary>
+        /// LoW only: how many bind points have been drawn on it. A main LoW from the setup starts at 0 and
+        /// gets its bind points when that work completes; any other LoW has them from the start.
+        /// </summary>
+        public int BindPointsDrawn { get; internal set; }
+
         internal Line(int id, Player owner, DrawingSpec spec, int modifierSteps, RulesConfig config)
         {
             Id = id;
@@ -61,6 +67,7 @@ namespace RithmaticDuels.Rules
             {
                 case LineType.Warding:
                     MaxDurability = Modified(config.Warding.Durability, config.Warding.DurabilityPerModifierStep, config);
+                    BindPointsDrawn = spec.BindPoints;
                     break;
                 case LineType.Forbiddance:
                     int baseForbiddance = config.Forbiddance.BaseDurability + spec.BindPoints * config.Forbiddance.DurabilityPerBindPoint;

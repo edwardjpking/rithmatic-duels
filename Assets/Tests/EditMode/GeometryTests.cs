@@ -429,6 +429,26 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void SetupBindPointsAppearOnTheBoardOnlyWhenDrawn()
+        {
+            var config = new RulesConfig();
+            var board = new ChalkBoard(config);
+            var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), board);
+            board.SetPendingPlacement(Player.A, DrawingSpec.Warding(9), Placement.MainWard(V(8f, 10f)));
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(9)), PlayerAction.Start(DrawingSpec.Warding(2)));
+
+            Assert.IsNotNull(board.MainWardOf(Player.A), "the outline is on the board at once");
+            Assert.AreEqual(0, board.BindPointsOf(Player.A).Count);
+            Assert.AreEqual(2, board.BindPointsOf(Player.B).Count);
+            CollectionAssert.AreEqual(new[] { 4, 6, 9 }, board.BindPointChoices(Player.A));
+            CollectionAssert.AreEqual(new[] { 2 }, board.BindPointChoices(Player.B));
+            Assert.AreEqual(9, board.PreviewBindPoints(Player.A, 9).Count);
+
+            while (duel.GetPlayer(Player.A).HasWorkInProgress) duel.ResolveTurn(PlayerAction.Continue(), PlayerAction.Pass());
+            Assert.AreEqual(9, board.BindPointsOf(Player.A).Count, "the board catches up in the tick they complete");
+        }
+
+        [Test]
         public void TheMainWardSnapsInsideItsHalfAndToPresets()
         {
             var board = new ChalkBoard(new RulesConfig());

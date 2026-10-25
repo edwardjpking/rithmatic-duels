@@ -358,6 +358,29 @@ namespace RithmaticDuels.Rules.Geometry
             return Math.Max(min, Math.Min(max, value));
         }
 
+        /// <summary>The bind points a main LoW gets once that many are drawn: an ellipse's two ends, or a circle's preset.</summary>
+        private IReadOnlyList<Vec2> MainBindPoints(Player owner, WardShape shape, int count)
+        {
+            if (count <= 0) return new List<Vec2>();
+            if (!shape.IsCircle) return BindPoints.ForEllipse(shape);
+            return BindPoints.ForCircle(count, shape.Centre, shape.A, Facing(owner));
+        }
+
+        /// <summary>Where a player's main LoW bind points would go if they drew this many, for previews.</summary>
+        public IReadOnlyList<Vec2> PreviewBindPoints(Player player, int count)
+        {
+            var main = MainWardOf(player);
+            return main != null ? MainBindPoints(player, main.Shape, count) : new List<Vec2>();
+        }
+
+        /// <summary>The bind point counts a player's main LoW can take: 2 on an ellipse; 4, 6 or 9 on a circle.</summary>
+        public int[] BindPointChoices(Player player)
+        {
+            var main = MainWardOf(player);
+            if (main == null) return new int[0];
+            return main.Shape.IsCircle ? new[] { 4, 6, 9 } : new[] { 2 };
+        }
+
         /// <summary>Extra turns for drawing this far from the main LoW: one per threshold passed.</summary>
         public int TravelTurns(Player player, Placement placement)
         {
@@ -422,6 +445,8 @@ namespace RithmaticDuels.Rules.Geometry
                 // Repairs and chalk fatigue change the rules-side durability; spread them over the whole line.
                 var ward = body as WardBody;
                 if (ward == null) continue;
+                if (line.IsMainWard && ward.BindPoints.Count != line.BindPointsDrawn)
+                    ward.BindPoints = MainBindPoints(line.Owner, ward.Shape, line.BindPointsDrawn);
                 int delta = line.Durability - ward.Weakest;
                 if (delta != 0) ward.ApplyEverywhere(delta);
                 if (ward.Weakest != line.Durability || ward.WeakestMax != line.MaxDurability)
@@ -447,6 +472,7 @@ namespace RithmaticDuels.Rules.Geometry
                     var shape = WardGeometry(owner, line.Spec, placement, out bindPoints, line.IsMainWard);
                     var wardBody = new WardBody(line, shape, bindPoints, _config);
                     if (line.Spec.IsMarksCross) wardBody.Braces = MarksCrossBraces(shape);
+                    if (line.IsMainWard) wardBody.BindPoints = MainBindPoints(owner, shape, line.BindPointsDrawn);
                     return wardBody;
 
                 case LineType.Forbiddance:

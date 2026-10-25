@@ -35,6 +35,12 @@ namespace RithmaticDuels.Rules
             return Math.Max(config.MinimumWorkTurns, turns);
         }
 
+        /// <summary>Turns to draw a main LoW's bind points after the setup: (bind points) div BindPointsPerDrawTurn, at least the minimum.</summary>
+        public static int BindPointTurns(int count, RulesConfig config)
+        {
+            return Math.Max(config.MinimumWorkTurns, count / config.Warding.BindPointsPerDrawTurn);
+        }
+
         /// <summary>Turns a drawing takes once rush (-50%, rounded up) or steady (+50%) is applied, plus travel.</summary>
         public static int Turns(DrawingSpec spec, DrawingPace pace, RulesConfig config)
         {

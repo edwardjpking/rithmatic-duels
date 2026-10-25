@@ -349,11 +349,13 @@ namespace RithmaticDuels.Presentation
                 switch (view.Kind)
                 {
                     case WorkKind.Drawing: return "Drawing: a " + TurnNarrator.LineTypeName(view.LineType);
+                    case WorkKind.BindPoints: return "Drawing bind points";
                     default: return view.Kind + ": " + TurnNarrator.LineName(_duel.FindLine(view.TargetLineId));
                 }
             }
 
-            string what = work.Kind == WorkKind.Drawing
+            string what = work.Kind == WorkKind.BindPoints ? work.Amount + " bind points"
+                : work.Kind == WorkKind.Drawing
                 ? TurnNarrator.LineTypeName(work.Spec.Type) + " (" + SpecSummary(work.Spec) + ", " + work.Pace + ")"
                 : work.Kind + " " + TurnNarrator.LineName(_duel.FindLine(work.TargetLineId)) + " by " + work.Amount;
             return "Working on: " + what + ", " + work.Progress + " of " + work.TotalTurns + " turns done";

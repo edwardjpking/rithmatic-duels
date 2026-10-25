@@ -7,6 +7,8 @@ namespace RithmaticDuels.Rules
         CancelDrawing,
         AddToDrawing,
         DismissForbiddance,
+        /// <summary>Draw the bind points of the main LoW (DESIGN.md section 2). Amount is how many.</summary>
+        DrawBindPoints,
         Pass,
     }
 
@@ -57,6 +59,11 @@ namespace RithmaticDuels.Rules
         public static PlayerAction Dismiss(int forbiddanceLineId)
         {
             return new PlayerAction(ActionKind.DismissForbiddance) { TargetLineId = forbiddanceLineId };
+        }
+
+        public static PlayerAction DrawBindPoints(int count)
+        {
+            return new PlayerAction(ActionKind.DrawBindPoints) { Amount = count };
         }
 
         /// <summary>This action, done straight after cancelling the drawing in progress.</summary>

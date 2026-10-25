@@ -177,6 +177,9 @@ namespace RithmaticDuels.Presentation
                 case ActionKind.DismissForbiddance:
                     action = DrawDismiss(duel, board, player, out hint);
                     break;
+                case ActionKind.DrawBindPoints:
+                    action = DrawBindPointsMenu(duel, board, player, out hint);
+                    break;
                 case ActionKind.Pass:
                     if (!cancelling) GUILayout.Label("Do nothing this turn.");
                     action = PlayerAction.Pass();
@@ -201,6 +204,7 @@ namespace RithmaticDuels.Presentation
         /// <summary>What can follow a cancel: the menu as it would be with nothing in progress.</summary>
         private static List<ActionKind> ActionsAfterCancel(Duel duel, ChalkBoard board, Player player)
         {
+            if (duel.GetPlayer(player).NeedsBindPoints) return new List<ActionKind> { ActionKind.DrawBindPoints, ActionKind.Pass };
             var after = new List<ActionKind> { ActionKind.StartDrawing };
             if (board.MainWardOf(player) == null && duel.Config.MainWardFirst) return after;
             bool repairable = false, dismissable = false;
@@ -359,7 +363,8 @@ namespace RithmaticDuels.Presentation
             placement = Placement.MainWard(_pointA.Value, semiMinor);
             GUILayout.Space(8);
             _pace = DrawingPace.Normal; // the main LoW can't be rushed or steadied
-            DrawTiming(config, spec);
+            GUILayout.Label("Both outlines are drawn as soon as both players lock in. " + BindPointTimingText(config, bindPoints)
+                + " Nothing else can be drawn until they are done.");
             hint = null;
             return PlayerAction.Start(spec, _pace);
         }
@@ -485,6 +490,36 @@ namespace RithmaticDuels.Presentation
             Choose(ref _pace, PaceLabels);
             DrawTiming(config, spec);
             return PlayerAction.Start(spec, _pace);
+        }
+
+        /// <summary>Redrawing the main LoW's bind points after a cancel. The count is offered as the shape allows.</summary>
+        private PlayerAction DrawBindPointsMenu(Duel duel, ChalkBoard board, Player player, out string hint)
+        {
+            var choices = board.BindPointChoices(player);
+            var labels = new string[choices.Length];
+            for (int i = 0; i < choices.Length; i++) labels[i] = choices[i].ToString();
+            if (choices.Length == 1) _bindPointChoice = 0;
+            GUILayout.Label("Bind points:");
+            Choose(ref _bindPointChoice, labels);
+            if (_bindPointChoice < 0 || _bindPointChoice >= choices.Length)
+            {
+                hint = "Choose how many bind points to draw.";
+                return null;
+            }
+            int count = choices[_bindPointChoice];
+            Preview = new PlacementPreview { Player = player, WardBindPoints = board.PreviewBindPoints(player, count) };
+            GUILayout.Label(BindPointTimingText(duel.Config, count) + " Nothing else can be drawn until they are done.");
+            hint = null;
+            return PlayerAction.DrawBindPoints(count);
+        }
+
+        private static string BindPointTimingText(RulesConfig config, int count)
+        {
+            int total = DrawTimes.BindPointTurns(count, config);
+            int more = total - (config.StartActionCountsAsProgress ? 1 : 0);
+            return more <= 0
+                ? "The bind points are done this turn."
+                : "The bind points take " + total + " turn(s): this one and " + more + " more of Continue.";
         }
 
         /// <summary>The chalkling point buy: each stat shows its value, and buttons that can't be used are greyed out.</summary>
@@ -713,6 +748,7 @@ namespace RithmaticDuels.Presentation
                 case ActionKind.CancelDrawing: return "Cancel";
                 case ActionKind.AddToDrawing: return "Add to drawing";
                 case ActionKind.DismissForbiddance: return "Dismiss LoF";
+                case ActionKind.DrawBindPoints: return "Draw bind points";
                 default: return "Pass";
             }
         }

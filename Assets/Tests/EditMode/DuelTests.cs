@@ -80,7 +80,25 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void WithMainWardFirstEverythingOpensUpOnceItIsStarted()
+        public void SetupDrawsTheOutlineAtOnceWithNoModifier()
+        {
+            _config.MainWardFirst = true;
+            var duel = NewDuel(0, 0); // roll 0 would be a negative modifier if anything rolled
+            var report = duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), PlayerAction.Start(DrawingSpec.Warding(2)));
+
+            var a = duel.GetPlayer(Player.A).MainWard;
+            Assert.IsNotNull(a);
+            Assert.AreEqual(0, a.ModifierSteps);
+            Assert.AreEqual(12, a.Durability);
+            Assert.AreEqual(0, a.BindPointsDrawn, "6 bind points take 3 turns: this one and 2 more");
+            Assert.AreEqual(WorkKind.BindPoints, duel.GetPlayer(Player.A).Work.Kind);
+            Assert.AreEqual(2, duel.GetPlayer(Player.B).MainWard.BindPointsDrawn, "2 bind points take 1 turn");
+            Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.BindPointsCompleted && e.Player == Player.B));
+            Assert.AreEqual(0, duel.CountedTurns, "the setup turn itself doesn't count");
+        }
+
+        [Test]
+        public void NothingCanBeDrawnUntilTheBindPointsAreDone()
         {
             _config.MainWardFirst = true;
             var duel = NewDuel();
@@ -88,10 +106,47 @@ namespace RithmaticDuels.Rules.Tests
             CollectionAssert.AreEqual(
                 new[] { ActionKind.ContinueDrawing, ActionKind.CancelDrawing, ActionKind.Pass },
                 duel.AvailableActions(Player.A));
+            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low)).AfterCancelling()));
             CollectionAssert.AreEqual(new[] { ActionKind.StartDrawing, ActionKind.Pass }, duel.AvailableActions(Player.B));
 
+            duel.ResolveTurn(Continue, Pass);
+            duel.ResolveTurn(Continue, Pass);
+            Assert.AreEqual(6, duel.GetPlayer(Player.A).MainWard.BindPointsDrawn);
+            Assert.Contains(ActionKind.StartDrawing, duel.AvailableActions(Player.A));
+        }
+
+        [Test]
+        public void CancellingBindPointsKeepsTheOutline()
+        {
+            _config.MainWardFirst = true;
+            var duel = NewDuel();
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), PlayerAction.Start(DrawingSpec.Warding(2)));
+            var outline = duel.GetPlayer(Player.A).MainWard;
+
             duel.ResolveTurn(PlayerAction.Cancel(), Pass);
-            CollectionAssert.AreEqual(new[] { ActionKind.StartDrawing }, duel.AvailableActions(Player.A));
+            Assert.AreSame(outline, duel.GetPlayer(Player.A).MainWard);
+            Assert.IsFalse(duel.GetPlayer(Player.A).HasWorkInProgress);
+            CollectionAssert.AreEqual(new[] { ActionKind.DrawBindPoints, ActionKind.Pass }, duel.AvailableActions(Player.A));
+            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low))));
+
+            // Restarting straight after a cancel, in the same turn, with a different count.
+            duel.ResolveTurn(PlayerAction.DrawBindPoints(4), Pass);
+            duel.ResolveTurn(PlayerAction.DrawBindPoints(4).AfterCancelling(), Pass);
+            Assert.AreEqual(1, duel.GetPlayer(Player.A).Work.Progress, "the restart counts its first turn");
+            duel.ResolveTurn(Continue, Pass);
+            Assert.AreEqual(4, outline.BindPointsDrawn);
+        }
+
+        [Test]
+        public void TimeoutRestartsBindPointsWhenNoneAreUnderWay()
+        {
+            _config.MainWardFirst = true;
+            var duel = NewDuel();
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), PlayerAction.Start(DrawingSpec.Warding(2)));
+            duel.ResolveTurn(PlayerAction.Cancel(), Pass);
+            var timeout = duel.TimeoutAction(Player.A);
+            Assert.AreEqual(ActionKind.DrawBindPoints, timeout.Kind);
+            Assert.AreEqual(6, timeout.Amount);
         }
 
         [Test]
@@ -256,17 +311,6 @@ namespace RithmaticDuels.Rules.Tests
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), Pass);
             Assert.IsNull(duel.Validate(Player.A, Pass.AfterCancelling()));
             Assert.IsNotNull(duel.Validate(Player.A, Continue.AfterCancelling()));
-        }
-
-        [Test]
-        public void CancellingTheMainWardFirstOnlyAllowsStartingItAgain()
-        {
-            _config.MainWardFirst = true;
-            var duel = NewDuel();
-            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), PlayerAction.Start(DrawingSpec.Warding(2)));
-            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low)).AfterCancelling()));
-            Assert.IsNotNull(duel.Validate(Player.A, Pass.AfterCancelling()));
-            Assert.IsNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Warding(4)).AfterCancelling()));
         }
 
         [Test]

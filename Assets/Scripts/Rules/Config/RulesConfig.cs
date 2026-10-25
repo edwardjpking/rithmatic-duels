@@ -38,8 +38,12 @@ namespace RithmaticDuels.Rules
         public bool StartActionCountsAsProgress = true;
 
         /// <summary>
-        /// Until a player's main LoW is drawn or being drawn, the only thing they can do is start it
-        /// (DESIGN.md section 2). On timeout they start a default one (TimeoutMainWardBindPoints).
+        /// The pre-game setup (DESIGN.md section 2). A player's first action must set up their main LoW
+        /// (shape, position and bind point count). Its outline is drawn at once, with no modifier, and its
+        /// bind points start drawing (BindPointsPerDrawTurn), with no rush, steady or modifier. Until they
+        /// are done, the player can only continue, cancel (then restart them or pass) or pass. On timeout
+        /// a default main LoW is set up (TimeoutMainWardBindPoints). Off: the main LoW is an ordinary
+        /// drawing that brings its bind points when it completes.
         /// </summary>
         public bool MainWardFirst = true;
 
