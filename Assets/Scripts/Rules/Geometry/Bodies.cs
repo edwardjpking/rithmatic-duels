@@ -118,9 +118,13 @@ namespace RithmaticDuels.Rules.Geometry
     {
         public Segment Segment { get; private set; }
 
-        public ForbiddanceBody(Line line, Segment segment) : base(line)
+        /// <summary>True for a LoF joining two bind points of its owner's main LoW, which shields the arc between them.</summary>
+        public bool IsChord { get; private set; }
+
+        public ForbiddanceBody(Line line, Segment segment, bool isChord = false) : base(line)
         {
             Segment = segment;
+            IsChord = isChord;
         }
     }
 

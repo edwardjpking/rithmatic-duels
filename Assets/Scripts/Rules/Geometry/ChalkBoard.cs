@@ -118,7 +118,17 @@ namespace RithmaticDuels.Rules.Geometry
         public string ValidatePlacement(Player player, DrawingSpec spec, Placement placement)
         {
             if (spec == null) return "No drawing spec given.";
-            if (placement == null || placement.Kind == PlacementKind.Default) return null;
+            if (placement == null) return "Choose where to draw it.";
+            if (placement.Kind == PlacementKind.Default) return null;
+            string problem = PlacementProblem(player, spec, placement);
+            if (problem != null) return problem;
+            if (spec.TravelTurns != TravelTurns(player, placement))
+                return "The travel time doesn't match how far this is from your main Line of Warding.";
+            return null;
+        }
+
+        private string PlacementProblem(Player player, DrawingSpec spec, Placement placement)
+        {
             var bindPoints = BindPointsOf(player);
             bool halfOnly = _config.Geometry.DrawOnOwnHalfOnly;
 
@@ -126,7 +136,11 @@ namespace RithmaticDuels.Rules.Geometry
             {
                 case LineType.Warding:
                     if (MainWardOf(player) == null)
-                        return spec.IsMarksCross ? "Draw your main Line of Warding first." : null;
+                    {
+                        if (spec.IsMarksCross) return "Draw your main Line of Warding first.";
+                        if (placement.Kind != PlacementKind.MainWard) return "Choose where to put your main Line of Warding.";
+                        return CheckMainWard(player, spec, placement, halfOnly);
+                    }
                     if (placement.Kind != PlacementKind.AtBindPoint) return "Pick a bind point on your main Line of Warding.";
                     return ValidBindPoint(placement.BindPointA, bindPoints);
 
@@ -139,11 +153,12 @@ namespace RithmaticDuels.Rules.Geometry
                             return ValidBindPoint(placement.BindPointA, bindPoints) ?? ValidBindPoint(placement.BindPointB, bindPoints);
                         case PlacementKind.TangentAtBindPoint:
                             if (spec.BindPoints != 1) return "A tangent at one bind point has 1 bind point.";
+                            if (placement.Length != 0f) { string length = CheckLength(placement.Length); if (length != null) return length; }
                             return ValidBindPoint(placement.BindPointA, bindPoints);
                         case PlacementKind.FreeSegment:
                             if (spec.BindPoints != 0) return "A free-standing line has no bind points.";
-                            if (Vec2.Distance(placement.PointA, placement.PointB) < 0.5f) return "Make the line longer.";
-                            return CheckPoint(player, placement.PointA, halfOnly) ?? CheckPoint(player, placement.PointB, halfOnly);
+                            return CheckLength(Vec2.Distance(placement.PointA, placement.PointB))
+                                ?? CheckPoint(player, placement.PointA, halfOnly) ?? CheckPoint(player, placement.PointB, halfOnly);
                         default:
                             return "Choose how to place the Line of Forbiddance.";
                     }
@@ -173,6 +188,63 @@ namespace RithmaticDuels.Rules.Geometry
         {
             IReadOnlyList<Vec2> bindPoints;
             return WardGeometry(player, spec, placement, out bindPoints);
+        }
+
+        /// <summary>As <see cref="PreviewWard(Player, DrawingSpec, Placement)"/>, also giving the bind points it would have.</summary>
+        public WardShape PreviewWard(Player player, DrawingSpec spec, Placement placement, out IReadOnlyList<Vec2> bindPoints)
+        {
+            return WardGeometry(player, spec, placement, out bindPoints);
+        }
+
+        /// <summary>
+        /// How far a drawing with this placement is from the outline of the owner's main LoW: the
+        /// nearest point of it, and 0 inside the main LoW or on its bind points (DESIGN.md section 5.1).
+        /// </summary>
+        public float TravelDistance(Player player, Placement placement)
+        {
+            var main = MainWardOf(player);
+            if (main == null || placement == null) return 0f;
+            switch (placement.Kind)
+            {
+                case PlacementKind.Aimed:
+                case PlacementKind.FreePoint:
+                    return DistanceOutside(main, placement.PointA);
+                case PlacementKind.FreeSegment:
+                    const int steps = 16;
+                    float nearest = float.PositiveInfinity;
+                    for (int i = 0; i <= steps; i++)
+                    {
+                        Vec2 point = placement.PointA + (placement.PointB - placement.PointA) * ((float)i / steps);
+                        nearest = Math.Min(nearest, DistanceOutside(main, point));
+                    }
+                    return nearest;
+                default:
+                    return 0f;
+            }
+        }
+
+        /// <summary>Extra turns for drawing this far from the main LoW: one per threshold passed.</summary>
+        public int TravelTurns(Player player, Placement placement)
+        {
+            float distance = TravelDistance(player, placement);
+            int turns = 0;
+            foreach (float threshold in _config.Geometry.TravelTurnThresholds)
+                if (distance > threshold) turns++;
+            return turns;
+        }
+
+        /// <summary>The ellipse's semi-minor axis actually used for this placement, within the configured range.</summary>
+        public float EllipseSemiMinor(Placement placement)
+        {
+            var geometry = _config.Geometry;
+            float wanted = placement != null && placement.SemiMinor > 0f ? placement.SemiMinor : geometry.EllipseSemiMinor;
+            return Math.Max(geometry.EllipseMinSemiMinor, Math.Min(geometry.EllipseMaxSemiMinor, wanted));
+        }
+
+        /// <summary>The length a tangent LoF with this placement has.</summary>
+        public float ForbiddanceLength(Placement placement)
+        {
+            return placement != null && placement.Length > 0f ? placement.Length : _config.Geometry.TangentForbiddanceLength;
         }
 
         /// <summary>The segment a LoF would occupy with this placement, for previews. Null if it can't be placed.</summary>
@@ -242,7 +314,7 @@ namespace RithmaticDuels.Rules.Geometry
 
                 case LineType.Forbiddance:
                     var segment = ForbiddanceGeometry(owner, placement) ?? ForbiddanceGeometry(owner, Placement.Default()).Value;
-                    return new ForbiddanceBody(line, segment);
+                    return new ForbiddanceBody(line, segment, placement.Kind == PlacementKind.BetweenBindPoints);
 
                 case LineType.Vigor:
                     if (placement.Kind == PlacementKind.Aimed)
@@ -272,10 +344,12 @@ namespace RithmaticDuels.Rules.Geometry
 
             if (becomesMain)
             {
-                Vec2 home = Home(owner);
+                bool placed = placement != null && placement.Kind == PlacementKind.MainWard;
+                Vec2 home = placed ? placement.PointA : Home(owner);
                 if (spec.BindPoints == 2)
                 {
-                    var ellipse = WardShape.Ellipse(home, _config.Geometry.EllipseSemiMajor, _config.Geometry.EllipseSemiMinor, facing.Angle);
+                    float semiMinor = placed ? EllipseSemiMinor(placement) : _config.Geometry.EllipseSemiMinor;
+                    var ellipse = WardShape.Ellipse(home, _config.Geometry.EllipseSemiMajor, semiMinor, facing.Angle);
                     bindPoints = BindPoints.ForEllipse(ellipse);
                     return ellipse;
                 }
@@ -314,7 +388,7 @@ namespace RithmaticDuels.Rules.Geometry
         {
             var main = MainWardOf(owner);
             var bindPoints = BindPointsOf(owner);
-            float length = _config.Geometry.TangentForbiddanceLength;
+            float length = ForbiddanceLength(placement);
 
             switch (placement.Kind)
             {
@@ -376,7 +450,7 @@ namespace RithmaticDuels.Rules.Geometry
                 _trails.Add(trail);
             }
 
-            // Chalkling durability used up so far this tick; the rules core applies the damage afterwards.
+            // Chalkling and LoF durability used up so far this tick; the rules core applies the damage afterwards.
             var chalklingDamage = new Dictionary<int, int>();
 
             // Step through the tick one collision at a time, earliest first, so each LoV resolves what it
@@ -394,13 +468,14 @@ namespace RithmaticDuels.Rules.Geometry
                 switch (hit.Kind)
                 {
                     case HitKind.Forbiddance:
-                        hit.Vigor.Direction = Vec2.Reflect(hit.Vigor.Direction, hit.Normal).Normalized;
-                        hit.Vigor.Position += hit.Vigor.Direction * Intersect.Epsilon;
-                        _notes.Add(Name(hit.Vigor) + " was reflected by " + Name(hit.Other) + ".");
+                        ReflectOffForbiddance(hit.Vigor, (ForbiddanceBody)hit.Other, hit.Normal, now, chalklingDamage, result);
                         break;
 
                     case HitKind.Ward:
-                        HitWard(hit.Vigor, (WardBody)hit.Other, now, result);
+                        var ward = (WardBody)hit.Other;
+                        var shield = ShieldingChord(ward, hit.Vigor.Position, chalklingDamage);
+                        if (shield != null) HitShieldingChord(hit.Vigor, shield, ward, now, chalklingDamage, result);
+                        else HitWard(hit.Vigor, ward, now, result);
                         Absorb(hit.Vigor, flying, result);
                         break;
 
@@ -456,6 +531,7 @@ namespace RithmaticDuels.Rules.Geometry
                     var forbiddance = body as ForbiddanceBody;
                     if (forbiddance != null)
                     {
+                        if (RemainingDurability(forbiddance, chalklingDamage) <= 0) continue;
                         Vec2 normal;
                         if (Intersect.RaySegment(from, direction, forbiddance.Segment, out distance, out normal) && distance <= reach)
                             Consider(ref best, HitKind.Forbiddance, now + distance / speed, vigor, forbiddance, normal);
@@ -581,11 +657,107 @@ namespace RithmaticDuels.Rules.Geometry
                 + " (" + survivor.Line.Damage + " damage).");
         }
 
-        private static int RemainingDurability(ChalklingBody chalkling, Dictionary<int, int> used)
+        /// <summary>
+        /// A LoF reflects a LoV and takes a reduced share of its damage (DESIGN.md section 4.2). A LoF
+        /// broken by the hit no longer blocks anything later in the tick, so the LoV still reflects.
+        /// </summary>
+        private void ReflectOffForbiddance(VigorBody vigor, ForbiddanceBody forbiddance, Vec2 normal, float time, Dictionary<int, int> used, MovementResult result)
+        {
+            vigor.Direction = Vec2.Reflect(vigor.Direction, normal).Normalized;
+            vigor.Position += vigor.Direction * Intersect.Epsilon;
+            int damage = (int)Math.Ceiling(vigor.Line.Damage * _config.Forbiddance.VigorDamageMultiplier - 1e-6);
+            if (damage <= 0)
+            {
+                _notes.Add(Name(vigor) + " was reflected by " + Name(forbiddance) + ".");
+                return;
+            }
+            DamageForbiddance(forbiddance, damage, vigor, time, used, result);
+            _notes.Add(Name(vigor) + " was reflected by " + Name(forbiddance) + ", dealing it " + damage + ".");
+        }
+
+        /// <summary>
+        /// A LoF joining two bind points shields the arc of the main LoW between them: a LoV hitting that
+        /// arc deals its full damage to the LoF instead (DESIGN.md section 4.2). Returns the first such
+        /// LoF that is still standing, or null.
+        /// </summary>
+        private ForbiddanceBody ShieldingChord(WardBody ward, Vec2 impact, Dictionary<int, int> used)
+        {
+            if (!ward.Line.IsMainWard) return null;
+            foreach (var body in _bodies.Values)
+            {
+                var forbiddance = body as ForbiddanceBody;
+                if (forbiddance == null || !forbiddance.IsChord || forbiddance.Owner != ward.Owner) continue;
+                if (!forbiddance.Line.IsActive || RemainingDurability(forbiddance, used) <= 0) continue;
+                if (ChordShields(forbiddance.Segment, ward, impact)) return forbiddance;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// True if the impact is on the arc cut off by the chord, on the far side from the centre. A chord
+        /// through the centre shields the half facing the opponent (PROVISIONAL).
+        /// </summary>
+        private bool ChordShields(Segment chord, WardBody ward, Vec2 impact)
+        {
+            Vec2 along = chord.B - chord.A;
+            float centreSide = Vec2.Cross(along, ward.Shape.Centre - chord.A);
+            if (Math.Abs(centreSide) < 1e-3f * along.Length)
+                return Vec2.Cross(along, impact - chord.A) * Vec2.Cross(along, ward.Shape.Centre + Facing(ward.Owner) - chord.A) > 0f;
+            return Vec2.Cross(along, impact - chord.A) * centreSide < 0f;
+        }
+
+        private void HitShieldingChord(VigorBody vigor, ForbiddanceBody forbiddance, WardBody ward, float time, Dictionary<int, int> used, MovementResult result)
+        {
+            int damage = vigor.Line.Damage;
+            DamageForbiddance(forbiddance, damage, vigor, time, used, result);
+            _notes.Add(Name(vigor) + " hit " + Name(ward) + " where " + Name(forbiddance) + " shields it. The LoF took " + damage + ".");
+        }
+
+        private static void DamageForbiddance(ForbiddanceBody forbiddance, int damage, VigorBody vigor, float time, Dictionary<int, int> used, MovementResult result)
+        {
+            used[forbiddance.LineId] = (used.ContainsKey(forbiddance.LineId) ? used[forbiddance.LineId] : 0) + damage;
+            result.Damage.Add(new DamageEvent(forbiddance.LineId, damage, vigor.LineId, time));
+        }
+
+        private static int RemainingDurability(LineBody body, Dictionary<int, int> used)
         {
             int spent;
-            used.TryGetValue(chalkling.LineId, out spent);
-            return chalkling.Line.Durability - spent;
+            used.TryGetValue(body.LineId, out spent);
+            return body.Line.Durability - spent;
+        }
+
+        private static float DistanceOutside(WardBody ward, Vec2 point)
+        {
+            if (ward.Shape.Contains(point)) return 0f;
+            float nearest = float.PositiveInfinity;
+            for (int i = 0; i < ward.SampleCount; i++) nearest = Math.Min(nearest, Vec2.Distance(ward.SamplePoint(i), point));
+            return nearest;
+        }
+
+        /// <summary>A main LoW must lie wholly on the board (and on the player's own half), with a valid shape.</summary>
+        private string CheckMainWard(Player player, DrawingSpec spec, Placement placement, bool halfOnly)
+        {
+            if (spec.BindPoints == 2 && placement.SemiMinor > 0f
+                && (placement.SemiMinor < _config.Geometry.EllipseMinSemiMinor - 1e-4f || placement.SemiMinor > _config.Geometry.EllipseMaxSemiMinor + 1e-4f))
+                return "That ellipse is too flat or too round.";
+            IReadOnlyList<Vec2> bindPoints;
+            var shape = WardGeometry(player, spec, placement, out bindPoints, true);
+            const int steps = 64;
+            for (int i = 0; i < steps; i++)
+            {
+                Vec2 point = shape.PointAt(2f * (float)Math.PI * i / steps);
+                if (!OnBoard(point)) return "Your main Line of Warding must fit on the board.";
+                if (halfOnly && !OnOwnHalf(player, point)) return "Your main Line of Warding must fit on your own half.";
+            }
+            return null;
+        }
+
+        private string CheckLength(float length)
+        {
+            var geometry = _config.Geometry;
+            if (length < geometry.MinForbiddanceLength - 1e-4f) return "Make the line longer (at least " + geometry.MinForbiddanceLength + ").";
+            if (length > geometry.MaxForbiddanceLength + 1e-4f) return "Make the line shorter (at most " + geometry.MaxForbiddanceLength + ").";
+            return null;
         }
 
         private string CheckPoint(Player player, Vec2 point, bool halfOnly)

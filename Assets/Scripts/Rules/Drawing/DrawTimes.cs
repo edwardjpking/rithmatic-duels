@@ -31,10 +31,10 @@ namespace RithmaticDuels.Rules
             return Math.Max(config.MinimumWorkTurns, turns);
         }
 
-        /// <summary>Turns a drawing takes once rush (-50%, rounded up) or steady (+50%) is applied.</summary>
+        /// <summary>Turns a drawing takes once rush (-50%, rounded up) or steady (+50%) is applied, plus travel.</summary>
         public static int Turns(DrawingSpec spec, DrawingPace pace, RulesConfig config)
         {
-            return ApplyPace(BaseTurns(spec, config), pace, config);
+            return ApplyPace(BaseTurns(spec, config), pace, config) + spec.TravelTurns;
         }
 
         public static int ApplyPace(int baseTurns, DrawingPace pace, RulesConfig config)
@@ -55,6 +55,7 @@ namespace RithmaticDuels.Rules
         {
             if (spec == null) return "No drawing spec given.";
             if (spec.BindPoints < 0) return "Bind points cannot be negative.";
+            if (spec.TravelTurns < 0) return "Travel turns cannot be negative.";
 
             switch (spec.Type)
             {

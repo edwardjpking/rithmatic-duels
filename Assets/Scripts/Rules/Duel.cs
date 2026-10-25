@@ -89,6 +89,11 @@ namespace RithmaticDuels.Rules
             if (Outcome != DuelOutcome.InProgress) return actions;
 
             var state = GetPlayer(player);
+            if (MustStartMainWard(state))
+            {
+                actions.Add(ActionKind.StartDrawing);
+                return actions;
+            }
             if (state.HasWorkInProgress)
             {
                 actions.Add(ActionKind.ContinueDrawing);
@@ -107,6 +112,8 @@ namespace RithmaticDuels.Rules
         /// <summary>What a player does when the decision timer runs out: continue a drawing in progress, otherwise pass.</summary>
         public PlayerAction TimeoutAction(Player player)
         {
+            if (MustStartMainWard(GetPlayer(player)))
+                return PlayerAction.Start(DrawingSpec.Warding(Config.Warding.TimeoutMainWardBindPoints));
             return GetPlayer(player).HasWorkInProgress ? PlayerAction.Continue() : PlayerAction.Pass();
         }
 
@@ -117,6 +124,13 @@ namespace RithmaticDuels.Rules
             if (action == null) return "No action chosen.";
 
             var state = GetPlayer(player);
+            if (MustStartMainWard(state))
+            {
+                if (action.Kind != ActionKind.StartDrawing || action.Spec == null
+                    || action.Spec.Type != LineType.Warding || action.Spec.IsMarksCross)
+                    return "Start by drawing your main Line of Warding.";
+            }
+
             switch (action.Kind)
             {
                 case ActionKind.StartDrawing:
@@ -144,6 +158,12 @@ namespace RithmaticDuels.Rules
                 default:
                     return "Unknown action.";
             }
+        }
+
+        /// <summary>True while this player has no main LoW, drawn or in progress, and the rules make them start one first.</summary>
+        private bool MustStartMainWard(PlayerState state)
+        {
+            return Config.MainWardFirst && state.MainWard == null && !state.HasWorkInProgress;
         }
 
         /// <summary>Lock in both players' actions and resolve one tick.</summary>
@@ -211,7 +231,7 @@ namespace RithmaticDuels.Rules
                 case ActionKind.StartDrawing:
                     state.Work = WorkInProgress.NewDrawing(action.Spec, action.Pace, DrawTimes.Turns(action.Spec, action.Pace, Config));
                     bool instant = action.Pace == DrawingPace.Rush && Config.RushedOneTurnDrawingsCompleteImmediately
-                        && DrawTimes.BaseTurns(action.Spec, Config) == 1;
+                        && DrawTimes.BaseTurns(action.Spec, Config) == 1 && action.Spec.TravelTurns == 0;
                     state.Work.Progress = instant ? state.Work.TotalTurns : startProgress;
                     report.Events.Add(new TurnEvent(TurnEventType.WorkStarted, player, -1, state.Work.TotalTurns));
                     break;
@@ -326,10 +346,7 @@ namespace RithmaticDuels.Rules
                 var line = FindLine(hit.TargetLineId);
                 if (line == null || !line.IsActive || !line.HasDurability || hit.Amount <= 0) continue;
 
-                // LoF reflect LoV and take no damage from them; only chalklings can damage a LoF.
-                var source = hit.SourceLineId >= 0 ? FindLine(hit.SourceLineId) : null;
-                if (line.Type == LineType.Forbiddance && source != null && source.Type == LineType.Vigor) continue;
-
+                // A LoV's reduced damage to a LoF it reflects off is worked out by the geometry layer (DESIGN.md section 4.2).
                 line.Durability = Math.Max(0, line.Durability - hit.Amount);
                 report.Events.Add(new TurnEvent(TurnEventType.LineDamaged, line.Owner, line.Id, hit.Amount));
 

@@ -8,7 +8,7 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void StartingADrawingRevealsOnlyItsLineType()
         {
-            var duel = new Duel(new RulesConfig(), new ScriptedRandom(Rolls.NoModifier));
+            var duel = new Duel(new RulesConfig { MainWardFirst = false }, new ScriptedRandom(Rolls.NoModifier));
             var report = duel.ResolveTurn(
                 PlayerAction.Start(DrawingSpec.Warding(9), DrawingPace.Steady),
                 PlayerAction.Pass());
@@ -21,9 +21,8 @@ namespace RithmaticDuels.Rules.Tests
         public void CompletionNamesTheLineAndItsModifier()
         {
             // Roll 3 is the first +1 outcome with the default odds.
-            var duel = new Duel(new RulesConfig(), new ScriptedRandom(Rolls.NoModifier, 3));
-            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(2)), PlayerAction.Pass());
-            var report = duel.ResolveTurn(PlayerAction.Continue(), PlayerAction.Pass());
+            var duel = new Duel(new RulesConfig { MainWardFirst = false }, new ScriptedRandom(Rolls.NoModifier, 3));
+            var report = duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(2)), PlayerAction.Pass());
 
             var lines = TurnNarrator.Describe(duel, report);
             CollectionAssert.Contains(lines, "Player A completed A's main Line of Warding #1 with positive modifier.");
@@ -36,7 +35,6 @@ namespace RithmaticDuels.Rules.Tests
             var movement = new ScriptedMovement();
             var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), movement);
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(2)), PlayerAction.Start(DrawingSpec.Warding(2)));
-            duel.ResolveTurn(PlayerAction.Continue(), PlayerAction.Continue());
 
             movement.NextDamage.Add(new DamageEvent(duel.GetPlayer(Player.B).MainWard.Id, 2));
             var report = duel.ResolveTurn(PlayerAction.Pass(), PlayerAction.Pass());
