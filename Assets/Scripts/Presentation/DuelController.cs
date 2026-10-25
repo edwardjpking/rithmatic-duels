@@ -138,6 +138,8 @@ namespace RithmaticDuels.Presentation
 
         private void OnGUI()
         {
+            // Unity resets the skin every OnGUI, so set ours each time (it restyles the scroll bars).
+            GUI.skin = MenuSkin.Get();
             // Read the click in screen pixels before scaling the GUI.
             GUI.matrix = Matrix4x4.identity;
             var current = Event.current;
