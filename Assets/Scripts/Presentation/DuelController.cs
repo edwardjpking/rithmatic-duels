@@ -214,7 +214,7 @@ namespace RithmaticDuels.Presentation
             string text = TurnNarrator.LineName(line);
             if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability + (line.Type == LineType.Warding ? " (weakest point)" : "");
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, damage " + line.Damage + ", speed " + line.Speed;
-            if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", glyphs " + line.Spec.Glyphs;
+            if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
             var ward = body as WardBody;
             if (ward != null && ward.BindPoints.Count > 0) text += "\n" + ward.BindPoints.Count + " bind points";
@@ -406,7 +406,7 @@ namespace RithmaticDuels.Presentation
                 case LineType.Vigor: return spec.Tier + " tier";
                 default:
                     return spec.DurabilityBuffs + "/" + spec.DamageBuffs + "/" + spec.SpeedBuffs
-                        + " durability/damage/speed buffs, glyphs: " + spec.Glyphs;
+                        + " durability/damage/speed buffs, " + spec.Glyph + " glyph";
             }
         }
 

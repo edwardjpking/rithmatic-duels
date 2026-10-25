@@ -331,12 +331,8 @@ namespace RithmaticDuels.Rules
         public int AttacksPerTick = 1;
         /// <summary>"+1 to a stat of choice / -1 to the highest stat", per modifier step.</summary>
         public int StatPerModifierStep = 1;
-        /// <summary>Draw time is ceil(stat buffs / StatBuffsPerDrawTurn) plus DrawTurnsPerGlyph for each glyph beyond the free ones.</summary>
+        /// <summary>Draw time is ceil(stat buffs / StatBuffsPerDrawTurn), at least the minimum. The one glyph is free.</summary>
         public int StatBuffsPerDrawTurn = 4;
-        public int DrawTurnsPerGlyph = 1;
-        /// <summary>A chalkling carries this many glyphs for free, plus one more per StatBuffsPerExtraGlyph buffs.</summary>
-        public int FreeGlyphs = 1;
-        public int StatBuffsPerExtraGlyph = 3;
     }
 
     [Serializable]

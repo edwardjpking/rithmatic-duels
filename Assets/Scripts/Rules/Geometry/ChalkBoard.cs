@@ -941,7 +941,7 @@ namespace RithmaticDuels.Rules.Geometry
                     case HitKind.Ward:
                         var ward = (WardBody)hit.Other;
                         var shield = ShieldingChord(ward, hit.Vigor.Position, chalklingDamage);
-                        if (shield != null) HitShieldedArc(hit.Vigor, shield, ward, now, result);
+                        if (shield != null) HitShieldedArc(hit.Vigor, shield, ward, now, chalklingDamage, result);
                         else HitWard(hit.Vigor, ward, now, result);
                         Absorb(hit.Vigor, flying, result);
                         break;
@@ -1184,13 +1184,15 @@ namespace RithmaticDuels.Rules.Geometry
 
         /// <summary>
         /// A LoF joining two bind points of a LoW toughens the smaller arc it cuts off: a LoV hitting that arc
-        /// deals only Forbiddance.ChordArcDamageMultiplier of its damage, rounded up (DESIGN.md section 4.2).
-        /// The LoF itself takes nothing.
+        /// deals only Forbiddance.ChordArcDamageMultiplier of its damage, rounded up, and the LoF takes the same
+        /// (DESIGN.md section 4.2). Once the LoF is broken, the arc is no longer toughened.
         /// </summary>
-        private void HitShieldedArc(VigorBody vigor, ForbiddanceBody forbiddance, WardBody ward, float time, MovementResult result)
+        private void HitShieldedArc(VigorBody vigor, ForbiddanceBody forbiddance, WardBody ward, float time, Dictionary<int, int> used, MovementResult result)
         {
             int damage = (int)Math.Ceiling(vigor.Line.Damage * _config.Forbiddance.ChordArcDamageMultiplier - 1e-6);
             HitWard(vigor, ward, damage, time, result, " (reduced by " + Name(forbiddance) + ")");
+            DamageForbiddance(forbiddance, damage, vigor, time, used, result);
+            _notes.Add(Name(forbiddance) + " took " + damage + " for toughening the arc.");
         }
 
         private static void DamageForbiddance(ForbiddanceBody forbiddance, int damage, VigorBody vigor, float time, Dictionary<int, int> used, MovementResult result)

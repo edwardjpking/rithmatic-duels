@@ -57,6 +57,7 @@ namespace RithmaticDuels.Presentation
         private static readonly string[] PaceLabels = { "Normal", "Rush", "Steady" };
         private static readonly string[] TierLabels = { "Low", "Medium", "High" };
         private static readonly string[] StatLabels = { "Durability", "Damage", "Speed" };
+        private static readonly string[] GlyphLabels = { "Attack glyph", "Defend glyph" };
         private static readonly string[] ShapeLabels = { "Circle", "Ellipse" };
         private static readonly string[] CircleBindPointLabels = { "4", "6", "9" };
         private static readonly int[] CircleBindPointCounts = { 4, 6, 9 };
@@ -88,7 +89,7 @@ namespace RithmaticDuels.Presentation
         private int _durabilityBuffs;
         private int _damageBuffs;
         private int _speedBuffs;
-        private bool _attackGlyph;
+        private Glyph? _glyph;
         private ChalklingStat? _modifierStat;
         private int _targetLineId = -1;
         private int _amount = 1;
@@ -586,19 +587,20 @@ namespace RithmaticDuels.Presentation
             GUILayout.Label("A positive modifier goes to:");
             Choose(ref _modifierStat, StatLabels);
             Choose(ref _chalklingMode, ChalklingLabels);
-            // Glyphs are Attack and Defend only; a bound chalkling carries Defend for free.
-            _attackGlyph = GUILayout.Toggle(_attackGlyph, " Attack glyph (the first glyph is free)");
-            if (_chalklingMode == ChalklingMode.Bound) GUILayout.Label("Bound, so it carries the Defend glyph for free.");
+            // One glyph, Attack or Defend; a bound chalkling must Defend.
+            bool bound = _chalklingMode == ChalklingMode.Bound;
+            if (bound) GUILayout.Label("Bound, so it carries the Defend glyph.");
+            else if (_chalklingMode.HasValue) Choose(ref _glyph, GlyphLabels);
             GUILayout.Label("Chalklings stand still until chalkling behaviour is built.");
-            if (!_modifierStat.HasValue || !_chalklingMode.HasValue)
+            if (!_modifierStat.HasValue || !_chalklingMode.HasValue || (!bound && !_glyph.HasValue))
             {
-                hint = !_modifierStat.HasValue ? "Choose where a positive modifier goes." : "Choose whether it is bound.";
+                hint = !_modifierStat.HasValue ? "Choose where a positive modifier goes."
+                    : !_chalklingMode.HasValue ? "Choose whether it is bound." : "Choose its glyph.";
                 return null;
             }
             hint = null;
-            bool bound = _chalklingMode == ChalklingMode.Bound;
-            var glyphs = _attackGlyph ? Glyph.Attack : Glyph.None;
-            return DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, glyphs, bound ? 1 : 0, _modifierStat.Value);
+            var glyph = bound ? Glyph.Defend : _glyph.Value;
+            return DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, glyph, bound ? 1 : 0, _modifierStat.Value);
         }
 
         private void DrawTiming(RulesConfig config, DrawingSpec spec)

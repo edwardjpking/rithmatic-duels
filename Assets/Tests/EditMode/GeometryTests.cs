@@ -674,7 +674,7 @@ namespace RithmaticDuels.Rules.Tests
             for (int i = 0; i < 4; i++) PassTurn();
 
             Assert.AreEqual(11, MainWard(Player.A).Durability, "the arc takes half the LoV's 2 damage");
-            Assert.AreEqual(before, chord.Durability, "the chord itself takes nothing");
+            Assert.AreEqual(before - 1, chord.Durability, "the chord takes the same halved damage");
         }
 
         [Test]
