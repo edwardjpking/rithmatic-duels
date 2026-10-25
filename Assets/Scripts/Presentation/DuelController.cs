@@ -32,8 +32,9 @@ namespace RithmaticDuels.Presentation
 
         private static readonly Color Chalkboard = new Color(0.12f, 0.2f, 0.16f);
 
-        // Screen layout, as fractions of the GUI area: menus on the left, board on the right, log below.
-        private const float MenuWidth = 0.38f;
+        // Screen layout: menus down the whole left side, board on the right, log below the board. The menu is a fixed
+        // width in GUI pixels, so its text wraps the same way on any window shape; LogTop is a fraction of the height.
+        private const float MenuWidth = 470f;
         private const float LogTop = 0.72f;
         private const float HeaderHeight = 34f;
 
@@ -119,7 +120,7 @@ namespace RithmaticDuels.Presentation
         /// <summary>Fit the whole board into the area right of the menus and above the log.</summary>
         private void PlaceCamera()
         {
-            float left = MenuWidth;
+            float left = MenuFraction();
             float bottom = 1f - LogTop;
             float top = HeaderHeight * GuiScale() / Mathf.Max(1, Screen.height);
             _camera.rect = new Rect(left, bottom, 1f - left, Mathf.Max(0.1f, 1f - bottom - top));
@@ -134,6 +135,13 @@ namespace RithmaticDuels.Presentation
         private static float GuiScale()
         {
             return Mathf.Max(1f, Screen.height / 720f);
+        }
+
+        /// <summary>The menu's share of the screen width. On a very narrow window it gives up some width to the board.</summary>
+        private static float MenuFraction()
+        {
+            float guiWidth = Screen.width / GuiScale();
+            return Mathf.Min(0.5f, MenuWidth / Mathf.Max(1f, guiWidth));
         }
 
         private void OnGUI()
@@ -181,23 +189,28 @@ namespace RithmaticDuels.Presentation
             }
 
             float logTop = height * LogTop;
-            GUILayout.BeginArea(new Rect(10, HeaderHeight, width * MenuWidth - 20, logTop - HeaderHeight - 6));
-            _menuScroll = GUILayout.BeginScrollView(_menuScroll);
-            switch (_phase)
+            float menuWidth = width * MenuFraction();
+            GUILayout.BeginArea(new Rect(10, HeaderHeight, menuWidth - 20, height - HeaderHeight - 10));
+            if (_phase == Phase.Choosing)
             {
-                case Phase.Handover: DrawHandover(); break;
-                case Phase.Choosing: DrawChoosing(); break;
-                default: DrawResults(); break;
+                // The picker scrolls its own options (only if they don't fit) and keeps Lock in at the bottom.
+                DrawChoosing();
+            }
+            else
+            {
+                _menuScroll = GUILayout.BeginScrollView(_menuScroll);
+                if (_phase == Phase.Handover) DrawHandover();
+                else DrawResults();
+                GUILayout.EndScrollView();
             }
             if (_error != null) GUILayout.Label(_error);
-            GUILayout.EndScrollView();
             GUILayout.EndArea();
 
-            GUILayout.BeginArea(new Rect(width * MenuWidth, HeaderHeight, width * (1f - MenuWidth) - 10, 24));
+            GUILayout.BeginArea(new Rect(menuWidth, HeaderHeight, width - menuWidth - 10, 24));
             DrawWardStatus();
             GUILayout.EndArea();
 
-            GUILayout.BeginArea(new Rect(10, logTop + 4, width - 20, height - logTop - 10));
+            GUILayout.BeginArea(new Rect(menuWidth, logTop + 4, width - menuWidth - 10, height - logTop - 10));
             DrawLog();
             GUILayout.EndArea();
 
@@ -301,16 +314,16 @@ namespace RithmaticDuels.Presentation
                 Then(() =>
                 {
                     _pickers[(int)_chooser] = new ActionPicker();
+                    _menuScroll = Vector2.zero;
                     _phase = Phase.Choosing;
                 });
         }
 
         private void DrawChoosing()
         {
-            GUILayout.Label(TurnNarrator.PlayerName(_chooser) + ": choose your action");
-            GUILayout.Label(DescribeWork(_chooser, true));
+            GUILayout.Label(TurnNarrator.PlayerName(_chooser) + ". " + DescribeWork(_chooser, true));
             GUILayout.Label("Opponent: " + DescribeWork(_chooser.Opponent(), false));
-            var choice = _pickers[(int)_chooser].Draw(_duel, _board, _chooser);
+            var choice = _pickers[(int)_chooser].Draw(_duel, _board, _chooser, ref _menuScroll);
             if (choice != null) Then(() => Lock(choice));
         }
 
@@ -343,6 +356,7 @@ namespace RithmaticDuels.Presentation
                 _phase = Phase.Handover;
                 return;
             }
+            _menuScroll = Vector2.zero;
             _phase = Phase.Results;
         }
 

@@ -50,6 +50,10 @@ namespace RithmaticDuels.Presentation
     /// Immediate-mode GUI lays a window out once and then replays that layout for clicks, so any
     /// click that changes what is shown stops the current pass with <see cref="GUIUtility.ExitGUI"/>.
     /// The helpers at the bottom do this, which is why they take the field to change by ref.
+    ///
+    /// The menu is laid out to fit the panel without scrolling: short labels sit on the same row as their
+    /// buttons, and only the options that apply are shown. If a small window still can't fit it, the
+    /// options scroll, while the problem line and Lock in stay at the bottom of the panel.
     /// </summary>
     public sealed class ActionPicker
     {
@@ -57,7 +61,7 @@ namespace RithmaticDuels.Presentation
         private static readonly string[] PaceLabels = { "Normal", "Rush", "Steady" };
         private static readonly string[] TierLabels = { "Low", "Medium", "High" };
         private static readonly string[] StatLabels = { "Durability", "Damage", "Speed" };
-        private static readonly string[] GlyphLabels = { "Attack glyph", "Defend glyph" };
+        private static readonly string[] GlyphLabels = { "Attack", "Defend" };
         private static readonly string[] ShapeLabels = { "Circle", "Ellipse" };
         private static readonly string[] CircleBindPointLabels = { "4", "6", "9" };
         private static readonly int[] CircleBindPointCounts = { 4, 6, 9 };
@@ -66,6 +70,9 @@ namespace RithmaticDuels.Presentation
         private static readonly int[] AttachedWardBindPoints = { 0, 2, 4, 6, 9 };
         private static readonly string[] ForbiddanceLabels = { "Between 2 bind points", "Tangent at 1", "Free line" };
         private static readonly string[] ChalklingLabels = { "Bound to a bind point", "Free" };
+
+        /// <summary>How wide the label in front of a row of buttons is, in GUI pixels.</summary>
+        private const float RowLabelWidth = 100f;
 
         /// <summary>How close a click must be to a bind point, or a LoF to dismiss, to pick it.</summary>
         private const float PickRadius = 0.75f;
@@ -124,12 +131,17 @@ namespace RithmaticDuels.Presentation
         /// <summary>The action being built: after Cancel, the one chosen to follow it.</summary>
         private ActionKind? Effective { get { return _kind == ActionKind.CancelDrawing ? _afterCancel : _kind; } }
 
-        /// <summary>Draws the menu. Returns the choice once the player locks it in, otherwise null.</summary>
-        public LockedChoice Draw(Duel duel, ChalkBoard board, Player player)
+        /// <summary>
+        /// Draws the menu. Returns the choice once the player locks it in, otherwise null. The options scroll
+        /// with <paramref name="scroll"/> if they don't fit; Lock in stays at the bottom either way.
+        /// </summary>
+        public LockedChoice Draw(Duel duel, ChalkBoard board, Player player, ref Vector2 scroll)
         {
             Preview = null;
             var available = duel.AvailableActions(player);
             if (available.Count == 0) return null;
+            // The scroll view fills the panel down to the footer, so Lock in sits at the bottom.
+            scroll = GUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
             if (_kind.HasValue && !available.Contains(_kind.Value)) _kind = null;
             // Mid-drawing, carrying on is the usual choice, so it starts selected.
             if (!_kind.HasValue && !_defaultChosen && available.Contains(ActionKind.ContinueDrawing)) _kind = ActionKind.ContinueDrawing;
@@ -145,19 +157,20 @@ namespace RithmaticDuels.Presentation
                 var labels = new string[available.Count];
                 for (int i = 0; i < available.Count; i++) labels[i] = ActionLabel(available[i]);
                 int index = _kind.HasValue ? available.IndexOf(_kind.Value) : -1;
-                int chosen = GUILayout.SelectionGrid(index, labels, 3);
+                // One row of up to four buttons.
+                int chosen = GUILayout.SelectionGrid(index, labels, Mathf.Min(labels.Length, 4));
                 if (chosen != index && chosen >= 0)
                 {
                     _kind = available[chosen];
                     GUIUtility.ExitGUI();
                 }
-                GUILayout.Space(8);
+                GUILayout.Space(4);
             }
 
             bool cancelling = _kind == ActionKind.CancelDrawing;
             if (cancelling)
             {
-                GUILayout.Label("Abandon your current work (all progress on it is lost), then this turn:");
+                GUILayout.Label("Abandon your current work (all progress is lost), then:");
                 var after = ActionsAfterCancel(duel, board, player);
                 var labels = new string[after.Count];
                 for (int i = 0; i < after.Count; i++) labels[i] = ActionLabel(after[i]);
@@ -168,7 +181,7 @@ namespace RithmaticDuels.Presentation
                     _afterCancel = after[chosen];
                     GUIUtility.ExitGUI();
                 }
-                GUILayout.Space(8);
+                GUILayout.Space(4);
             }
 
             PlayerAction action = null;
@@ -201,14 +214,14 @@ namespace RithmaticDuels.Presentation
             if (cancelling && action != null)
                 action = action.Kind == ActionKind.Pass ? PlayerAction.Cancel() : action.AfterCancelling();
 
-            GUILayout.FlexibleSpace();
+            GUILayout.EndScrollView();
             string problem = action == null ? hint : duel.Validate(player, action);
             if (problem == null && action.Kind == ActionKind.StartDrawing)
                 problem = placement == null ? "Finish placing it on the board." : board.ValidatePlacement(player, action.Spec, placement);
             if (problem != null) GUILayout.Label(problem);
 
             GUI.enabled = problem == null;
-            bool locked = GUILayout.Button("Lock in", GUILayout.Height(40));
+            bool locked = GUILayout.Button("Lock in", GUILayout.Height(34));
             GUI.enabled = true;
             if (!locked) return null;
             return new LockedChoice { Action = action, Placement = placement };
@@ -320,8 +333,9 @@ namespace RithmaticDuels.Presentation
             placement = null;
             GUILayout.Label("Set up your main Line of Warding. You lose if it is breached.");
 
-            GUILayout.Label("1. Shape:");
+            BeginRow("1. Shape:");
             Choose(ref _mainShape, ShapeLabels);
+            GUILayout.EndHorizontal();
             if (!_mainShape.HasValue)
             {
                 hint = "Choose a shape.";
@@ -333,11 +347,11 @@ namespace RithmaticDuels.Presentation
             if (atHome) _pointA = board.Home(player);
             else GUILayout.Label("2. Click on your half of the board to place it.");
 
-            GUILayout.Label((atHome ? "2" : "3") + ". Bind points:");
+            BeginRow((atHome ? "2" : "3") + ". Bind points:");
             int bindPoints = -1;
             if (ellipse)
             {
-                GUILayout.Label("    2, at the ends of its long axis.");
+                GUILayout.Label("2, at the ends of its long axis.");
                 if (_pointA.HasValue) bindPoints = 2;
             }
             else
@@ -347,6 +361,7 @@ namespace RithmaticDuels.Presentation
                 GUI.enabled = true;
                 if (_pointA.HasValue && _bindPointChoice >= 0) bindPoints = CircleBindPointCounts[_bindPointChoice];
             }
+            GUILayout.EndHorizontal();
 
             var shapeSpec = MainShapeSpec();
             float semiMinor = MainSemiMinor(board, player);
@@ -384,7 +399,7 @@ namespace RithmaticDuels.Presentation
 
             var spec = DrawingSpec.Warding(bindPoints);
             placement = Placement.MainWard(_pointA.Value, semiMinor);
-            GUILayout.Space(8);
+            GUILayout.Space(4);
             _pace = DrawingPace.Normal; // the main LoW can't be rushed or steadied
             GUILayout.Label("Both outlines are drawn as soon as both players lock in. " + BindPointTimingText(config, bindPoints)
                 + " Nothing else can be drawn until they are done.");
@@ -421,6 +436,7 @@ namespace RithmaticDuels.Presentation
             switch (_lineType)
             {
                 case LineType.Warding:
+                    // Five buttons need the full width, so the label goes above them.
                     GUILayout.Label("Bind points:");
                     int before = _attachedWardChoice;
                     Choose(ref _attachedWardChoice, AttachedWardLabels);
@@ -528,12 +544,14 @@ namespace RithmaticDuels.Presentation
             {
                 spec = board.Measure(player, spec, placement);
                 if (spec.TravelTurns > 0)
-                    GUILayout.Label("This is " + board.TravelDistance(player, placement).ToString("0.0")
-                        + " units from your main Line of Warding: +" + spec.TravelTurns + " turn(s) to get there.");
+                    GUILayout.Label("+" + spec.TravelTurns + " turn(s) to get there: it is "
+                        + board.TravelDistance(player, placement).ToString("0.0") + " units from your main LoW.");
             }
 
-            GUILayout.Space(8);
+            GUILayout.Space(4);
+            BeginRow("Pace:");
             Choose(ref _pace, PaceLabels);
+            GUILayout.EndHorizontal();
             DrawTiming(config, spec);
             return PlayerAction.Start(spec, _pace);
         }
@@ -545,8 +563,9 @@ namespace RithmaticDuels.Presentation
             var labels = new string[choices.Length];
             for (int i = 0; i < choices.Length; i++) labels[i] = choices[i].ToString();
             if (choices.Length == 1) _bindPointChoice = 0;
-            GUILayout.Label("Bind points:");
+            BeginRow("Bind points:");
             Choose(ref _bindPointChoice, labels);
+            GUILayout.EndHorizontal();
             if (_bindPointChoice < 0 || _bindPointChoice >= choices.Length)
             {
                 hint = "Choose how many bind points to draw.";
@@ -572,18 +591,25 @@ namespace RithmaticDuels.Presentation
         private DrawingSpec DrawMakingPointBuy(RulesConfig config, out string hint)
         {
             var making = config.Making;
-            GUILayout.Label("Spend points on stats. Every " + making.StatBuffsPerDrawTurn + " points take a turn to draw.");
-            GUILayout.Label("Type the stat you want, or use - and +.");
+            GUILayout.Label("Type each stat or use - and +. Every " + making.StatBuffsPerDrawTurn + " points take a turn.");
             StatEntry("Durability", _durabilityEntry, ref _durabilityBuffs, making.BaseDurability, making.DurabilityPerBuff);
             StatEntry("Damage", _damageEntry, ref _damageBuffs, making.BaseDamage, making.DamagePerBuff);
             StatEntry("Speed", _speedEntry, ref _speedBuffs, making.BaseSpeed, making.SpeedPerBuff);
-            GUILayout.Label("A positive modifier goes to:");
+            BeginRow("+ modifier to:");
             Choose(ref _modifierStat, StatLabels);
+            GUILayout.EndHorizontal();
+            BeginRow("Tether:");
             Choose(ref _chalklingMode, ChalklingLabels);
+            GUILayout.EndHorizontal();
             // One glyph, Attack or Defend; a bound chalkling must Defend.
             bool bound = _chalklingMode == ChalklingMode.Bound;
-            if (bound) GUILayout.Label("Bound, so it carries the Defend glyph.");
-            else if (_chalklingMode.HasValue) Choose(ref _glyph, GlyphLabels);
+            if (bound) GUILayout.Label("Glyph: Defend, since it is bound.");
+            else if (_chalklingMode.HasValue)
+            {
+                BeginRow("Glyph:");
+                Choose(ref _glyph, GlyphLabels);
+                GUILayout.EndHorizontal();
+            }
             GUILayout.Label("Chalklings stand still until chalkling behaviour is built.");
             if (!_modifierStat.HasValue || !_chalklingMode.HasValue || (!bound && !_glyph.HasValue))
             {
@@ -614,9 +640,9 @@ namespace RithmaticDuels.Presentation
             // Rushing a drawing that takes 1 turn anyway saves no time; its only gain is finishing before lines move (DESIGN.md section 3).
             int normal = DrawTimes.Turns(spec, DrawingPace.Normal, config);
             if (normal <= config.RushedEarlyMaxNormalTurns)
-                return text + " Rushing saves no time here. Its only benefit is that the line goes down before lines move this turn"
-                    + (spec.Type == LineType.Vigor ? ", so it flies straight away" : "") + ". The modifier odds are worse.";
-            return text + " Rushing saves " + (normal - total) + " turn(s). The modifier odds are worse.";
+                return text + " Rushing saves no time, but it goes down before lines move"
+                    + (spec.Type == LineType.Vigor ? " and flies straight away" : "") + ". Worse modifier odds.";
+            return text + " Rushing saves " + (normal - total) + " turn(s). Worse modifier odds.";
         }
 
         private PlayerAction DrawDismiss(Duel duel, ChalkBoard board, Player player, out string hint)
@@ -939,6 +965,16 @@ namespace RithmaticDuels.Presentation
                 if (c >= '0' && c <= '9') kept.Append(c);
             }
             return kept.ToString();
+        }
+
+        /// <summary>
+        /// Starts a row with a short label in front, for a row of buttons. The caller draws the buttons and
+        /// then calls GUILayout.EndHorizontal.
+        /// </summary>
+        private static void BeginRow(string label)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(RowLabelWidth));
         }
 
         private static void Stepper(string label, ref int value, int min, int max)
