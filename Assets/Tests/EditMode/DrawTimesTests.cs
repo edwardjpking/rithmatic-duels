@@ -23,26 +23,39 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void MarksCrossTakesOneTurn()
+        public void MarksCrossTakesTwoTurns()
         {
-            Assert.AreEqual(1, DrawTimes.BaseTurns(DrawingSpec.MarksCross(_config), _config));
+            Assert.AreEqual(2, DrawTimes.BaseTurns(DrawingSpec.MarksCross(_config), _config));
         }
 
-        [TestCase(0, 4)]
-        [TestCase(1, 3)]
-        [TestCase(2, 2)]
-        [TestCase(3, 1)]
-        [TestCase(5, 1)]
-        public void ForbiddanceTakesFourMinusBindPointsMinimumOne(int bindPoints, int expected)
+        [TestCase(0, 3f, 2)]
+        [TestCase(0, 4f, 2)]
+        [TestCase(0, 4.5f, 3)]
+        [TestCase(0, 8f, 4)]
+        [TestCase(1, 5f, 2)]
+        [TestCase(2, 4.2f, 1)]
+        [TestCase(2, 1f, 1)]
+        public void ForbiddanceTimeScalesWithLengthLessBindPoints(int bindPoints, float length, int expected)
         {
-            Assert.AreEqual(expected, DrawTimes.BaseTurns(DrawingSpec.Forbiddance(bindPoints), _config));
+            var spec = DrawingSpec.Forbiddance(bindPoints);
+            spec.Length = length;
+            Assert.AreEqual(expected, DrawTimes.BaseTurns(spec, _config));
         }
 
-        [TestCase(3, 0, 0, 0, 3)]
-        [TestCase(2, 2, 2, 2, 8)]
+        [Test]
+        public void ForbiddanceWithoutALengthUsesTheDefault()
+        {
+            Assert.AreEqual(2, DrawTimes.BaseTurns(DrawingSpec.Forbiddance(0), _config)); // 3 units
+        }
+
+        [TestCase(3, 0, 0, 0, 1)]
+        [TestCase(4, 0, 0, 0, 1)]
+        [TestCase(2, 2, 1, 0, 2)]
+        [TestCase(2, 2, 2, 2, 3)]
+        [TestCase(6, 3, 0, 3, 5)]
         [TestCase(0, 0, 0, 1, 1)]
         [TestCase(0, 0, 0, 0, 1)]
-        public void MakingTakesOnePerStatBuffPlusOnePerGlyph(int durability, int damage, int speed, int glyphs, int expected)
+        public void MakingTakesOnePerFourStatBuffsPlusOnePerExtraGlyph(int durability, int damage, int speed, int glyphs, int expected)
         {
             Assert.AreEqual(expected, DrawTimes.BaseTurns(DrawingSpec.Making(durability, damage, speed, glyphs), _config));
         }
@@ -90,8 +103,8 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void FormulasReadFromConfig()
         {
-            _config.Forbiddance.BaseDrawTurns = 6;
-            Assert.AreEqual(5, DrawTimes.BaseTurns(DrawingSpec.Forbiddance(1), _config));
+            _config.Forbiddance.LengthPerDrawTurn = 1f;
+            Assert.AreEqual(2, DrawTimes.BaseTurns(DrawingSpec.Forbiddance(1), _config));
         }
 
         [TestCase(0, 1, true)]

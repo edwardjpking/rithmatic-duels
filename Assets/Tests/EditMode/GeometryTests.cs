@@ -166,11 +166,11 @@ namespace RithmaticDuels.Rules.Tests
 
         /// <summary>
         /// Start a drawing for one player with a placement, and continue until it completes. The other passes.
-        /// Travel turns are worked out from the placement, as the UI does.
+        /// Travel turns and LoF length are worked out from the placement, as the UI does.
         /// </summary>
         private Line Draw(Player player, DrawingSpec spec, Placement placement, DrawingPace pace = DrawingPace.Normal)
         {
-            spec = spec.WithTravel(_board.TravelTurns(player, placement));
+            spec = _board.Measure(player, spec, placement);
             Assert.IsNull(_board.ValidatePlacement(player, spec, placement));
             _board.SetPendingPlacement(player, spec, placement);
             var start = PlayerAction.Start(spec, pace);
@@ -429,6 +429,26 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void TheMainWardSnapsInsideItsHalfAndToPresets()
+        {
+            var board = new ChalkBoard(new RulesConfig());
+            var circle = DrawingSpec.Warding(4);
+
+            // Dragged past the centre line and off the top: pushed back so the whole circle fits.
+            Vec2 clamped = board.ClampMainWard(Player.A, circle, V(30f, 25f), 0f);
+            Assert.AreEqual(13f, clamped.X, 1e-2);
+            Assert.AreEqual(17f, clamped.Y, 1e-2);
+            Assert.IsNull(board.ValidatePlacement(Player.A, circle, Placement.MainWard(clamped)));
+
+            var presets = board.MainWardPresets(Player.B, circle, 0f);
+            CollectionAssert.IsNotEmpty(presets);
+            foreach (var preset in presets) Assert.IsNull(board.ValidatePlacement(Player.B, circle, Placement.MainWard(preset)));
+            Assert.AreEqual(24f, board.SnapMainWard(Player.B, circle, V(24.3f, 10.4f), 0f).X, 1e-3, "snaps to the centre of B's half");
+            Assert.AreEqual(10f, board.SnapMainWard(Player.A, circle, V(11f, 10.4f), 0f).Y, 1e-3, "snaps to the midline");
+            Assert.AreEqual(14f, board.SnapMainWard(Player.A, circle, V(11f, 14f), 0f).Y, 1e-3, "free away from the midline");
+        }
+
+        [Test]
         public void TheMainWardCanBePlacedAndShapedOnItsOwnHalf()
         {
             var config = new RulesConfig();
@@ -451,6 +471,44 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(6f, main.Shape.Centre.Y, 1e-4);
             Assert.AreEqual(2f, main.Shape.B, 1e-4);
             Assert.AreEqual(2, main.BindPoints.Count);
+        }
+
+        [Test]
+        public void MeasureFillsInTheLengthOfAForbiddance()
+        {
+            var points = _board.BindPointsOf(Player.A);
+            var chord = _board.Measure(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(0, 1));
+            Assert.AreEqual(Vec2.Distance(points[0], points[1]), chord.Length, 1e-4);
+            var free = _board.Measure(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(10f, 4f), V(10f, 10f)));
+            Assert.AreEqual(6f, free.Length, 1e-4);
+            Assert.AreEqual(3, DrawTimes.BaseTurns(free, _config));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Forbiddance(0).WithTravel(free.TravelTurns),
+                Placement.Segment(V(10f, 4f), V(10f, 10f))), "a spec without the length is rejected");
+        }
+
+        [Test]
+        public void AMarksCrossHasItsCrossedForbiddanceInside()
+        {
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var body = (WardBody)_board.BodyOf(cross.Id);
+            Assert.AreEqual(2, body.Braces.Count);
+            foreach (var brace in body.Braces)
+            {
+                Assert.AreEqual(2f * _config.Warding.MarksCrossRadius, brace.Length, 1e-3);
+                Assert.AreEqual(0f, Vec2.Distance((brace.A + brace.B) / 2f, body.Shape.Centre), 1e-4);
+            }
+            Assert.AreEqual(0, ((WardBody)_board.BodyOf(MainWard(Player.A).Id)).Braces.Count);
+        }
+
+        [Test]
+        public void ClickingNearALineFindsIt()
+        {
+            var lof = Draw(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(12f, 6f), V(12f, 12f)));
+            Assert.AreEqual(lof.Id, _board.ForbiddanceAt(Player.A, V(12.2f, 9f), 0.5f).LineId);
+            Assert.IsNull(_board.ForbiddanceAt(Player.B, V(12.2f, 9f), 0.5f), "only your own");
+            Assert.IsNull(_board.ForbiddanceAt(Player.A, V(13f, 9f), 0.5f));
+            Assert.AreEqual(MainWard(Player.A).Id, _board.BodyAt(V(9.1f, 10f), 0.3f).LineId);
+            Assert.AreEqual(lof.Id, _board.BodyAt(V(12f, 7f), 0.3f).LineId);
         }
 
         [Test]

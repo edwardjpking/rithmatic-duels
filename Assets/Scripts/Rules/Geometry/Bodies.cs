@@ -29,6 +29,8 @@ namespace RithmaticDuels.Rules.Geometry
 
         public WardShape Shape { get; private set; }
         public IReadOnlyList<Vec2> BindPoints { get; private set; }
+        /// <summary>A Mark's Cross's crossed LoF inside its circle. Empty for any other LoW.</summary>
+        public IReadOnlyList<Segment> Braces { get; internal set; } = new Segment[0];
         public float Perimeter { get; private set; }
         public int SampleCount { get { return _params.Length; } }
 

@@ -124,6 +124,8 @@ namespace RithmaticDuels.Rules.Geometry
             if (problem != null) return problem;
             if (spec.TravelTurns != TravelTurns(player, placement))
                 return "The travel time doesn't match how far this is from your main Line of Warding.";
+            if (spec.Type == LineType.Forbiddance && Math.Abs(spec.Length - Measure(player, spec, placement).Length) > 1e-3f)
+                return "The length doesn't match where the line goes.";
             return null;
         }
 
@@ -223,6 +225,139 @@ namespace RithmaticDuels.Rules.Geometry
             }
         }
 
+        /// <summary>
+        /// The spec with everything the board works out from the placement filled in: travel turns, and a
+        /// LoF's length. The UI calls this before locking in; <see cref="ValidatePlacement"/> checks it.
+        /// </summary>
+        public DrawingSpec Measure(Player player, DrawingSpec spec, Placement placement)
+        {
+            var measured = spec.WithTravel(TravelTurns(player, placement));
+            if (spec.Type == LineType.Forbiddance && placement != null)
+            {
+                var segment = ForbiddanceGeometry(player, placement);
+                if (segment.HasValue) measured.Length = segment.Value.Length;
+            }
+            return measured;
+        }
+
+        /// <summary>A Mark's Cross's two crossed LoF: the diagonals of its circle (DESIGN.md section 4.1).</summary>
+        public static Segment[] MarksCrossBraces(WardShape shape)
+        {
+            float r = shape.A;
+            Vec2 c = shape.Centre;
+            Vec2 d1 = new Vec2(1f, 1f).Normalized * r;
+            Vec2 d2 = new Vec2(1f, -1f).Normalized * r;
+            return new[] { new Segment(c - d1, c + d1), new Segment(c - d2, c + d2) };
+        }
+
+        /// <summary>Spots offered for the main LoW, all on the midline of the player's half: back (the default spot), centre and front.</summary>
+        public List<Vec2> MainWardPresets(Player player, DrawingSpec spec, float semiMinor)
+        {
+            float quarter = Width / 4f;
+            float centreX = player == Player.A ? quarter : Width - quarter;
+            var spots = new List<Vec2> { Home(player), new Vec2(centreX, Height / 2f), new Vec2(Width / 2f, Height / 2f) };
+            var presets = new List<Vec2>();
+            foreach (var spot in spots)
+            {
+                Vec2 clamped = ClampMainWard(player, spec, spot, semiMinor);
+                bool duplicate = false;
+                foreach (var existing in presets) duplicate |= Vec2.Distance(existing, clamped) < 0.1f;
+                if (!duplicate) presets.Add(clamped);
+            }
+            return presets;
+        }
+
+        /// <summary>
+        /// Where the main LoW goes for a mouse position: snapped to a preset or the board's midline when
+        /// close, then moved to the nearest spot where the whole shape fits (on the player's own half).
+        /// </summary>
+        public Vec2 SnapMainWard(Player player, DrawingSpec spec, Vec2 desired, float semiMinor)
+        {
+            float snap = _config.Geometry.MainWardSnapDistance;
+            Vec2 clamped = ClampMainWard(player, spec, desired, semiMinor);
+            foreach (var preset in MainWardPresets(player, spec, semiMinor))
+                if (Vec2.Distance(preset, clamped) <= snap) return preset;
+            if (Math.Abs(clamped.Y - Height / 2f) <= snap) clamped = ClampMainWard(player, spec, new Vec2(clamped.X, Height / 2f), semiMinor);
+            return clamped;
+        }
+
+        /// <summary>The nearest centre to <paramref name="desired"/> where the main LoW fits wholly on the board (and the player's half).</summary>
+        public Vec2 ClampMainWard(Player player, DrawingSpec spec, Vec2 desired, float semiMinor)
+        {
+            IReadOnlyList<Vec2> bindPoints;
+            var shape = WardGeometry(player, spec, Placement.MainWard(desired, semiMinor), out bindPoints, true);
+            // Half-extents of the shape around its centre.
+            float ex = 0f, ey = 0f;
+            const int steps = 64;
+            for (int i = 0; i < steps; i++)
+            {
+                Vec2 offset = shape.PointAt(2f * (float)Math.PI * i / steps) - shape.Centre;
+                ex = Math.Max(ex, Math.Abs(offset.X));
+                ey = Math.Max(ey, Math.Abs(offset.Y));
+            }
+            const float margin = 1e-3f;
+            float minX = 0f, maxX = Width;
+            if (_config.Geometry.DrawOnOwnHalfOnly)
+            {
+                if (player == Player.A) maxX = Width / 2f; else minX = Width / 2f;
+            }
+            float x = Clamp(desired.X, minX + ex + margin, maxX - ex - margin);
+            float y = Clamp(desired.Y, ey + margin, Height - ey - margin);
+            return new Vec2(x, y);
+        }
+
+        /// <summary>One of this player's LoF within <paramref name="within"/> of the point, nearest first; null if none.</summary>
+        public ForbiddanceBody ForbiddanceAt(Player owner, Vec2 point, float within)
+        {
+            ForbiddanceBody best = null;
+            float bestDistance = within;
+            foreach (var body in _bodies.Values)
+            {
+                var forbiddance = body as ForbiddanceBody;
+                if (forbiddance == null || forbiddance.Owner != owner || !forbiddance.Line.IsActive) continue;
+                float distance = DistanceToSegment(point, forbiddance.Segment);
+                if (distance <= bestDistance) { bestDistance = distance; best = forbiddance; }
+            }
+            return best;
+        }
+
+        /// <summary>The line nearest the point, if any is within <paramref name="within"/>: for showing its stats.</summary>
+        public LineBody BodyAt(Vec2 point, float within)
+        {
+            LineBody best = null;
+            float bestDistance = within;
+            foreach (var body in _bodies.Values)
+            {
+                if (!body.Line.IsActive) continue;
+                float distance = float.PositiveInfinity;
+                var ward = body as WardBody;
+                var forbiddance = body as ForbiddanceBody;
+                var vigor = body as VigorBody;
+                var chalkling = body as ChalklingBody;
+                if (ward != null)
+                    for (int i = 0; i < ward.SampleCount; i++) distance = Math.Min(distance, Vec2.Distance(ward.SamplePoint(i), point));
+                else if (forbiddance != null) distance = DistanceToSegment(point, forbiddance.Segment);
+                else if (vigor != null) distance = Vec2.Distance(vigor.Position, point);
+                else if (chalkling != null) distance = Math.Max(0f, Vec2.Distance(chalkling.Position, point) - _config.Making.Radius);
+                if (distance <= bestDistance) { bestDistance = distance; best = body; }
+            }
+            return best;
+        }
+
+        private static float DistanceToSegment(Vec2 point, Segment segment)
+        {
+            Vec2 along = segment.B - segment.A;
+            float lengthSquared = Vec2.Dot(along, along);
+            float t = lengthSquared < 1e-9f ? 0f : Clamp(Vec2.Dot(point - segment.A, along) / lengthSquared, 0f, 1f);
+            return Vec2.Distance(point, segment.A + along * t);
+        }
+
+        private static float Clamp(float value, float min, float max)
+        {
+            if (min > max) return (min + max) / 2f;
+            return Math.Max(min, Math.Min(max, value));
+        }
+
         /// <summary>Extra turns for drawing this far from the main LoW: one per threshold passed.</summary>
         public int TravelTurns(Player player, Placement placement)
         {
@@ -310,7 +445,9 @@ namespace RithmaticDuels.Rules.Geometry
                 case LineType.Warding:
                     IReadOnlyList<Vec2> bindPoints;
                     var shape = WardGeometry(owner, line.Spec, placement, out bindPoints, line.IsMainWard);
-                    return new WardBody(line, shape, bindPoints, _config);
+                    var wardBody = new WardBody(line, shape, bindPoints, _config);
+                    if (line.Spec.IsMarksCross) wardBody.Braces = MarksCrossBraces(shape);
+                    return wardBody;
 
                 case LineType.Forbiddance:
                     var segment = ForbiddanceGeometry(owner, placement) ?? ForbiddanceGeometry(owner, Placement.Default()).Value;

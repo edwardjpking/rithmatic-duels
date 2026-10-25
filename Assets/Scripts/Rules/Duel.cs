@@ -124,17 +124,32 @@ namespace RithmaticDuels.Rules
             if (action == null) return "No action chosen.";
 
             var state = GetPlayer(player);
-            if (MustStartMainWard(state))
+            if (action.CancelsCurrentWork)
+            {
+                if (!state.HasWorkInProgress) return "There is no drawing in progress to cancel.";
+                if (action.Kind == ActionKind.ContinueDrawing || action.Kind == ActionKind.CancelDrawing)
+                    return "Cancelling first only goes with starting something new or passing.";
+            }
+            // What the player is still working on once any cancel in this action has happened.
+            bool busy = state.HasWorkInProgress && !action.CancelsCurrentWork;
+
+            if (MustStartMainWard(state, busy))
             {
                 if (action.Kind != ActionKind.StartDrawing || action.Spec == null
                     || action.Spec.Type != LineType.Warding || action.Spec.IsMarksCross)
                     return "Start by drawing your main Line of Warding.";
+                if (action.Pace != DrawingPace.Normal) return "Your main Line of Warding can't be rushed or steadied.";
+            }
+            else if (Config.OnlyMarksCrossAfterMainWard && state.MainWard != null && action.Kind == ActionKind.StartDrawing
+                && action.Spec != null && action.Spec.Type == LineType.Warding && !action.Spec.IsMarksCross)
+            {
+                return "Once the duel is under way, the only Line of Warding you can add is a Mark's Cross.";
             }
 
             switch (action.Kind)
             {
                 case ActionKind.StartDrawing:
-                    if (state.HasWorkInProgress) return "Only one drawing can be in progress at a time.";
+                    if (busy) return "Only one drawing can be in progress at a time.";
                     return DrawTimes.Validate(action.Spec, Config);
 
                 case ActionKind.ContinueDrawing:
@@ -142,11 +157,11 @@ namespace RithmaticDuels.Rules
                     return state.HasWorkInProgress ? null : "There is no drawing in progress.";
 
                 case ActionKind.AddToDrawing:
-                    if (state.HasWorkInProgress) return "Only one drawing can be in progress at a time.";
+                    if (busy) return "Only one drawing can be in progress at a time.";
                     return ValidateAddTo(player, action);
 
                 case ActionKind.DismissForbiddance:
-                    if (state.HasWorkInProgress) return "Only one drawing can be in progress at a time.";
+                    if (busy) return "Only one drawing can be in progress at a time.";
                     var target = FindLine(action.TargetLineId);
                     if (target == null || target.Owner != player || !target.IsActive || target.Type != LineType.Forbiddance)
                         return "Only one of your own Lines of Forbiddance can be dismissed.";
@@ -163,7 +178,12 @@ namespace RithmaticDuels.Rules
         /// <summary>True while this player has no main LoW, drawn or in progress, and the rules make them start one first.</summary>
         private bool MustStartMainWard(PlayerState state)
         {
-            return Config.MainWardFirst && state.MainWard == null && !state.HasWorkInProgress;
+            return MustStartMainWard(state, state.HasWorkInProgress);
+        }
+
+        private bool MustStartMainWard(PlayerState state, bool busy)
+        {
+            return Config.MainWardFirst && state.MainWard == null && !busy;
         }
 
         /// <summary>Lock in both players' actions and resolve one tick.</summary>
@@ -225,6 +245,12 @@ namespace RithmaticDuels.Rules
         {
             var state = GetPlayer(player);
             int startProgress = Config.StartActionCountsAsProgress ? 1 : 0;
+
+            if (action.CancelsCurrentWork)
+            {
+                report.Events.Add(new TurnEvent(TurnEventType.WorkCancelled, player, state.Work.TargetLineId, state.Work.Progress));
+                state.Work = null;
+            }
 
             switch (action.Kind)
             {

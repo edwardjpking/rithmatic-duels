@@ -43,6 +43,9 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public bool MainWardFirst = true;
 
+        /// <summary>Once a player has a main LoW, the only further LoW they can start is a Mark's Cross (DESIGN.md section 4.1).</summary>
+        public bool OnlyMarksCrossAfterMainWard = true;
+
         /// <summary>Rushing a 1-turn drawing makes it complete in the same tick it is started.</summary>
         public bool RushedOneTurnDrawingsCompleteImmediately = true;
 
@@ -144,6 +147,8 @@ namespace RithmaticDuels.Rules
         /// inside the main LoW cost nothing extra.
         /// </summary>
         public float[] TravelTurnThresholds = { 2f, 4f, 7f };
+        /// <summary>While placing the main LoW, the mouse snaps to a preset spot or the midline of the board when this close.</summary>
+        public float MainWardSnapDistance = 0.6f;
         /// <summary>Two LoV collide when they come this close.</summary>
         public float VigorContactDistance = 0.3f;
         /// <summary>Free placements (LoF, LoV, unbound chalklings) must be on the player's own half of the board (DESIGN.md section 1.1).</summary>
@@ -170,7 +175,8 @@ namespace RithmaticDuels.Rules
         public int DurabilityPerModifierStep = 2;
         /// <summary>Main LoW draw time is (bind points) div this.</summary>
         public int BindPointsPerDrawTurn = 2;
-        public int MarksCrossDrawTurns = 1;
+        /// <summary>A Mark's Cross is drawn whole: its small circle and the crossed LoF inside it.</summary>
+        public int MarksCrossDrawTurns = 2;
         public int MarksCrossBindPoints = 4;
         public int MaxBindPoints = 12;
         /// <summary>PROVISIONAL: the main LoW a player starts if their decision timer runs out before they have one.</summary>
@@ -193,8 +199,11 @@ namespace RithmaticDuels.Rules
         public int BaseDurability = 3;
         public int DurabilityPerBindPoint = 3;
         public int DurabilityPerModifierStep = 2;
-        /// <summary>Draw time is this minus (bind points × DrawTurnsSavedPerBindPoint), floored at the minimum.</summary>
-        public int BaseDrawTurns = 4;
+        /// <summary>
+        /// Draw time is ceil(length / LengthPerDrawTurn) minus (bind points × DrawTurnsSavedPerBindPoint),
+        /// floored at the minimum (DESIGN.md section 4.2). A spec with no length uses Geometry.TangentForbiddanceLength.
+        /// </summary>
+        public float LengthPerDrawTurn = 2f;
         public int DrawTurnsSavedPerBindPoint = 1;
         public int DismissTurns = 2;
         /// <summary>A LoV hitting a LoF reflects and deals this share of its damage to it, rounded up (DESIGN.md section 4.2).</summary>
@@ -251,7 +260,8 @@ namespace RithmaticDuels.Rules
         public int AttacksPerTick = 1;
         /// <summary>"+1 to a stat of choice / -1 to the highest stat", per modifier step.</summary>
         public int StatPerModifierStep = 1;
-        public int DrawTurnsPerStatBuff = 1;
+        /// <summary>Draw time is ceil(stat buffs / StatBuffsPerDrawTurn) plus DrawTurnsPerGlyph for each glyph beyond the free ones.</summary>
+        public int StatBuffsPerDrawTurn = 4;
         public int DrawTurnsPerGlyph = 1;
         /// <summary>A chalkling carries this many glyphs for free, plus one more per StatBuffsPerExtraGlyph buffs.</summary>
         public int FreeGlyphs = 1;

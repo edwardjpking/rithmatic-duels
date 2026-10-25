@@ -157,7 +157,7 @@ namespace RithmaticDuels.Rules.Tests
         public void TwoTurnDrawingNeedsOneContinue()
         {
             var duel = NewDuel();
-            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Forbiddance(2)), Pass); // 2 turns
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Forbiddance(0)), Pass); // 3 units long: 2 turns
             Assert.AreEqual(0, duel.Lines.Count);
             Assert.AreEqual(1, duel.GetPlayer(Player.A).Work.TurnsRemaining);
 
@@ -237,6 +237,39 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void CancellingThenStartingHappensInOneTurn()
+        {
+            var duel = NewDuel();
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), Pass);
+            var report = duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low)).AfterCancelling(), Pass);
+
+            Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.WorkCancelled));
+            Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.DrawingCompleted), "the new 1-turn drawing completes the same turn");
+            Assert.AreEqual(LineType.Vigor, duel.Lines.Single().Type);
+        }
+
+        [Test]
+        public void CancellingFirstNeedsSomethingToCancelAndANewAction()
+        {
+            var duel = NewDuel();
+            Assert.IsNotNull(duel.Validate(Player.A, Pass.AfterCancelling()));
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), Pass);
+            Assert.IsNull(duel.Validate(Player.A, Pass.AfterCancelling()));
+            Assert.IsNotNull(duel.Validate(Player.A, Continue.AfterCancelling()));
+        }
+
+        [Test]
+        public void CancellingTheMainWardFirstOnlyAllowsStartingItAgain()
+        {
+            _config.MainWardFirst = true;
+            var duel = NewDuel();
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), PlayerAction.Start(DrawingSpec.Warding(2)));
+            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low)).AfterCancelling()));
+            Assert.IsNotNull(duel.Validate(Player.A, Pass.AfterCancelling()));
+            Assert.IsNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Warding(4)).AfterCancelling()));
+        }
+
+        [Test]
         public void CompletionRollUsesThePaceOdds()
         {
             // Roll value 7 is no modifier under normal odds, -1 under rush ([4,10)) and +1 under steady ([2,10)).
@@ -255,6 +288,7 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void FirstWardIsMainAndMarksCrossIsNot()
         {
+            _config.OnlyMarksCrossAfterMainWard = false;
             var duel = NewDuel();
             DrawForA(duel, DrawingSpec.MarksCross(_config));
             Assert.IsNull(duel.GetPlayer(Player.A).MainWard);
@@ -263,6 +297,24 @@ namespace RithmaticDuels.Rules.Tests
 
             Assert.AreSame(first, duel.GetPlayer(Player.A).MainWard);
             Assert.AreEqual(1, duel.Lines.Count(l => l.IsMainWard));
+        }
+
+        [Test]
+        public void AfterTheMainWardOnlyAMarksCrossCanBeAdded()
+        {
+            var duel = NewDuel();
+            DrawMainWards(duel);
+            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Warding(4))));
+            Assert.IsNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.MarksCross(_config))));
+        }
+
+        [Test]
+        public void TheMainWardCannotBeRushedOrSteadied()
+        {
+            _config.MainWardFirst = true;
+            var duel = NewDuel();
+            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Warding(6), DrawingPace.Rush)));
+            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Warding(6), DrawingPace.Steady)));
         }
 
         [Test]
@@ -623,6 +675,7 @@ namespace RithmaticDuels.Rules.Tests
 
         private string PlayScript(ulong seed)
         {
+            _config.OnlyMarksCrossAfterMainWard = false;
             var duel = new Duel(_config, seed);
             var log = new List<string>();
             for (int i = 0; i < 30; i++)

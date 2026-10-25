@@ -17,13 +17,17 @@ namespace RithmaticDuels.Rules
                         : spec.BindPoints / config.Warding.BindPointsPerDrawTurn;
                     break;
                 case LineType.Forbiddance:
-                    turns = config.Forbiddance.BaseDrawTurns - spec.BindPoints * config.Forbiddance.DrawTurnsSavedPerBindPoint;
+                    float length = spec.Length > 0f ? spec.Length : config.Geometry.TangentForbiddanceLength;
+                    turns = (int)Math.Ceiling(length / config.Forbiddance.LengthPerDrawTurn - 1e-4)
+                        - spec.BindPoints * config.Forbiddance.DrawTurnsSavedPerBindPoint;
                     break;
                 case LineType.Vigor:
                     turns = config.Vigor.Tier(spec.Tier).DrawTurns;
                     break;
                 case LineType.Making:
-                    turns = spec.TotalStatBuffs * config.Making.DrawTurnsPerStatBuff + spec.Glyphs * config.Making.DrawTurnsPerGlyph;
+                    int perTurn = Math.Max(1, config.Making.StatBuffsPerDrawTurn);
+                    turns = (spec.TotalStatBuffs + perTurn - 1) / perTurn
+                        + Math.Max(0, spec.Glyphs - config.Making.FreeGlyphs) * config.Making.DrawTurnsPerGlyph;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(spec));
@@ -56,6 +60,7 @@ namespace RithmaticDuels.Rules
             if (spec == null) return "No drawing spec given.";
             if (spec.BindPoints < 0) return "Bind points cannot be negative.";
             if (spec.TravelTurns < 0) return "Travel turns cannot be negative.";
+            if (spec.Length < 0f) return "Length cannot be negative.";
 
             switch (spec.Type)
             {
