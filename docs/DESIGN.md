@@ -109,7 +109,7 @@ Four line types. Each completed drawing receives a random modifier (section 5). 
 
 | Stat | Value |
 |---|---|
-| Durability | 12 at each point of a default circle (radius 3), scaled by curvature (below) |
+| Durability | 12 at each point of a default circle (radius 3), scaled by curvature (below). The **main LoW has double** (24 for a default circle; decided 2026-10-25, `Warding.MainWardDurabilityMultiplier`). |
 | Modifier (+ve / -ve) | +2 durability / -2 durability |
 | Damage | 0 (a LoW never attacks) |
 | Movement speed | 0 (fixed in place) |
@@ -150,7 +150,7 @@ Four line types. Each completed drawing receives a random modifier (section 5). 
 
 **Length:** a LoF bound between two bind points runs between them. Any other LoF (tangent at one bind point, or free) has a length the player chooses with the scroll wheel, from 1 to 8 units (default 3). Longer lines take longer to draw (the table above); length does not change durability yet.
 
-**Shape (decided 2026-10-25):** a LoF is a rectangle 0.14 units wide (placeholder). All of it must be on the player's own half, so a LoF slanting toward the centre line is capped at the length where its corner first touches the line. Collisions still use its centre line.
+**Shape (decided 2026-10-25):** a LoF is a rectangle 0.14 units wide (placeholder). All of it must be on the player's own half and clear of the centre line, which is drawn as wide as a LoF, so a LoF slanting toward the centre line is capped at the length where its corner first reaches that edge (changed 2026-10-25). Its ends may not poke into any LoW either, so a tangent stops short of a neighbouring LoW. Collisions still use its centre line.
 
 **Damage (decided 2026-10-24):**
 - **LoV hits LoF:** the LoV reflects (section 3) and the LoF takes **half the LoV's damage, rounded up**.
@@ -247,7 +247,7 @@ Each turn a player picks one of these (availability depends on state):
 | **Continue drawing** | Advance the current drawing. Uses the action for the turn. |
 | **Cancel drawing** | Abandon the current drawing and lose all progress, then choose another action for the same turn (start a new drawing, dismiss a LoF, or pass). Cancelling does not use up the turn (decided 2026-10-25). |
 | **Dismiss LoF** | Duration 1 turn (changed from 2 on 2026-10-25): the LoF disappears at the start of the tick it is chosen (section 3). Select one LoF to dismiss (by clicking it on the board). |
-| **Pass the turn** | Do nothing. Not available during the setup. |
+| **Pass the turn** | Do nothing. Not available during the setup, or while a drawing is in progress: then the only choices are Continue and Cancel, and Pass comes back once the drawing is cancelled (decided 2026-10-25). |
 | **Draw bind points** | Only while the main LoW has no bind points (after cancelling them): start drawing them again (section 2). |
 
 **Add to drawing was removed (2026-10-25)** so duels don't drag on: lines can't be repaired and chalklings can't be buffed after they are drawn. See `docs/FUTURE_IDEAS.md`.
@@ -479,6 +479,8 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 **Sixth round, 2026-10-25:** a LoF's only roles are mirror/shield and, between two bind points of one LoW, halving damage on the smaller arc (section 4.2); no LoF may cross a LoW and no LoW may overlap another line (section 4.2); only rushed drawings that would take 1 turn at normal pace finish at stage 2 (section 3); glyphs are just Attack and Defend, one free glyph per chalkling, and bound chalklings must Defend (section 4.4); the LoF toughening an arc takes the same halved damage as the LoW.
 
 **Seventh round, 2026-10-25:** Add to drawing is removed, so no repairs or chalkling buffs (section 5.1); hovering a LoV shows its damage on a hit; the rush helper text says when rushing only gains the early finish (section 3); bind points are drawn as circles; bind points that can't be picked for the LoW or LoF being placed are filled in red (section 4.2); drawings in progress, the opponent's included, show faintly where they will go (section 2, Information); the scroll bars are restyled with a hover highlight.
+
+**Eighth round, 2026-10-25:** a LoF stops short of the centre line (which is drawn as wide as a LoF) and of any LoW it would poke into, tangents included (section 4.2); no Pass while a drawing is in progress (section 5.1); the main LoW has double durability (section 4.1).
 
 **Settled 2026-10-24:** the start turn counts as progress, main LoW setup comes first (shape, position on own half, then bind points), travel cost for drawing away from the main LoW, variable LoF length, and LoF damage (half from LoV that reflect off them, full when shielding the smaller arc between their bind points, and chalklings hit them before the LoW).
 

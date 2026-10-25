@@ -104,6 +104,7 @@ namespace RithmaticDuels.Rules
             {
                 actions.Add(ActionKind.ContinueDrawing);
                 actions.Add(ActionKind.CancelDrawing);
+                if (!Config.PassAllowedWhileDrawing) return actions;
             }
             else
             {
@@ -178,6 +179,7 @@ namespace RithmaticDuels.Rules
                     return null;
 
                 case ActionKind.Pass:
+                    if (busy && !Config.PassAllowedWhileDrawing) return "While drawing you can only continue or cancel.";
                     return null;
 
                 default:
@@ -276,7 +278,8 @@ namespace RithmaticDuels.Rules
             {
                 case ActionKind.StartDrawing when Config.MainWardFirst && state.MainWard == null:
                     // Setup: the outline goes down at once with no modifier, and its bind points start.
-                    var outline = new Line(_nextLineId++, player, action.Spec, 0, Config) { IsMainWard = true, BindPointsDrawn = 0 };
+                    var outline = new Line(_nextLineId++, player, action.Spec, 0, Config) { BindPointsDrawn = 0 };
+                    outline.MakeMainWard(Config);
                     _lines.Add(outline);
                     state.MainWard = outline;
                     report.Events.Add(new TurnEvent(TurnEventType.DrawingCompleted, player, outline.Id, 0));
@@ -352,7 +355,7 @@ namespace RithmaticDuels.Rules
                 if (line.Type == LineType.Warding && !line.Spec.IsMarksCross && state.MainWard == null)
                 {
                     // PROVISIONAL: a player's first completed LoW (not a Mark's Cross) becomes their main LoW.
-                    line.IsMainWard = true;
+                    line.MakeMainWard(Config);
                     state.MainWard = line;
                 }
                 return;

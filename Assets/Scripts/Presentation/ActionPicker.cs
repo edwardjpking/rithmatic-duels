@@ -367,7 +367,7 @@ namespace RithmaticDuels.Presentation
                 preview.Ward = board.PreviewWard(player, bindPoints > 0 ? DrawingSpec.Warding(bindPoints) : shapeSpec, Placement.MainWard(_pointA.Value, semiMinor), out points);
                 preview.WardChosen = true;
                 if (bindPoints > 0) preview.WardBindPoints = points;
-                GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability.");
+                GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward, true) + " durability (the main LoW has double).");
             }
             Preview = preview;
 

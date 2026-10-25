@@ -139,6 +139,19 @@ namespace RithmaticDuels.Rules
             Durability = Math.Max(0, Math.Min(durability, MaxDurability));
         }
 
+        /// <summary>
+        /// Makes this LoW the player's main LoW, which has <see cref="WardingConfig.MainWardDurabilityMultiplier"/>
+        /// times the base durability (the geometry layer refines it per point).
+        /// </summary>
+        internal void MakeMainWard(RulesConfig config)
+        {
+            if (IsMainWard) return;
+            IsMainWard = true;
+            int baseDurability = (int)Math.Round(config.Warding.Durability * config.Warding.MainWardDurabilityMultiplier);
+            MaxDurability = Modified(baseDurability, config.Warding.DurabilityPerModifierStep, config);
+            Durability = MaxDurability;
+        }
+
         private int Modified(int baseValue, int perStep, RulesConfig config)
         {
             return Math.Max(config.MinimumDurabilityAfterModifier, baseValue + ModifierSteps * perStep);

@@ -79,29 +79,33 @@ namespace RithmaticDuels.Rules.Geometry
                 _arc[i] = i == 0 ? 0f : _arc[i - 1] + Vec2.Distance(previous, point);
                 previous = point;
 
-                _max[i] = PointDurability(shape, t, line.ModifierSteps, config);
+                _max[i] = PointDurability(shape, t, line.ModifierSteps, config, line.IsMainWard);
                 _durability[i] = _max[i];
             }
             Perimeter = _arc[samples - 1] + Vec2.Distance(previous, shape.PointAt(0f));
         }
 
-        /// <summary>Durability at a point = base x clamp(sqrt(k / k_ref), min, max), plus the modifier.</summary>
-        public static int PointDurability(WardShape shape, float t, int modifierSteps, RulesConfig config)
+        /// <summary>
+        /// Durability at a point = base x clamp(sqrt(k / k_ref), min, max), plus the modifier. The main LoW's
+        /// base is multiplied by <see cref="WardingConfig.MainWardDurabilityMultiplier"/>.
+        /// </summary>
+        public static int PointDurability(WardShape shape, float t, int modifierSteps, RulesConfig config, bool mainWard = false)
         {
             var warding = config.Warding;
             double scale = Math.Sqrt(shape.CurvatureAt(t) / warding.ReferenceCurvature);
             scale = Math.Max(warding.MinCurvatureScale, Math.Min(warding.MaxCurvatureScale, scale));
-            int value = (int)Math.Round(warding.Durability * scale) + modifierSteps * warding.DurabilityPerModifierStep;
+            double baseDurability = warding.Durability * (mainWard ? warding.MainWardDurabilityMultiplier : 1f);
+            int value = (int)Math.Round(baseDurability * scale) + modifierSteps * warding.DurabilityPerModifierStep;
             return Math.Max(config.MinimumDurabilityAfterModifier, value);
         }
 
         /// <summary>The durability of the weakest point a LoW of this shape would have with no modifier.</summary>
-        public static int WeakestDurability(WardShape shape, RulesConfig config)
+        public static int WeakestDurability(WardShape shape, RulesConfig config, bool mainWard = false)
         {
             int samples = Math.Max(8, config.Geometry.WardSamples);
             int weakest = int.MaxValue;
             for (int i = 0; i < samples; i++)
-                weakest = Math.Min(weakest, PointDurability(shape, (float)(2.0 * Math.PI * i / samples), 0, config));
+                weakest = Math.Min(weakest, PointDurability(shape, (float)(2.0 * Math.PI * i / samples), 0, config, mainWard));
             return weakest;
         }
 
