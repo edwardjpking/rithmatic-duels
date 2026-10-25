@@ -144,6 +144,13 @@ namespace RithmaticDuels.Rules.Geometry
                         return CheckMainWard(player, spec, placement, halfOnly);
                     }
                     if (placement.Kind != PlacementKind.AtBindPoint) return "Pick a bind point on your main Line of Warding.";
+                    if (!spec.IsMarksCross && placement.Size > 0f)
+                    {
+                        float min, max, start;
+                        AttachedSizeRange(spec, out min, out max, out start);
+                        if (placement.Size < min - 1e-4f || placement.Size > max + 1e-4f)
+                            return spec.BindPoints == 2 ? "That ellipse is too flat or too round." : "That circle is too small or too big.";
+                    }
                     return ValidBindPoint(placement.BindPointA, bindPoints);
 
                 case LineType.Forbiddance:
@@ -419,6 +426,11 @@ namespace RithmaticDuels.Rules.Geometry
             FlyVigor(result);
         }
 
+        public void PlaceNewLines(Duel duel, MovementResult result)
+        {
+            Sync(duel, result);
+        }
+
         // ---- Keeping bodies in step with the duel's lines ----
 
         private void Sync(Duel duel, MovementResult result)
@@ -521,7 +533,11 @@ namespace RithmaticDuels.Rules.Geometry
                 return WardShape.Circle(home, radius);
             }
 
-            float attachedRadius = spec.IsMarksCross ? _config.Warding.MarksCrossRadius : _config.Geometry.AttachedWardRadius;
+            // An attached ellipse sticks straight out from the bind point, so it reaches as far as its long axis.
+            bool attachedEllipse = !spec.IsMarksCross && spec.BindPoints == 2;
+            float reach = spec.IsMarksCross ? _config.Warding.MarksCrossRadius
+                : attachedEllipse ? _config.Geometry.AttachedEllipseSemiMajor
+                : AttachedSize(spec, placement);
             int count = spec.IsMarksCross ? _config.Warding.MarksCrossBindPoints : spec.BindPoints;
             Vec2 centre;
             Vec2 outward;
@@ -529,7 +545,7 @@ namespace RithmaticDuels.Rules.Geometry
             {
                 // Nothing to attach to (only reachable without the UI): sit in front of home.
                 outward = facing;
-                centre = Home(owner) + facing * (_config.Warding.DefaultMainRadius + attachedRadius);
+                centre = Home(owner) + facing * (_config.Warding.DefaultMainRadius + reach);
             }
             else
             {
@@ -541,10 +557,46 @@ namespace RithmaticDuels.Rules.Geometry
                 }
                 Vec2 point = main.BindPoints[index];
                 outward = main.Shape.OutwardNormalAt(main.Shape.ParamOf(point));
-                centre = point + outward * attachedRadius;
+                centre = point + outward * reach;
             }
-            bindPoints = BindPoints.ForCircle(count, centre, attachedRadius, outward);
-            return WardShape.Circle(centre, attachedRadius);
+            if (attachedEllipse)
+            {
+                var shape = WardShape.Ellipse(centre, reach, AttachedSize(spec, placement), outward.Angle);
+                bindPoints = BindPoints.ForEllipse(shape);
+                return shape;
+            }
+            bindPoints = BindPoints.ForCircle(count, centre, reach, outward);
+            return WardShape.Circle(centre, reach);
+        }
+
+        /// <summary>
+        /// The size actually used for an attached LoW with this placement, within the configured range:
+        /// the semi-minor axis of an ellipse (2 bind points), otherwise the radius of a circle.
+        /// </summary>
+        public float AttachedSize(DrawingSpec spec, Placement placement)
+        {
+            float min, max, start;
+            AttachedSizeRange(spec, out min, out max, out start);
+            float wanted = placement != null && placement.Size > 0f ? placement.Size : start;
+            return Math.Max(min, Math.Min(max, wanted));
+        }
+
+        /// <summary>The range the scroll wheel can set an attached LoW's size in, and where it starts.</summary>
+        public void AttachedSizeRange(DrawingSpec spec, out float min, out float max, out float start)
+        {
+            var geometry = _config.Geometry;
+            if (spec.BindPoints == 2)
+            {
+                min = geometry.AttachedEllipseMinSemiMinor;
+                max = geometry.AttachedEllipseMaxSemiMinor;
+                start = geometry.AttachedEllipseSemiMinor;
+            }
+            else
+            {
+                min = geometry.AttachedWardMinRadius;
+                max = geometry.AttachedWardMaxRadius;
+                start = geometry.AttachedWardRadius;
+            }
         }
 
         private Segment? ForbiddanceGeometry(Player owner, Placement placement)

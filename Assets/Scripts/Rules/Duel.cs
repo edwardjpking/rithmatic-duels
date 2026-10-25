@@ -154,11 +154,6 @@ namespace RithmaticDuels.Rules
                 if (action.Kind != ActionKind.DrawBindPoints && action.Kind != ActionKind.Pass)
                     return "Nothing can be drawn until your main Line of Warding has its bind points.";
             }
-            else if (Config.OnlyMarksCrossAfterMainWard && state.MainWard != null && action.Kind == ActionKind.StartDrawing
-                && action.Spec != null && action.Spec.Type == LineType.Warding && !action.Spec.IsMarksCross)
-            {
-                return "Once the duel is under way, the only Line of Warding you can add is a Mark's Cross.";
-            }
 
             switch (action.Kind)
             {
@@ -225,21 +220,30 @@ namespace RithmaticDuels.Rules
             ApplyChoice(Player.A, actionA, report);
             ApplyChoice(Player.B, actionB, report);
 
-            // 1. Completion and dismissal. Player A first, so random rolls happen in a fixed order.
-            foreach (var state in _players)
-            {
-                if (state.Work != null && state.Work.IsComplete) Complete(state, report, fatigueTurn > 0);
-            }
+            // Tick resolution (DESIGN.md section 3). Within each stage player A goes first, so random
+            // rolls happen in a fixed order.
+            bool fatigued = fatigueTurn > 0;
+            // 1. LoF are dismissed.
+            CompleteWhere(w => w.Kind == WorkKind.Dismiss, report, fatigued);
+            // 2. Rushed drawings that finish this tick go down.
+            CompleteWhere(w => w.Kind == WorkKind.Drawing && w.Pace == DrawingPace.Rush, report, fatigued);
+            // Optionally (LinesFinishBeforeMovement) everything else finishes before movement too.
+            if (Config.LinesFinishBeforeMovement) CompleteWhere(w => true, report, fatigued);
 
-            // 2. Movement and attacks (geometry layer).
-            var movement = new MovementResult();
-            _movement.ResolveMovementAndAttacks(this, movement);
-
-            // 3. Damage.
+            // 3. Animated lines take actions (geometry layer), and their hits do damage.
             // Earliest breach time within the tick for each player. The earlier breach loses;
             // only breaches at exactly the same moment are a draw (DESIGN.md section 1).
+            var movement = new MovementResult();
+            _movement.ResolveMovementAndAttacks(this, movement);
             var breachTime = new[] { NoBreach, NoBreach };
             ApplyMovementResult(movement, report, breachTime);
+
+            // 4. Every other line that finishes this tick goes down, and the geometry layer places it.
+            CompleteWhere(w => true, report, fatigued);
+            var placed = new MovementResult();
+            _movement.PlaceNewLines(this, placed);
+            ApplyMovementResult(placed, report, breachTime);
+
             if (fatigueTurn > 0 && fatigueTurn % Config.ChalkFatigue.IntervalTurns == 0)
                 ApplyChalkFatigue(report, breachTime);
 
@@ -321,6 +325,15 @@ namespace RithmaticDuels.Rules
                     state.Work.Progress = startProgress;
                     report.Events.Add(new TurnEvent(TurnEventType.WorkStarted, player, action.TargetLineId, dismissTurns));
                     break;
+            }
+        }
+
+        private void CompleteWhere(Func<WorkInProgress, bool> stage, TurnReport report, bool fatigued)
+        {
+            foreach (var state in _players)
+            {
+                if (Outcome != DuelOutcome.InProgress) return;
+                if (state.Work != null && state.Work.IsComplete && stage(state.Work)) Complete(state, report, fatigued);
             }
         }
 

@@ -6,7 +6,11 @@ namespace RithmaticDuels.Rules.Geometry
         Default,
         /// <summary>The main LoW, centred at PointA. An ellipse (2 bind points) has semi-minor axis SemiMinor.</summary>
         MainWard,
-        /// <summary>LoW (not the main one) or Mark's Cross: a circle touching the main LoW at a bind point, outside it.</summary>
+        /// <summary>
+        /// LoW (not the main one) or Mark's Cross touching the main LoW at a bind point, outside it. A LoW
+        /// with 2 bind points is an ellipse with semi-minor axis Size; any other is a circle of radius Size
+        /// (0 for the default). A Mark's Cross has a fixed size.
+        /// </summary>
         AtBindPoint,
         /// <summary>LoF joining two bind points of the main LoW.</summary>
         BetweenBindPoints,
@@ -34,6 +38,7 @@ namespace RithmaticDuels.Rules.Geometry
         public Vec2 PointB;
         public float SemiMinor;
         public float Length;
+        public float Size;
 
         public static Placement Default() { return new Placement { Kind = PlacementKind.Default }; }
 
@@ -42,9 +47,9 @@ namespace RithmaticDuels.Rules.Geometry
             return new Placement { Kind = PlacementKind.MainWard, PointA = centre, SemiMinor = semiMinor };
         }
 
-        public static Placement AtBindPoint(int bindPoint)
+        public static Placement AtBindPoint(int bindPoint, float size = 0f)
         {
-            return new Placement { Kind = PlacementKind.AtBindPoint, BindPointA = bindPoint };
+            return new Placement { Kind = PlacementKind.AtBindPoint, BindPointA = bindPoint, Size = size };
         }
 
         public static Placement BetweenBindPoints(int a, int b)

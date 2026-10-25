@@ -38,6 +38,10 @@ namespace RithmaticDuels.Rules.Tests
             NextDamage.Clear();
             NextDestroyed.Clear();
         }
+
+        public void PlaceNewLines(Duel duel, MovementResult result)
+        {
+        }
     }
 
     internal static class Rolls

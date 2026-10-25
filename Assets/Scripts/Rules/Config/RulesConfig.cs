@@ -47,8 +47,11 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public bool MainWardFirst = true;
 
-        /// <summary>Once a player has a main LoW, the only further LoW they can start is a Mark's Cross (DESIGN.md section 4.1).</summary>
-        public bool OnlyMarksCrossAfterMainWard = true;
+        /// <summary>
+        /// Tick order (DESIGN.md section 3): dismissals, then rushed drawings, then animated lines act, then
+        /// every other finished line. True swaps the last two, so all lines finish before anything moves.
+        /// </summary>
+        public bool LinesFinishBeforeMovement = false;
 
         /// <summary>Rushing a 1-turn drawing makes it complete in the same tick it is started.</summary>
         public bool RushedOneTurnDrawingsCompleteImmediately = true;
@@ -134,13 +137,26 @@ namespace RithmaticDuels.Rules
         /// <summary>A main LoW with 2 bind points is an ellipse with these semi-axes, long axis toward the opponent.</summary>
         public float EllipseSemiMajor = 3.5f;
         public float EllipseSemiMinor = 2.5f;
-        /// <summary>Radius of a LoW (other than a Mark's Cross) attached at a bind point of the main LoW.</summary>
+        /// <summary>
+        /// A LoW (other than a Mark's Cross) attached at a bind point of the main LoW is a circle with this
+        /// starting radius. The scroll wheel changes it within the range below.
+        /// </summary>
         public float AttachedWardRadius = 1.5f;
+        public float AttachedWardMinRadius = 1f;
+        public float AttachedWardMaxRadius = 2.5f;
+        /// <summary>
+        /// An attached LoW with 2 bind points is an ellipse sticking straight out from the bind point, with
+        /// this semi-major axis. The player sets its semi-minor axis (how round it is) within the range below.
+        /// </summary>
+        public float AttachedEllipseSemiMajor = 2f;
+        public float AttachedEllipseSemiMinor = 1.25f;
+        public float AttachedEllipseMinSemiMinor = 0.75f;
+        public float AttachedEllipseMaxSemiMinor = 1.75f;
         /// <summary>Starting length of a LoF that is not bound at two points (tangent or free). The scroll wheel changes it within the range below.</summary>
         public float TangentForbiddanceLength = 3f;
         public float MinForbiddanceLength = 1f;
         public float MaxForbiddanceLength = 8f;
-        /// <summary>The scroll wheel changes ellipse flatness and LoF length by this much per notch.</summary>
+        /// <summary>The scroll wheel changes ellipse flatness, attached LoW radius and LoF length by this much per notch.</summary>
         public float ScrollStep = 0.25f;
         /// <summary>A main LoW ellipse keeps its semi-major axis; the player sets its semi-minor axis within this range.</summary>
         public float EllipseMinSemiMinor = 1.5f;
@@ -209,7 +225,7 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public float LengthPerDrawTurn = 2f;
         public int DrawTurnsSavedPerBindPoint = 1;
-        public int DismissTurns = 2;
+        public int DismissTurns = 1;
         /// <summary>A LoV hitting a LoF reflects and deals this share of its damage to it, rounded up (DESIGN.md section 4.2).</summary>
         public float VigorDamageMultiplier = 0.5f;
     }

@@ -332,7 +332,6 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void FirstWardIsMainAndMarksCrossIsNot()
         {
-            _config.OnlyMarksCrossAfterMainWard = false;
             var duel = NewDuel();
             DrawForA(duel, DrawingSpec.MarksCross(_config));
             Assert.IsNull(duel.GetPlayer(Player.A).MainWard);
@@ -344,11 +343,12 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void AfterTheMainWardOnlyAMarksCrossCanBeAdded()
+        public void AnyLineOfWardingCanBeAddedAfterTheMainWard()
         {
             var duel = NewDuel();
             DrawMainWards(duel);
-            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Warding(4))));
+            Assert.IsNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Warding(4))));
+            Assert.IsNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Warding(2))));
             Assert.IsNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.MarksCross(_config))));
         }
 
@@ -605,25 +605,23 @@ namespace RithmaticDuels.Rules.Tests
         // ---- Dismiss, repair and buff ----
 
         [Test]
-        public void DismissingForbiddanceTakesTwoTurns()
+        public void DismissingForbiddanceTakesOneTurn()
         {
             var duel = NewDuel();
             DrawMainWards(duel);
             var lof = DrawForA(duel, DrawingSpec.Forbiddance(3));
             Assert.Contains(ActionKind.DismissForbiddance, duel.AvailableActions(Player.A));
 
-            duel.ResolveTurn(PlayerAction.Dismiss(lof.Id), Pass);
-            Assert.AreEqual(LineType.Forbiddance, duel.ViewWorkOf(Player.A).LineType);
-            Assert.AreEqual(LineStatus.Active, lof.Status);
-            var report = duel.ResolveTurn(Continue, Pass);
+            var report = duel.ResolveTurn(PlayerAction.Dismiss(lof.Id), Pass);
             Assert.AreEqual(LineStatus.Dismissed, lof.Status);
+            Assert.IsFalse(duel.GetPlayer(Player.A).HasWorkInProgress);
             Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.DismissCompleted));
         }
 
         [Test]
         public void DismissalCompletesBeforeMovement()
         {
-            // DESIGN.md section 3: a LoF whose dismissal completes no longer blocks a LoV arriving that tick.
+            // DESIGN.md section 3: a LoF dismissed this tick no longer blocks a LoV arriving that tick.
             Line lof = null;
             var seen = new List<LineStatus>();
             var probe = new ProbeMovement(d => { if (lof != null) seen.Add(lof.Status); });
@@ -632,8 +630,7 @@ namespace RithmaticDuels.Rules.Tests
             lof = DrawForA(duel, DrawingSpec.Forbiddance(3));
 
             duel.ResolveTurn(PlayerAction.Dismiss(lof.Id), Pass);
-            duel.ResolveTurn(Continue, Pass);
-            CollectionAssert.AreEqual(new[] { LineStatus.Active, LineStatus.Dismissed }, seen);
+            CollectionAssert.AreEqual(new[] { LineStatus.Dismissed }, seen);
         }
 
         [Test]
@@ -719,7 +716,6 @@ namespace RithmaticDuels.Rules.Tests
 
         private string PlayScript(ulong seed)
         {
-            _config.OnlyMarksCrossAfterMainWard = false;
             var duel = new Duel(_config, seed);
             var log = new List<string>();
             for (int i = 0; i < 30; i++)
@@ -745,6 +741,10 @@ namespace RithmaticDuels.Rules.Tests
             public void ResolveMovementAndAttacks(Duel duel, MovementResult result)
             {
                 _onMove(duel);
+            }
+
+            public void PlaceNewLines(Duel duel, MovementResult result)
+            {
             }
         }
     }

@@ -16,7 +16,7 @@ The order the game is being built in. Each step ends with something you can open
 3. Each player first sets up their main Line of Warding: pick circle or ellipse (scroll the mouse wheel over the board to make an ellipse flatter or rounder), click your half of the board to place it (it snaps to the diamond preset spots and the dashed midline), then pick its bind points. Once both players lock in, both outlines appear and the bind points start drawing; nothing else can be drawn until they are done.
 4. Hover over any line to see its stats. Cancelling a drawing lets you pick something else in the same turn, and you dismiss a LoF by clicking it.
 5. After that, new drawings are placed by clicking the board, on the right. Bind points are the squares on your main Line of Warding. Drawing far from your main LoW costs extra turns; the menu shows how many.
-   - **Warding:** a Mark's Cross, attached to a bind point you click.
+   - **Warding:** a Mark's Cross, or another LoW with 2 (an ellipse), 4, 6 or 9 bind points, attached to a bind point you click. Scroll to make an ellipse rounder or flatter, or a circle bigger or smaller.
    - **Forbiddance:** between two bind points, tangent at one, or a free line (click its start, then its direction). Scroll to change the length of a tangent or free line.
    - **Vigor:** click where to draw it, then where to aim. It flies at its speed each turn, bounces off Forbiddance (damaging it) and stops at Warding or a chalkling.
    - **Making:** bound to a bind point you click, or free at a point you click. Chalklings stand still for now.

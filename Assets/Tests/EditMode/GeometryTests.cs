@@ -202,11 +202,14 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void VigorFliesAndHitsTheOpponentsWard()
         {
-            // High tier: speed 7, damage 3. From x=10 it reaches B's ward front at x=23 on its second tick.
+            // High tier: speed 7, damage 3. A line finished at normal pace joins the board after movement
+            // (DESIGN.md section 3), so it first flies on the next tick, and reaches B's ward front at x=23 on the one after.
             var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
             var body = (VigorBody)_board.BodyOf(vigor.Id);
-            Assert.AreEqual(17f, body.Position.X, 1e-3);
+            Assert.AreEqual(10f, body.Position.X, 1e-3);
 
+            PassTurn();
+            Assert.AreEqual(17f, body.Position.X, 1e-3);
             var report = PassTurn();
             var damage = report.Events.Single(e => e.Type == TurnEventType.LineDamaged);
             Assert.AreEqual(MainWard(Player.B).Id, damage.LineId);
@@ -214,6 +217,23 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(9, MainWard(Player.B).Durability);
             Assert.IsFalse(vigor.IsActive);
             Assert.IsNull(_board.BodyOf(vigor.Id));
+        }
+
+        [Test]
+        public void ARushedVigorFliesTheTickItIsFinished()
+        {
+            // DESIGN.md section 3: rushed lines join the board before animated lines act.
+            var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)), DrawingPace.Rush);
+            Assert.AreEqual(17f, ((VigorBody)_board.BodyOf(vigor.Id)).Position.X, 1e-3);
+        }
+
+        [Test]
+        public void LinesCanBeSetToFinishBeforeMovement()
+        {
+            // The swappable order (stages 3 and 4) is a config switch.
+            _config.LinesFinishBeforeMovement = true;
+            var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
+            Assert.AreEqual(17f, ((VigorBody)_board.BodyOf(vigor.Id)).Position.X, 1e-3);
         }
 
         [Test]
@@ -285,12 +305,45 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void AnAttachedWardWithTwoBindPointsIsAnEllipseStickingOut()
+        {
+            var ward = Draw(Player.A, DrawingSpec.Warding(2), Placement.AtBindPoint(0, 1f));
+            var body = (WardBody)_board.BodyOf(ward.Id);
+            float semiMajor = _config.Geometry.AttachedEllipseSemiMajor;
+            Assert.AreEqual(semiMajor, body.Shape.A, 1e-4);
+            Assert.AreEqual(1f, body.Shape.B, 1e-4);
+            Assert.AreEqual(9f + semiMajor, body.Shape.Centre.X, 1e-3); // front bind point at x=9, long axis toward B
+            Assert.AreEqual(2, body.BindPoints.Count);
+            Assert.AreEqual(9f, Math.Min(body.BindPoints[0].X, body.BindPoints[1].X), 1e-3);
+        }
+
+        [Test]
+        public void AnAttachedCircleCanBeSized()
+        {
+            var ward = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 2f));
+            var body = (WardBody)_board.BodyOf(ward.Id);
+            Assert.AreEqual(2f, body.Shape.A, 1e-4);
+            Assert.AreEqual(11f, body.Shape.Centre.X, 1e-3);
+        }
+
+        [Test]
+        public void AttachedWardSizesStayInTheirRange()
+        {
+            var geometry = _config.Geometry;
+            var spec = DrawingSpec.Warding(4);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, geometry.AttachedWardMaxRadius + 1f)));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Warding(2), Placement.AtBindPoint(0, geometry.AttachedEllipseMinSemiMinor / 2f)));
+            Assert.IsNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, geometry.AttachedWardMinRadius)));
+        }
+
+        [Test]
         public void VigorOnVigorUsesTheTierRules()
         {
             _board.SetPendingPlacement(Player.A, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(14f, 10f), V(26f, 10f)));
             _board.SetPendingPlacement(Player.B, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(18f, 10f), V(6f, 10f)));
             var low = PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low));
-            _duel.ResolveTurn(low, low); // both complete, fly 3 each and meet in the middle
+            _duel.ResolveTurn(low, low); // both complete, and join the board after movement
+            PassTurn(); // fly 3 each and meet in the middle
 
             Assert.IsFalse(_duel.Lines.Any(l => l.Type == LineType.Vigor && l.IsActive));
             Assert.That(_board.LastTickNotes.Single(), Does.Contain("cancelled"));
@@ -317,7 +370,7 @@ namespace RithmaticDuels.Rules.Tests
         public void RepairsSpreadOverTheWholeWard()
         {
             Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
-            PassTurn();
+            PassTurn(); PassTurn();
             Assert.AreEqual(9, MainWard(Player.B).Durability);
 
             var repair = PlayerAction.Repair(MainWard(Player.B).Id, 2);

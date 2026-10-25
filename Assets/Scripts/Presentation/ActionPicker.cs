@@ -51,13 +51,16 @@ namespace RithmaticDuels.Presentation
     /// </summary>
     public sealed class ActionPicker
     {
-        private static readonly string[] LineTypeLabels = { "Warding (Mark's Cross)", "Forbiddance", "Vigor", "Making" };
+        private static readonly string[] LineTypeLabels = { "Warding", "Forbiddance", "Vigor", "Making" };
         private static readonly string[] PaceLabels = { "Normal", "Rush", "Steady" };
         private static readonly string[] TierLabels = { "Low", "Medium", "High" };
         private static readonly string[] StatLabels = { "Durability", "Damage", "Speed" };
         private static readonly string[] ShapeLabels = { "Circle", "Ellipse" };
         private static readonly string[] CircleBindPointLabels = { "4", "6", "9" };
         private static readonly int[] CircleBindPointCounts = { 4, 6, 9 };
+        // A LoW added during the duel: a Mark's Cross, or a LoW with this many bind points (0 means Mark's Cross).
+        private static readonly string[] AttachedWardLabels = { "Mark's Cross", "2 (ellipse)", "4", "6", "9" };
+        private static readonly int[] AttachedWardBindPoints = { 0, 2, 4, 6, 9 };
         private static readonly string[] ForbiddanceLabels = { "Between 2 bind points", "Tangent at 1", "Free line" };
         private static readonly string[] ChalklingLabels = { "Bound to a bind point", "Free" };
 
@@ -75,6 +78,7 @@ namespace RithmaticDuels.Presentation
         private DrawingPace _pace;
         private MainShape? _mainShape;
         private int _bindPointChoice = -1;
+        private int _attachedWardChoice = -1;
         private ForbiddanceMode? _forbiddanceMode;
         private ChalklingMode? _chalklingMode;
         private VigorTier? _tier;
@@ -90,6 +94,7 @@ namespace RithmaticDuels.Presentation
         // Sizes set with the scroll wheel. Negative means "not touched yet", so the config default is used.
         private float _semiMinor = -1f;
         private float _length = -1f;
+        private float _attachedSize = -1f;
 
         // Placement clicks: up to two bind points or two board points, whichever the mode uses.
         private int _bindA = -1;
@@ -263,8 +268,8 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>
-        /// The scroll wheel over the board: makes a main LoW ellipse flatter or rounder, or a LoF not bound at
-        /// two points shorter or longer. Returns true if it changed the choice.
+        /// The scroll wheel over the board: makes a LoW ellipse flatter or rounder, an attached LoW circle
+        /// bigger or smaller, or a LoF not bound at two points shorter or longer. Returns true if it changed the choice.
         /// </summary>
         public bool HandleScroll(ChalkBoard board, Player player, RulesConfig config, float delta)
         {
@@ -277,6 +282,15 @@ namespace RithmaticDuels.Presentation
             {
                 if (_mainShape != MainShape.Ellipse) return false;
                 _semiMinor = Mathf.Clamp(SemiMinor(config) + step, geometry.EllipseMinSemiMinor, geometry.EllipseMaxSemiMinor);
+                return true;
+            }
+
+            if (_lineType == LineType.Warding && _attachedWardChoice > 0)
+            {
+                var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
+                float min, max, start;
+                board.AttachedSizeRange(spec, out min, out max, out start);
+                _attachedSize = Mathf.Clamp(board.AttachedSize(spec, Placement.AtBindPoint(0, _attachedSize)) + step, min, max);
                 return true;
             }
 
@@ -382,7 +396,7 @@ namespace RithmaticDuels.Presentation
         private PlayerAction DrawStart(RulesConfig config, ChalkBoard board, Player player, out Placement placement, out string hint)
         {
             // Clicks belong to one line type and placement mode; switching either starts placement over.
-            ResetClicksIfChanged(_lineType + "/" + _forbiddanceMode + "/" + _chalklingMode);
+            ResetClicksIfChanged(_lineType + "/" + _forbiddanceMode + "/" + _chalklingMode + "/" + _attachedWardChoice);
             placement = null;
             Choose(ref _lineType, LineTypeLabels);
             if (!_lineType.HasValue)
@@ -398,17 +412,36 @@ namespace RithmaticDuels.Presentation
             switch (_lineType)
             {
                 case LineType.Warding:
-                    // Larger LoW belong to the setup; during the duel a Mark's Cross is the only one (DESIGN.md section 4.1).
-                    GUILayout.Label("A Mark's Cross: a small circle braced by two crossed Lines of Forbiddance.");
+                    GUILayout.Label("Bind points:");
+                    int before = _attachedWardChoice;
+                    Choose(ref _attachedWardChoice, AttachedWardLabels);
+                    if (_attachedWardChoice != before) _attachedSize = -1f;
+                    if (_attachedWardChoice < 0)
+                    {
+                        hint = "Choose a Mark's Cross or how many bind points.";
+                        break;
+                    }
+                    int count = AttachedWardBindPoints[_attachedWardChoice];
+                    if (count == 0)
+                    {
+                        GUILayout.Label("A Mark's Cross: a small circle braced by two crossed Lines of Forbiddance.");
+                        spec = DrawingSpec.MarksCross(config);
+                    }
+                    else
+                    {
+                        spec = DrawingSpec.Warding(count);
+                        GUILayout.Label(count == 2
+                            ? "An ellipse sticking out from the bind point. Scroll to make it rounder or flatter."
+                            : "A circle outside the bind point. Scroll to make it bigger or smaller.");
+                    }
                     GUILayout.Label("Click a bind point on your main Line of Warding to attach it there.");
-                    spec = DrawingSpec.MarksCross(config);
                     if (_bindA >= 0)
                     {
-                        placement = Placement.AtBindPoint(_bindA);
+                        placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : board.AttachedSize(spec, Placement.AtBindPoint(_bindA, _attachedSize)));
                         IReadOnlyList<Vec2> points;
                         preview.Ward = board.PreviewWard(player, spec, placement, out points);
                         preview.WardBindPoints = points;
-                        if (preview.Ward != null) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward);
+                        if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward);
                     }
                     break;
 
