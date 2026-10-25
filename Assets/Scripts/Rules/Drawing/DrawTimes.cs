@@ -24,8 +24,12 @@ namespace RithmaticDuels.Rules
                     break;
                 case LineType.Forbiddance:
                     float length = spec.Length > 0f ? spec.Length : config.Geometry.TangentForbiddanceLength;
-                    turns = (int)Math.Ceiling(length / config.Forbiddance.LengthPerDrawTurn - 1e-4)
-                        - spec.BindPoints * config.Forbiddance.DrawTurnsSavedPerBindPoint;
+                    if (spec.BindPoints == 2)
+                        turns = length <= config.Forbiddance.ShortChordLength + 1e-4f
+                            ? config.Forbiddance.ShortChordTurns : config.Forbiddance.LongChordTurns;
+                    else
+                        turns = (int)Math.Ceiling(length / config.Forbiddance.LengthPerDrawTurn - 1e-4)
+                            - spec.BindPoints * config.Forbiddance.DrawTurnsSavedPerBindPoint;
                     break;
                 case LineType.Vigor:
                     turns = config.Vigor.Tier(spec.Tier).DrawTurns;

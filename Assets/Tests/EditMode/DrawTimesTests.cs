@@ -33,11 +33,20 @@ namespace RithmaticDuels.Rules.Tests
         [TestCase(0, 4.5f, 3)]
         [TestCase(0, 8f, 4)]
         [TestCase(1, 5f, 2)]
-        [TestCase(2, 4.2f, 1)]
-        [TestCase(2, 1f, 1)]
         public void ForbiddanceTimeScalesWithLengthLessBindPoints(int bindPoints, float length, int expected)
         {
             var spec = DrawingSpec.Forbiddance(bindPoints);
+            spec.Length = length;
+            Assert.AreEqual(expected, DrawTimes.BaseTurns(spec, _config));
+        }
+
+        [TestCase(1f, 1)]
+        [TestCase(3f, 1)]
+        [TestCase(3.1f, 2)]
+        [TestCase(6f, 2)]
+        public void ForbiddanceBetweenTwoBindPointsTakesOneTurnUpToLengthThree(float length, int expected)
+        {
+            var spec = DrawingSpec.Forbiddance(2);
             spec.Length = length;
             Assert.AreEqual(expected, DrawTimes.BaseTurns(spec, _config));
         }

@@ -434,6 +434,72 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void BindPointsOfOtherWardsCanBeUsed()
+        {
+            // A Mark's Cross at the front bind point (x=9) adds its other three bind points to the list;
+            // the one where it touches the main LoW is shared and listed once.
+            int before = _board.BindPointsOf(Player.A).Count;
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var points = _board.BindPointsOf(Player.A);
+            Assert.AreEqual(before + 3, points.Count);
+
+            // Its front bind point at x=11 takes a tangent LoF and another LoW.
+            int front = Enumerable.Range(0, points.Count).Single(i => Math.Abs(points[i].X - 11f) < 1e-3f);
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(front, 2f));
+            var segment = ((ForbiddanceBody)_board.BodyOf(tangent.Id)).Segment;
+            Assert.AreEqual(11f, segment.A.X, 1e-3);
+            Assert.AreEqual(11f, segment.B.X, 1e-3);
+
+            var ward = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(front, 1f));
+            Assert.AreEqual(12f, ((WardBody)_board.BodyOf(ward.Id)).Shape.Centre.X, 1e-3);
+            Assert.IsTrue(_board.BindPointFull(Player.A, front));
+            Assert.IsTrue(_board.BindPointFull(Player.A, 0), "the main LoW's front bind point has its Mark's Cross");
+        }
+
+        [Test]
+        public void AChordOfAnyWardShieldsIt()
+        {
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var points = _board.BindPointsOf(Player.A);
+            int top = Enumerable.Range(0, points.Count).Single(i => Math.Abs(points[i].X - 10f) < 1e-3f && points[i].Y > 10.5f);
+            int bottom = Enumerable.Range(0, points.Count).Single(i => Math.Abs(points[i].X - 10f) < 1e-3f && points[i].Y < 9.5f);
+            var chord = Draw(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(top, bottom));
+            Assert.AreEqual(cross.Id, ((ForbiddanceBody)_board.BodyOf(chord.Id)).ChordOf);
+        }
+
+        [Test]
+        public void AForbiddanceIsARectangleThatMustStayOnItsHalf()
+        {
+            float half = _config.Geometry.ForbiddanceWidth / 2f;
+            // Upright at x=16 - half: its edge just touches the centre line.
+            var touching = Placement.Segment(V(16f - half, 4f), V(16f - half, 7f));
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), touching), touching));
+            var over = Placement.Segment(V(16f - half / 2f, 4f), V(16f - half / 2f, 7f));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), over), over));
+
+            // Slanting toward the line from x=14: capped where its corner first reaches it.
+            Vec2 direction = new Vec2(1f, 1f).Normalized;
+            float max = _board.MaxForbiddanceLength(Player.A, Placement.Segment(V(14f, 4f), V(14f, 4f)), direction);
+            Vec2 end = V(14f, 4f) + direction * max;
+            float cornerX = end.X + Math.Abs(direction.Perp.X) * half;
+            Assert.AreEqual(16f, cornerX, 1e-3);
+        }
+
+        [Test]
+        public void LowSizesStepThroughWholeNumberDurabilities()
+        {
+            var sizes = _board.MainEllipseSizes(Player.A);
+            var values = sizes.Select(size => _board.WeakestDurability(WardShape.Ellipse(V(6f, 10f), _config.Geometry.EllipseSemiMajor, size, 0f))).ToList();
+            CollectionAssert.AllItemsAreUnique(values);
+            for (int i = 1; i < values.Count; i++) Assert.AreEqual(values[i - 1] + 1, values[i], "one step is one point of durability");
+            Assert.Greater(values.Count, 2);
+
+            var circles = _board.AttachedSizes(Player.A, DrawingSpec.Warding(4), 0);
+            var circleValues = circles.Select(r => _board.WeakestDurability(WardShape.Circle(V(0f, 0f), r))).ToList();
+            CollectionAssert.AllItemsAreUnique(circleValues);
+        }
+
+        [Test]
         public void VigorOnVigorUsesTheTierRules()
         {
             _board.SetPendingPlacement(Player.A, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(14f, 10f), V(26f, 10f)));

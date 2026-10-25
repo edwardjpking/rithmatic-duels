@@ -18,6 +18,8 @@ namespace RithmaticDuels.Presentation
         public IReadOnlyList<Vec2> WardBindPoints;
         /// <summary>A previewed Mark's Cross's crossed LoF.</summary>
         public IReadOnlyList<Segment> Braces;
+        /// <summary>Bind points that already have their LoW, shown crossed out while placing another LoW.</summary>
+        public IReadOnlyList<Vec2> FullBindPoints;
         /// <summary>Preset spots for the main LoW, drawn as markers that can be clicked.</summary>
         public IReadOnlyList<Vec2> Presets;
         /// <summary>Show the midline of the player's half, which the main LoW snaps to.</summary>
@@ -244,7 +246,7 @@ namespace RithmaticDuels.Presentation
             if (board.MainWardOf(player) == null && config.MainWardFirst)
             {
                 if (!_mainShape.HasValue || config.Geometry.MainWardAtHome) return false;
-                _pointA = board.SnapMainWard(player, MainShapeSpec(), point, MainSemiMinor(config));
+                _pointA = board.SnapMainWard(player, MainShapeSpec(), point, MainSemiMinor(board, player));
                 return true;
             }
 
@@ -285,18 +287,16 @@ namespace RithmaticDuels.Presentation
             if (board.MainWardOf(player) == null && config.MainWardFirst)
             {
                 if (_mainShape != MainShape.Ellipse) return false;
-                _semiMinor = Mathf.Clamp(SemiMinor(config) + step, geometry.EllipseMinSemiMinor, geometry.EllipseMaxSemiMinor);
+                // Each notch moves to the next whole-number durability of the ellipse's weakest point.
+                _semiMinor = StepAlong(MainSteps(board, player), SemiMinor(board, player), delta < 0f ? 1 : -1);
                 return true;
             }
 
             if (_lineType == LineType.Warding && _attachedWardChoice > 0)
             {
                 var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
-                float min, max, start;
-                board.AttachedSizeRange(spec, out min, out max, out start);
-                // Never bigger than fits on the player's half at the chosen bind point.
-                if (_bindA >= 0) max = board.MaxAttachedSize(player, spec, _bindA);
-                _attachedSize = Mathf.Clamp(AttachedSize(board, player, spec) + step, min, max);
+                // Each notch moves to the next whole-number durability, never bigger than fits on the player's half.
+                _attachedSize = StepAlong(AttachedSteps(board, player, spec), AttachedSize(board, player, spec), delta < 0f ? 1 : -1);
                 return true;
             }
 
@@ -349,7 +349,7 @@ namespace RithmaticDuels.Presentation
             }
 
             var shapeSpec = MainShapeSpec();
-            float semiMinor = MainSemiMinor(config);
+            float semiMinor = MainSemiMinor(board, player);
             // A shape or size change can push a placed outline off its half, so keep it inside.
             if (_pointA.HasValue) _pointA = board.ClampMainWard(player, shapeSpec, _pointA.Value, semiMinor);
 
@@ -367,6 +367,7 @@ namespace RithmaticDuels.Presentation
                 preview.Ward = board.PreviewWard(player, bindPoints > 0 ? DrawingSpec.Warding(bindPoints) : shapeSpec, Placement.MainWard(_pointA.Value, semiMinor), out points);
                 preview.WardChosen = true;
                 if (bindPoints > 0) preview.WardBindPoints = points;
+                GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability.");
             }
             Preview = preview;
 
@@ -396,9 +397,9 @@ namespace RithmaticDuels.Presentation
             return DrawingSpec.Warding(_mainShape == MainShape.Ellipse ? 2 : 4);
         }
 
-        private float MainSemiMinor(RulesConfig config)
+        private float MainSemiMinor(ChalkBoard board, Player player)
         {
-            return _mainShape == MainShape.Ellipse ? SemiMinor(config) : 0f;
+            return _mainShape == MainShape.Ellipse ? SemiMinor(board, player) : 0f;
         }
 
         private PlayerAction DrawStart(RulesConfig config, ChalkBoard board, Player player, out Placement placement, out string hint)
@@ -450,7 +451,12 @@ namespace RithmaticDuels.Presentation
                         preview.Ward = board.PreviewWard(player, spec, placement, out points);
                         preview.WardBindPoints = points;
                         if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
+                        if (preview.Ward != null) GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability, before its modifier.");
                     }
+                    var full = new List<Vec2>();
+                    var allPoints = board.BindPointsOf(player);
+                    for (int i = 0; i < allPoints.Count; i++) if (board.BindPointFull(player, i)) full.Add(allPoints[i]);
+                    preview.FullBindPoints = full;
                     break;
 
                 case LineType.Forbiddance:
@@ -673,9 +679,46 @@ namespace RithmaticDuels.Presentation
             return index >= 0 ? targets[index] : null;
         }
 
-        private float SemiMinor(RulesConfig config)
+        /// <summary>The main ellipse's chosen semi-minor axis, on one of its whole-number durability steps.</summary>
+        private float SemiMinor(ChalkBoard board, Player player)
         {
-            return _semiMinor > 0f ? _semiMinor : config.Geometry.EllipseSemiMinor;
+            return Nearest(MainSteps(board, player), _semiMinor > 0f ? _semiMinor : board.Config.Geometry.EllipseSemiMinor);
+        }
+
+        // Size steps are slow to work out, so each is kept until what it depends on changes.
+        private List<float> _mainSteps;
+        private List<float> _attachedSteps;
+        private string _attachedStepsKey;
+
+        private List<float> MainSteps(ChalkBoard board, Player player)
+        {
+            if (_mainSteps == null) _mainSteps = board.MainEllipseSizes(player);
+            return _mainSteps;
+        }
+
+        private List<float> AttachedSteps(ChalkBoard board, Player player, DrawingSpec spec)
+        {
+            string key = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count;
+            if (_attachedSteps == null || key != _attachedStepsKey)
+            {
+                _attachedSteps = board.AttachedSizes(player, spec, _bindA);
+                _attachedStepsKey = key;
+            }
+            return _attachedSteps;
+        }
+
+        private static float Nearest(List<float> steps, float value)
+        {
+            float best = steps[0];
+            foreach (float step in steps) if (Mathf.Abs(step - value) < Mathf.Abs(best - value)) best = step;
+            return best;
+        }
+
+        /// <summary>The step after (direction 1) or before (-1) the one nearest the value, stopping at the ends.</summary>
+        private static float StepAlong(List<float> steps, float value, int direction)
+        {
+            int index = steps.IndexOf(Nearest(steps, value)) + direction;
+            return steps[index < 0 ? 0 : index >= steps.Count ? steps.Count - 1 : index];
         }
 
         private float Length(RulesConfig config)
@@ -700,12 +743,13 @@ namespace RithmaticDuels.Presentation
             return Mathf.Clamp(Length(config), config.Geometry.MinForbiddanceLength, MaxLength(config, board, player));
         }
 
-        /// <summary>The chosen size of an attached LoW, cut back if it would reach off the player's half.</summary>
+        /// <summary>
+        /// The chosen size of an attached LoW, on one of its whole-number durability steps and cut back if it
+        /// would reach off the player's half.
+        /// </summary>
         private float AttachedSize(ChalkBoard board, Player player, DrawingSpec spec)
         {
-            float size = board.AttachedSize(spec, Placement.AtBindPoint(0, _attachedSize));
-            if (_bindA >= 0) size = Mathf.Min(size, board.MaxAttachedSize(player, spec, _bindA));
-            return size;
+            return Nearest(AttachedSteps(board, player, spec), board.AttachedSize(spec, Placement.AtBindPoint(0, _attachedSize)));
         }
 
         /// <summary>Select the bind point nearest the click. With <paramref name="two"/>, alternate between two picks.</summary>
@@ -714,8 +758,11 @@ namespace RithmaticDuels.Presentation
             var bindPoints = board.BindPointsOf(player);
             int nearest = -1;
             float best = PickRadius;
+            bool forWard = _lineType == LineType.Warding;
             for (int i = 0; i < bindPoints.Count; i++)
             {
+                // A bind point that already has its LoW can't take another, so it can't be picked for one.
+                if (forWard && board.BindPointFull(player, i)) continue;
                 float distance = Vec2.Distance(bindPoints[i], point);
                 if (distance < best) { best = distance; nearest = i; }
             }

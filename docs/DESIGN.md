@@ -113,16 +113,17 @@ Four line types. Each completed drawing receives a random modifier (section 5). 
 | Damage | 0 (a LoW never attacks) |
 | Movement speed | 0 (fixed in place) |
 
-**Ellipse shape.** A main LoW ellipse keeps a semi-major axis of 3.5 (long axis toward the opponent). The player sets its semi-minor axis between 1.5 and 3.25 (default 2.5).
+**Ellipse shape.** A main LoW ellipse keeps a semi-major axis of 3.5 (long axis toward the opponent). The player sets its semi-minor axis between 1.5 and 3.25 (default 2.5). The scroll wheel steps between the sizes that give each whole-number durability at its weakest point, so every notch changes that durability by exactly 1, and the menu shows it (decided 2026-10-25). The same goes for the size of any other LoW.
 
 **Durability is per point.** A hit damages the LoW within 0.5 units either side of the impact; the LoW is breached when any point reaches 0. Placeholder curvature scaling: durability at a point = 12 x clamp(sqrt(k / k_ref), 0.5, 2), where k is the local curvature and k_ref = 1/3 is the curvature of the default circle. So smaller circles are stronger per point, larger circles weaker, and an ellipse is strongest at its bind points and weakest along its sides.
 
 **Time to draw**
 - Main LoW: the outline is instant at the end of the setup; its bind points take (number of bind points) div 2 turns (integer division). So 2 bind points = 1 turn, 4 = 2, 6 = 3, 9 = 4 (section 2).
 - Any other LoW: the same formula, minimum 1 turn.
-- Other LoW added during the duel are bound at one bind point of the main LoW, outside it. With 2 bind points it is an ellipse sticking straight out from the bind point (semi-major axis 2); the player sets how round it is with the scroll wheel (semi-minor 0.75 to 1.75, starting at 1.25). With 4, 6 or 9 it is a circle whose radius the player sets with the scroll wheel (1 to 2.5, starting at 1.5). Decided 2026-10-25; sizes are placeholders.
+- Other LoW added during the duel are bound at one bind point of any of the player's LoW (the main LoW, another LoW or a Mark's Cross; decided 2026-10-25), outside that LoW. With 2 bind points it is an ellipse sticking straight out from the bind point (semi-major axis 2); the player sets how round it is with the scroll wheel (semi-minor 0.75 to 1.75, starting at 1.25). With 4, 6 or 9 it is a circle whose radius the player sets with the scroll wheel (1 to 2.5, starting at 1.5). Decided 2026-10-25; sizes are placeholders.
 - Other LoW added during the duel take (bind points div 2) turns, scaled by their outline length over that of the default attached circle (radius 1.5), rounded to the nearest turn, minimum 1 (decided 2026-10-25; the formula is a placeholder). So a radius 1 four-point circle takes 1 turn, radius 1.5 takes 2, radius 2.5 takes 3.
-- Each bind point of the main LoW can have at most one more LoW bound to it, a Mark's Cross included (two counting the main LoW; decided 2026-10-25). A LoW that is destroyed frees its bind point.
+- **Every bind point of every LoW can be used** (decided 2026-10-25): for LoF, bound chalklings and further LoW, not only the main LoW's. Where two LoW touch, they share that bind point.
+- At most two LoW may pass through any one bind point, a Mark's Cross included: the LoW it belongs to and one more (decided 2026-10-25). A full bind point is crossed out and can't be picked for another LoW. A LoW that is destroyed frees its bind point.
 - Mark's Cross: 2 turns, for the whole thing: its small circle (radius 1) and the two crossed LoF inside it (decided 2026-10-25). The crossed LoF join opposite bind points of the small circle, so they line up with them.
 
 **Features**
@@ -142,15 +143,17 @@ Four line types. Each completed drawing receives a random modifier (section 5). 
 |---|---|
 | Durability | 3 + (number of bind points) x 3 |
 | Modifier | +2 durability / -2 durability |
-| Time to draw | ceil(length / 2) - (number of bind points), minimum 1 (decided 2026-10-25; the 2 units per turn is a placeholder) |
+| Time to draw | Between two bind points: 1 turn up to length 3, otherwise 2 (decided 2026-10-25, placeholders). Tangent or free: ceil(length / 2) - (number of bind points), minimum 1 (the 2 units per turn is a placeholder). |
 | Damage | 0 |
 | Movement speed | 0 |
 
 **Length:** a LoF bound between two bind points runs between them. Any other LoF (tangent at one bind point, or free) has a length the player chooses with the scroll wheel, from 1 to 8 units (default 3). Longer lines take longer to draw (the table above); length does not change durability yet.
 
+**Shape (decided 2026-10-25):** a LoF is a rectangle 0.14 units wide (placeholder). All of it must be on the player's own half, so a LoF slanting toward the centre line is capped at the length where its corner first touches the line. Collisions still use its centre line.
+
 **Damage (decided 2026-10-24):**
 - **LoV hits LoF:** the LoV reflects (section 3) and the LoF takes **half the LoV's damage, rounded up**.
-- **LoF between two bind points:** a LoV that hits the main LoW on the **smaller arc** cut off by that LoF deals its **full** damage to the LoF instead, and the LoW takes none. The LoV is absorbed as usual. If the hit breaks the LoF, leftover damage is dropped (like excess damage elsewhere). Once the LoF is broken, the arc is no longer shielded.
+- **LoF between two bind points:** a LoV that hits that LoW (the one both bind points are on, main or not) on the **smaller arc** cut off by that LoF deals its **full** damage to the LoF instead, and the LoW takes none. The LoV is absorbed as usual. If the hit breaks the LoF, leftover damage is dropped (like excess damage elsewhere). Once the LoF is broken, the arc is no longer shielded.
 - **Chalklings:** a chalkling attacking a LoW must damage a LoF in its way first, including a LoF between two bind points shielding the arc it attacks. (Built with chalkling behaviour, build plan step 5.)
 
 **Features:** LoF also act as anchors and structural supports within defences. LoF can be dismissed (action costing 1 turn, so it takes effect in the tick it is chosen). A *Mark's Cross* is a small four-point circle containing a crossed pair of LoF, used to brace a larger circle.
@@ -469,6 +472,8 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 **Third round, 2026-10-25:** dismissing a LoF takes 1 turn; the tick order is dismissal, rushed lines finished, animated lines act, other lines finished (section 3); any LoW can be added during the duel, with 2-bind-point ones as ellipses and sizes set by the scroll wheel (section 4.1).
 
 **Fourth round, 2026-10-25:** nothing may be drawn on or reaching into the opponent's half, and sizes are capped to fit (section 1.1); the main LoW is fixed at the back preset (section 2); a Mark's Cross's LoF line up with its bind points; one extra LoW per bind point; extra LoW take longer the bigger they are (section 4.1); a centre LoF for the first 10 turns (section 1.1); every turn counts toward the limit (section 1); Continue drawing is selected by default while a drawing is in progress.
+
+**Fifth round, 2026-10-25:** the bind points of every LoW can be used (section 4.1); full bind points can't be picked for another LoW; a LoF is a rectangle that must stay wholly on its half (section 4.2); LoW sizes step through whole-number durabilities (section 4.1); a LoF between two bind points takes 1 turn up to length 3, otherwise 2 (section 4.2); bind point markers turn to follow their LoW's outline.
 
 **Settled 2026-10-24:** the start turn counts as progress, main LoW setup comes first (shape, position on own half, then bind points), travel cost for drawing away from the main LoW, variable LoF length, and LoF damage (half from LoV that reflect off them, full when shielding the smaller arc between their bind points, and chalklings hit them before the LoW).
 

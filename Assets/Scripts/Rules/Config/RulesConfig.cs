@@ -158,6 +158,8 @@ namespace RithmaticDuels.Rules
         public float AttachedEllipseMaxSemiMinor = 1.75f;
         /// <summary>Starting length of a LoF that is not bound at two points (tangent or free). The scroll wheel changes it within the range below.</summary>
         public float TangentForbiddanceLength = 3f;
+        /// <summary>A LoF is a rectangle this wide. All of it must be on the player's half (DESIGN.md section 1.1).</summary>
+        public float ForbiddanceWidth = 0.14f;
         public float MinForbiddanceLength = 1f;
         public float MaxForbiddanceLength = 8f;
         /// <summary>The scroll wheel changes ellipse flatness, attached LoW radius and LoF length by this much per notch.</summary>
@@ -251,9 +253,17 @@ namespace RithmaticDuels.Rules
         /// <summary>
         /// Draw time is ceil(length / LengthPerDrawTurn) minus (bind points × DrawTurnsSavedPerBindPoint),
         /// floored at the minimum (DESIGN.md section 4.2). A spec with no length uses Geometry.TangentForbiddanceLength.
+        /// A LoF between two bind points uses the two values below instead.
         /// </summary>
         public float LengthPerDrawTurn = 2f;
         public int DrawTurnsSavedPerBindPoint = 1;
+        /// <summary>
+        /// A LoF between two bind points takes ShortChordTurns if it is at most ShortChordLength long,
+        /// otherwise LongChordTurns (decided 2026-10-25; placeholders).
+        /// </summary>
+        public float ShortChordLength = 3f;
+        public int ShortChordTurns = 1;
+        public int LongChordTurns = 2;
         public int DismissTurns = 1;
         /// <summary>A LoV hitting a LoF reflects and deals this share of its damage to it, rounded up (DESIGN.md section 4.2).</summary>
         public float VigorDamageMultiplier = 0.5f;

@@ -57,6 +57,7 @@ namespace RithmaticDuels.Rules.Geometry
             return _config.CentreWall.Enabled && turn <= _config.CentreWall.Turns;
         }
 
+        public RulesConfig Config { get { return _config; } }
         public float Width { get { return _config.Board.Width; } }
         public float Height { get { return _config.Board.Height; } }
 
@@ -102,11 +103,82 @@ namespace RithmaticDuels.Rules.Geometry
             return null;
         }
 
-        /// <summary>Bind points of a player's main LoW, or none if it isn't drawn yet.</summary>
+        /// <summary>A player's LoW, main first, then the others in the order they were completed.</summary>
+        private List<WardBody> WardsOf(Player player)
+        {
+            var wards = new List<WardBody>();
+            var main = MainWardOf(player);
+            if (main != null) wards.Add(main);
+            var others = new List<WardBody>();
+            foreach (var body in _bodies.Values)
+            {
+                var ward = body as WardBody;
+                if (ward != null && ward.Owner == player && ward.Line.IsActive && !ward.Line.IsMainWard) others.Add(ward);
+            }
+            others.Sort((x, y) => x.LineId.CompareTo(y.LineId));
+            wards.AddRange(others);
+            return wards;
+        }
+
+        /// <summary>Two bind points this close together are the same point (where one LoW touches another).</summary>
+        private const float SameBindPoint = 0.02f;
+
+        /// <summary>
+        /// Every bind point of all a player's LoW (DESIGN.md section 4.1): the main LoW's first, then each
+        /// other LoW's in the order they were completed. A point two LoW share is listed once. Placements
+        /// name bind points by their index here.
+        /// </summary>
         public IReadOnlyList<Vec2> BindPointsOf(Player player)
         {
-            var main = MainWardOf(player);
-            return main != null ? main.BindPoints : new List<Vec2>();
+            var points = new List<Vec2>();
+            foreach (var ward in WardsOf(player))
+            {
+                foreach (var point in ward.BindPoints)
+                {
+                    bool seen = false;
+                    foreach (var existing in points) seen |= Vec2.Distance(existing, point) < SameBindPoint;
+                    if (!seen) points.Add(point);
+                }
+            }
+            return points;
+        }
+
+        /// <summary>The first of the player's LoW (main first) with a bind point at this point, or null.</summary>
+        private WardBody WardWithBindPoint(Player player, Vec2 point)
+        {
+            foreach (var ward in WardsOf(player))
+                foreach (var own in ward.BindPoints)
+                    if (Vec2.Distance(own, point) < SameBindPoint) return ward;
+            return null;
+        }
+
+        private static bool OnOutline(WardBody ward, Vec2 point)
+        {
+            return Vec2.Distance(ward.Shape.PointAt(ward.Shape.ParamOf(point)), point) < SameBindPoint;
+        }
+
+        /// <summary>How many of the player's LoW pass through this bind point (the LoW it belongs to included).</summary>
+        public int WardsThrough(Player player, int bindPoint)
+        {
+            var points = BindPointsOf(player);
+            if (bindPoint < 0 || bindPoint >= points.Count) return 0;
+            int count = 0;
+            foreach (var ward in WardsOf(player)) if (OnOutline(ward, points[bindPoint])) count++;
+            return count;
+        }
+
+        /// <summary>True if no more LoW can be bound at this bind point (Warding.MaxWardsPerBindPoint).</summary>
+        public bool BindPointFull(Player player, int bindPoint)
+        {
+            return WardsThrough(player, bindPoint) >= _config.Warding.MaxWardsPerBindPoint;
+        }
+
+        /// <summary>Direction pointing away from the LoW a bind point belongs to, at that point.</summary>
+        public Vec2 BindPointNormal(Player player, Vec2 point)
+        {
+            var ward = WardWithBindPoint(player, point);
+            if (ward == null) return Facing(player);
+            return ward.Shape.OutwardNormalAt(ward.Shape.ParamOf(point));
         }
 
         public LineBody BodyOf(int lineId)
@@ -118,12 +190,13 @@ namespace RithmaticDuels.Rules.Geometry
         /// <summary>Record where the drawing a player is starting will go. Call it with every Start drawing.</summary>
         public void SetPendingPlacement(Player player, DrawingSpec spec, Placement placement)
         {
-            _pending[(int)player] = new PendingPlacement
-            {
-                IsSet = true,
-                Type = spec.Type,
-                Placement = (placement ?? Placement.Default()).Clone(),
-            };
+            var copy = (placement ?? Placement.Default()).Clone();
+            // Remember where the chosen bind points are, so the drawing still finds them if a LoW listed
+            // before them is destroyed while it is drawn.
+            var points = BindPointsOf(player);
+            if (copy.BindPointA >= 0 && copy.BindPointA < points.Count) copy.BindPositionA = points[copy.BindPointA];
+            if (copy.BindPointB >= 0 && copy.BindPointB < points.Count) copy.BindPositionB = points[copy.BindPointB];
+            _pending[(int)player] = new PendingPlacement { IsSet = true, Type = spec.Type, Placement = copy };
         }
 
         /// <summary>
@@ -169,7 +242,7 @@ namespace RithmaticDuels.Rules.Geometry
                     }
                     string bindPoint = ValidBindPoint(placement.BindPointA, bindPoints);
                     if (bindPoint != null) return bindPoint;
-                    if (WardsAt(player, placement.BindPointA) + 1 >= _config.Warding.MaxWardsPerBindPoint)
+                    if (BindPointFull(player, placement.BindPointA))
                         return "That bind point already has a Line of Warding bound to it.";
                     IReadOnlyList<Vec2> unused;
                     return CheckOutline(player, WardGeometry(player, spec, placement, out unused), halfOnly);
@@ -180,18 +253,19 @@ namespace RithmaticDuels.Rules.Geometry
                         case PlacementKind.BetweenBindPoints:
                             if (spec.BindPoints != 2) return "A line between two bind points has 2 bind points.";
                             if (placement.BindPointA == placement.BindPointB) return "Pick two different bind points.";
-                            return ValidBindPoint(placement.BindPointA, bindPoints) ?? ValidBindPoint(placement.BindPointB, bindPoints);
+                            return ValidBindPoint(placement.BindPointA, bindPoints) ?? ValidBindPoint(placement.BindPointB, bindPoints)
+                                ?? CheckRectangle(player, ForbiddanceGeometry(player, placement).Value, halfOnly);
                         case PlacementKind.TangentAtBindPoint:
                             if (spec.BindPoints != 1) return "A tangent at one bind point has 1 bind point.";
                             if (placement.Length != 0f) { string length = CheckLength(placement.Length); if (length != null) return length; }
                             string tangentAt = ValidBindPoint(placement.BindPointA, bindPoints);
                             if (tangentAt != null) return tangentAt;
                             var tangent = ForbiddanceGeometry(player, placement).Value;
-                            return CheckPoint(player, tangent.A, halfOnly) ?? CheckPoint(player, tangent.B, halfOnly);
+                            return CheckRectangle(player, tangent, halfOnly);
                         case PlacementKind.FreeSegment:
                             if (spec.BindPoints != 0) return "A free-standing line has no bind points.";
                             return CheckLength(Vec2.Distance(placement.PointA, placement.PointB))
-                                ?? CheckPoint(player, placement.PointA, halfOnly) ?? CheckPoint(player, placement.PointB, halfOnly);
+                                ?? CheckRectangle(player, new Segment(placement.PointA, placement.PointB), halfOnly);
                         default:
                             return "Choose how to place the Line of Forbiddance.";
                     }
@@ -333,8 +407,67 @@ namespace RithmaticDuels.Rules.Geometry
                     segment = tangent.Value;
                 }
                 else segment = new Segment(placement.PointA, placement.PointA + direction.Normalized * length);
-                return CheckPoint(player, segment.A, halfOnly) == null && CheckPoint(player, segment.B, halfOnly) == null;
+                return CheckRectangle(player, segment, halfOnly) == null;
             });
+        }
+
+        /// <summary>
+        /// The semi-minor axes a main LoW ellipse can be given, one for each whole-number durability of its
+        /// weakest point, so each scroll notch changes it by 1 (DESIGN.md section 4.1).
+        /// </summary>
+        public List<float> MainEllipseSizes(Player player)
+        {
+            var geometry = _config.Geometry;
+            return HealthSteps(geometry.EllipseMinSemiMinor, geometry.EllipseMaxSemiMinor,
+                size => WardShape.Ellipse(Home(player), geometry.EllipseSemiMajor, size, 0f));
+        }
+
+        /// <summary>
+        /// The sizes an attached LoW at this bind point can be given (radius, or an ellipse's semi-minor axis),
+        /// one for each whole-number durability of its weakest point, as far as it fits on the player's half.
+        /// </summary>
+        public List<float> AttachedSizes(Player player, DrawingSpec spec, int bindPoint)
+        {
+            float min, max, start;
+            AttachedSizeRange(spec, out min, out max, out start);
+            if (bindPoint >= 0) max = MaxAttachedSize(player, spec, bindPoint);
+            int at = Math.Max(0, bindPoint);
+            return HealthSteps(min, max, size =>
+            {
+                IReadOnlyList<Vec2> unused;
+                return WardGeometry(player, spec, Placement.AtBindPoint(at, size), out unused);
+            });
+        }
+
+        /// <summary>The durability the weakest point of a LoW with this shape would have, before any modifier.</summary>
+        public int WeakestDurability(WardShape shape)
+        {
+            return shape == null ? 0 : WardBody.WeakestDurability(shape, _config);
+        }
+
+        /// <summary>
+        /// Walks sizes from min to max and keeps one for each run with the same weakest-point durability:
+        /// the middle of the run, or the end of the range for the runs at either end.
+        /// </summary>
+        private List<float> HealthSteps(float min, float max, Func<float, WardShape> shapeFor)
+        {
+            var steps = new List<float>();
+            if (max <= min) { steps.Add(min); return steps; }
+            const int samples = 200;
+            float runStart = min;
+            int runValue = WeakestDurability(shapeFor(min));
+            for (int i = 1; i <= samples; i++)
+            {
+                float size = min + (max - min) * i / samples;
+                int value = WeakestDurability(shapeFor(size));
+                if (value == runValue && i < samples) continue;
+                float runEnd = value == runValue ? size : min + (max - min) * (i - 1) / samples;
+                steps.Add(runStart <= min ? min : runEnd >= max ? max : (runStart + runEnd) / 2f);
+                if (value != runValue && i == samples) steps.Add(max);
+                runStart = size;
+                runValue = value;
+            }
+            return steps;
         }
 
         /// <summary>The largest value in [min, max] that fits, assuming bigger never fits better; min if none does.</summary>
@@ -349,18 +482,6 @@ namespace RithmaticDuels.Rules.Geometry
                 if (fits(mid)) low = mid; else high = mid;
             }
             return low;
-        }
-
-        /// <summary>How many LoW other than the main one this player has bound at a bind point of their main LoW.</summary>
-        public int WardsAt(Player player, int bindPoint)
-        {
-            int count = 0;
-            foreach (var body in _bodies.Values)
-            {
-                var ward = body as WardBody;
-                if (ward != null && ward.Owner == player && ward.Line.IsActive && ward.AttachedAt == bindPoint && !ward.Line.IsMainWard) count++;
-            }
-            return count;
         }
 
         /// <summary>Spots offered for the main LoW, all on the midline of the player's half: back (the default spot), centre and front.</summary>
@@ -581,7 +702,18 @@ namespace RithmaticDuels.Rules.Geometry
             var pending = _pending[(int)line.Owner];
             _pending[(int)line.Owner] = default(PendingPlacement);
             if (!pending.IsSet || pending.Type != line.Type) return Placement.Default();
-            return pending.Placement;
+            var placement = pending.Placement;
+            var points = BindPointsOf(line.Owner);
+            if (placement.BindPositionA.HasValue) placement.BindPointA = NearestIndex(points, placement.BindPositionA.Value, placement.BindPointA);
+            if (placement.BindPositionB.HasValue) placement.BindPointB = NearestIndex(points, placement.BindPositionB.Value, placement.BindPointB);
+            return placement;
+        }
+
+        private static int NearestIndex(IReadOnlyList<Vec2> points, Vec2 position, int fallback)
+        {
+            for (int i = 0; i < points.Count; i++)
+                if (Vec2.Distance(points[i], position) < SameBindPoint) return i;
+            return fallback;
         }
 
         private LineBody CreateBody(Line line, Placement placement)
@@ -594,13 +726,16 @@ namespace RithmaticDuels.Rules.Geometry
                     var shape = WardGeometry(owner, line.Spec, placement, out bindPoints, line.IsMainWard);
                     var wardBody = new WardBody(line, shape, bindPoints, _config);
                     if (line.Spec.IsMarksCross) wardBody.Braces = MarksCrossBraces(shape, bindPoints);
-                    if (!line.IsMainWard) wardBody.AttachedAt = placement.Kind == PlacementKind.AtBindPoint ? placement.BindPointA : 0;
                     if (line.IsMainWard) wardBody.BindPoints = MainBindPoints(owner, shape, line.BindPointsDrawn);
                     return wardBody;
 
                 case LineType.Forbiddance:
                     var segment = ForbiddanceGeometry(owner, placement) ?? ForbiddanceGeometry(owner, Placement.Default()).Value;
-                    return new ForbiddanceBody(line, segment, placement.Kind == PlacementKind.BetweenBindPoints);
+                    int chordOf = -1;
+                    if (placement.Kind == PlacementKind.BetweenBindPoints)
+                        foreach (var ward in WardsOf(owner))
+                            if (chordOf < 0 && OnOutline(ward, segment.A) && OnOutline(ward, segment.B)) chordOf = ward.LineId;
+                    return new ForbiddanceBody(line, segment, chordOf);
 
                 case LineType.Vigor:
                     if (placement.Kind == PlacementKind.Aimed)
@@ -608,13 +743,13 @@ namespace RithmaticDuels.Rules.Geometry
                     return new VigorBody(line, Home(owner) + Facing(owner) * (FrontDistance(owner) + 1f), Facing(owner));
 
                 default:
-                    var main = MainWardOf(owner);
+                    var allPoints = BindPointsOf(owner);
                     int bindPoint = placement.Kind == PlacementKind.AtBindPoint ? placement.BindPointA
                         : placement.Kind == PlacementKind.Default && line.Spec.BindPoints > 0 ? 0 : -1;
-                    if (main != null && bindPoint >= 0 && bindPoint < main.BindPoints.Count)
+                    if (bindPoint >= 0 && bindPoint < allPoints.Count)
                     {
-                        Vec2 point = main.BindPoints[bindPoint];
-                        Vec2 normal = main.Shape.OutwardNormalAt(main.Shape.ParamOf(point));
+                        Vec2 point = allPoints[bindPoint];
+                        Vec2 normal = BindPointNormal(owner, point);
                         return new ChalklingBody(line, point + normal * (_config.Making.Radius + 0.05f), point);
                     }
                     if (placement.Kind == PlacementKind.FreePoint) return new ChalklingBody(line, placement.PointA, null);
@@ -660,14 +795,15 @@ namespace RithmaticDuels.Rules.Geometry
             }
             else
             {
+                var allPoints = BindPointsOf(owner);
                 int index = placement != null && placement.Kind == PlacementKind.AtBindPoint ? placement.BindPointA : 0;
-                if (index < 0 || index >= main.BindPoints.Count)
+                if (index < 0 || index >= allPoints.Count)
                 {
                     if (placement != null && placement.Kind == PlacementKind.AtBindPoint) { bindPoints = null; return null; }
                     index = 0;
                 }
-                Vec2 point = main.BindPoints[index];
-                outward = main.Shape.OutwardNormalAt(main.Shape.ParamOf(point));
+                Vec2 point = allPoints[index];
+                outward = BindPointNormal(owner, point);
                 centre = point + outward * reach;
             }
             if (attachedEllipse)
@@ -723,21 +859,20 @@ namespace RithmaticDuels.Rules.Geometry
                     return new Segment(bindPoints[placement.BindPointA], bindPoints[placement.BindPointB]);
                 case PlacementKind.TangentAtBindPoint:
                     if (!InRange(placement.BindPointA, bindPoints)) return null;
-                    return Tangent(main, placement.BindPointA, length);
+                    return Tangent(bindPoints[placement.BindPointA], BindPointNormal(owner, bindPoints[placement.BindPointA]), length);
                 case PlacementKind.FreeSegment:
                     return new Segment(placement.PointA, placement.PointB);
                 default:
-                    if (main != null && main.BindPoints.Count > 0) return Tangent(main, 0, length);
+                    if (main != null && main.BindPoints.Count > 0) return Tangent(main.BindPoints[0], BindPointNormal(owner, main.BindPoints[0]), length);
                     Vec2 front = Home(owner) + Facing(owner) * (FrontDistance(owner) + 1f);
                     Vec2 across = Facing(owner).Perp * (length / 2f);
                     return new Segment(front - across, front + across);
             }
         }
 
-        private static Segment Tangent(WardBody ward, int bindPoint, float length)
+        private static Segment Tangent(Vec2 point, Vec2 normal, float length)
         {
-            Vec2 point = ward.BindPoints[bindPoint];
-            Vec2 along = ward.Shape.OutwardNormalAt(ward.Shape.ParamOf(point)).Perp * (length / 2f);
+            Vec2 along = normal.Perp * (length / 2f);
             return new Segment(point - along, point + along);
         }
 
@@ -1015,17 +1150,16 @@ namespace RithmaticDuels.Rules.Geometry
         }
 
         /// <summary>
-        /// A LoF joining two bind points shields the arc of the main LoW between them: a LoV hitting that
+        /// A LoF joining two bind points of one LoW shields the arc of that LoW between them: a LoV hitting that
         /// arc deals its full damage to the LoF instead (DESIGN.md section 4.2). Returns the first such
         /// LoF that is still standing, or null.
         /// </summary>
         private ForbiddanceBody ShieldingChord(WardBody ward, Vec2 impact, Dictionary<int, int> used)
         {
-            if (!ward.Line.IsMainWard) return null;
             foreach (var body in _bodies.Values)
             {
                 var forbiddance = body as ForbiddanceBody;
-                if (forbiddance == null || !forbiddance.IsChord || forbiddance.Owner != ward.Owner) continue;
+                if (forbiddance == null || forbiddance.ChordOf != ward.LineId) continue;
                 if (!forbiddance.Line.IsActive || RemainingDurability(forbiddance, used) <= 0) continue;
                 if (ChordShields(forbiddance.Segment, ward, impact)) return forbiddance;
             }
@@ -1113,6 +1247,18 @@ namespace RithmaticDuels.Rules.Geometry
             return null;
         }
 
+        /// <summary>
+        /// A LoF is a rectangle as wide as <see cref="GeometryConfig.ForbiddanceWidth"/>: all four corners
+        /// must be on the board (and the player's half).
+        /// </summary>
+        private string CheckRectangle(Player player, Segment segment, bool halfOnly)
+        {
+            Vec2 along = segment.B - segment.A;
+            Vec2 side = along.Length > 1e-6f ? along.Perp.Normalized * (_config.Geometry.ForbiddanceWidth / 2f) : Vec2.Zero;
+            return CheckPoint(player, segment.A + side, halfOnly) ?? CheckPoint(player, segment.A - side, halfOnly)
+                ?? CheckPoint(player, segment.B + side, halfOnly) ?? CheckPoint(player, segment.B - side, halfOnly);
+        }
+
         private string CheckPoint(Player player, Vec2 point, bool halfOnly)
         {
             if (!OnBoard(point)) return "That point is off the board.";
@@ -1123,7 +1269,7 @@ namespace RithmaticDuels.Rules.Geometry
         private static string ValidBindPoint(int index, IReadOnlyList<Vec2> bindPoints)
         {
             if (bindPoints.Count == 0) return "Draw your main Line of Warding first.";
-            return InRange(index, bindPoints) ? null : "Pick a bind point on your main Line of Warding.";
+            return InRange(index, bindPoints) ? null : "Pick a bind point on one of your Lines of Warding.";
         }
 
         private static bool InRange(int index, IReadOnlyList<Vec2> list)
