@@ -206,7 +206,5 @@ namespace RithmaticDuels.Rules.Geometry
         public Vec2? Direction { get; internal set; }
         /// <summary>Bound LoM: the bind point it will be tethered to.</summary>
         public Vec2? Tether { get; internal set; }
-        /// <summary>Repair, buff and dismiss: the line being worked on.</summary>
-        public int TargetLineId { get; internal set; }
     }
 }

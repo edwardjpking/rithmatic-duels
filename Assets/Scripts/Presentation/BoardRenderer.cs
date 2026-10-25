@@ -117,7 +117,7 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// A player's work in progress, which both players can see: the line it will make, dashed and faint
-        /// in the owner's colour. Work on a line already down marks that line instead.
+        /// in the owner's colour.
         /// </summary>
         private void DrawSketch(WorkSketch sketch)
         {
@@ -133,24 +133,10 @@ namespace RithmaticDuels.Presentation
                         foreach (var point in sketch.BindPoints) BindPoint(point, TangentAt(main.Shape, point), colour);
                     return;
 
-                case WorkKind.Dismiss:
-                    // A LoF being dismissed is crossed out along its length.
-                    var forbiddance = Board.BodyOf(sketch.TargetLineId) as ForbiddanceBody;
-                    if (forbiddance == null) return;
-                    Vec2 a = forbiddance.Segment.A;
-                    Vec2 b = forbiddance.Segment.B;
-                    int marks = Math.Max(1, (int)(Vec2.Distance(a, b) / 0.8f));
-                    for (int i = 0; i < marks; i++)
-                        Cross(a + (b - a) * ((i + 0.5f) / marks), 0.2f, WithAlpha(Damaged, SketchAlpha));
-                    return;
-
                 case WorkKind.Drawing:
                     break;
 
                 default:
-                    // Buffing a chalkling (or repairing a line): a dashed ring around a chalkling.
-                    var chalkling = Board.BodyOf(sketch.TargetLineId) as ChalklingBody;
-                    if (chalkling != null) DashedRing(chalkling.Position, 0.45f, 0.04f, colour);
                     return;
             }
 
@@ -280,17 +266,6 @@ namespace RithmaticDuels.Presentation
             Vec2 along = (b - a) / length;
             for (float d = 0f; d < length; d += DashLength + GapLength)
                 Line(a + along * d, a + along * Math.Min(length, d + DashLength), width, colour);
-        }
-
-        private static void DashedRing(Vec2 centre, float radius, float width, Color colour)
-        {
-            const int steps = 16;
-            for (int i = 0; i < steps; i += 2)
-            {
-                float t0 = 2f * Mathf.PI * i / steps;
-                float t1 = 2f * Mathf.PI * (i + 1) / steps;
-                Line(centre + new Vec2(Mathf.Cos(t0), Mathf.Sin(t0)) * radius, centre + new Vec2(Mathf.Cos(t1), Mathf.Sin(t1)) * radius, width, colour);
-            }
         }
 
         /// <summary>The outline of a chalkling's diamond, for one still being drawn.</summary>

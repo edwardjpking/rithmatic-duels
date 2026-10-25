@@ -675,7 +675,7 @@ namespace RithmaticDuels.Rules.Geometry
         private WorkSketch Sketch(Player owner, WorkInProgress work)
         {
             if (work == null) return null;
-            var sketch = new WorkSketch { Owner = owner, Kind = work.Kind, TargetLineId = work.TargetLineId };
+            var sketch = new WorkSketch { Owner = owner, Kind = work.Kind };
             switch (work.Kind)
             {
                 case WorkKind.BindPoints:
@@ -686,9 +686,8 @@ namespace RithmaticDuels.Rules.Geometry
                 case WorkKind.Drawing:
                     break;
                 default:
-                    var target = BodyOf(work.TargetLineId);
-                    if (target != null) sketch.Type = target.Line.Type;
-                    return sketch;
+                    // Work on a line already down (dismissing a LoF) finishes in the tick it starts, so is never seen.
+                    return null;
             }
 
             var spec = work.Spec;
