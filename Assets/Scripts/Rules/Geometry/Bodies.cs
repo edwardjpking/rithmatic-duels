@@ -31,6 +31,8 @@ namespace RithmaticDuels.Rules.Geometry
         public IReadOnlyList<Vec2> BindPoints { get; internal set; }
         /// <summary>A Mark's Cross's crossed LoF inside its circle. Empty for any other LoW.</summary>
         public IReadOnlyList<Segment> Braces { get; internal set; } = new Segment[0];
+        /// <summary>The main LoW bind point this LoW is bound at, or -1 for the main LoW itself.</summary>
+        public int AttachedAt { get; internal set; } = -1;
         public float Perimeter { get; private set; }
         public int SampleCount { get { return _params.Length; } }
 

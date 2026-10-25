@@ -12,7 +12,7 @@ Notion is no longer used for design notes; do not sync to it.
 
 - Four line types only: Warding (LoW), Forbiddance (LoF), Vigor (LoV), Making (LoM, creates chalklings). Silencing and Revocation are out of scope.
 - One drawing in progress per player. Each turn both players secretly pick one action, then one tick resolves.
-- Tick resolution order (DESIGN.md section 3): completion/dismissal → movement/attacks → damage.
+- Tick resolution order (DESIGN.md section 3): dismissal → rushed lines finish → animated lines act (and deal damage) → other lines finish.
 - Lose when your main LoW is breached. Turn limit → draw.
 - Completed drawings roll a random modifier; rush/steady change draw time and odds (section 5.2).
 - **All numbers are placeholders.** Keep them in data (e.g. ScriptableObjects or config), never hard-coded in logic, so balancing doesn't require code changes.

@@ -73,6 +73,7 @@ namespace RithmaticDuels.Presentation
 
         // Every choice starts unselected (null or -1). Pace defaults to Normal.
         private ActionKind? _kind;
+        private bool _defaultChosen;
         private ActionKind? _afterCancel;
         private LineType? _lineType;
         private DrawingPace _pace;
@@ -123,6 +124,9 @@ namespace RithmaticDuels.Presentation
             var available = duel.AvailableActions(player);
             if (available.Count == 0) return null;
             if (_kind.HasValue && !available.Contains(_kind.Value)) _kind = null;
+            // Mid-drawing, carrying on is the usual choice, so it starts selected.
+            if (!_kind.HasValue && !_defaultChosen && available.Contains(ActionKind.ContinueDrawing)) _kind = ActionKind.ContinueDrawing;
+            _defaultChosen = true;
 
             if (available.Count == 1 && available[0] == ActionKind.StartDrawing && board.MainWardOf(player) == null)
             {
@@ -239,7 +243,7 @@ namespace RithmaticDuels.Presentation
 
             if (board.MainWardOf(player) == null && config.MainWardFirst)
             {
-                if (!_mainShape.HasValue) return false;
+                if (!_mainShape.HasValue || config.Geometry.MainWardAtHome) return false;
                 _pointA = board.SnapMainWard(player, MainShapeSpec(), point, MainSemiMinor(config));
                 return true;
             }
@@ -290,23 +294,25 @@ namespace RithmaticDuels.Presentation
                 var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
                 float min, max, start;
                 board.AttachedSizeRange(spec, out min, out max, out start);
-                _attachedSize = Mathf.Clamp(board.AttachedSize(spec, Placement.AtBindPoint(0, _attachedSize)) + step, min, max);
+                // Never bigger than fits on the player's half at the chosen bind point.
+                if (_bindA >= 0) max = board.MaxAttachedSize(player, spec, _bindA);
+                _attachedSize = Mathf.Clamp(AttachedSize(board, player, spec) + step, min, max);
                 return true;
             }
 
             if (_lineType == LineType.Forbiddance && (_forbiddanceMode == ForbiddanceMode.Tangent || _forbiddanceMode == ForbiddanceMode.Free))
             {
-                _length = Mathf.Clamp(Length(config) + step, geometry.MinForbiddanceLength, geometry.MaxForbiddanceLength);
+                _length = Mathf.Clamp(FittedLength(config, board, player) + step, geometry.MinForbiddanceLength, MaxLength(config, board, player));
                 return true;
             }
             return false;
         }
 
         /// <summary>
-        /// The first thing each player does (DESIGN.md section 2): choose the main LoW's shape, place it on
-        /// their half, then choose its bind points. Each step unlocks once the one before is done. Where it
-        /// can go is shown, not told: the outline follows the mouse but never leaves the player's half, and
-        /// snaps to the preset spots and the midline.
+        /// The first thing each player does (DESIGN.md section 2): choose the main LoW's shape, then its
+        /// bind points. It goes at the player's home spot. (With GeometryConfig.MainWardAtHome off, the
+        /// player places it too: the outline follows the mouse but never leaves their half, and snaps to
+        /// the preset spots and the midline.)
         /// </summary>
         private PlayerAction DrawMainWardSetup(RulesConfig config, ChalkBoard board, Player player, out Placement placement, out string hint)
         {
@@ -323,9 +329,11 @@ namespace RithmaticDuels.Presentation
             }
             bool ellipse = _mainShape == MainShape.Ellipse;
             if (ellipse) GUILayout.Label("Scroll over the board to make it flatter or rounder. Flatter ellipses are weaker along their sides.");
-            GUILayout.Label("2. Click on your half of the board to place it.");
+            bool atHome = config.Geometry.MainWardAtHome;
+            if (atHome) _pointA = board.Home(player);
+            else GUILayout.Label("2. Click on your half of the board to place it.");
 
-            GUILayout.Label("3. Bind points:");
+            GUILayout.Label((atHome ? "2" : "3") + ". Bind points:");
             int bindPoints = -1;
             if (ellipse)
             {
@@ -348,10 +356,10 @@ namespace RithmaticDuels.Presentation
             var preview = new PlacementPreview
             {
                 Player = player,
-                Presets = board.MainWardPresets(player, shapeSpec, semiMinor),
-                ShowMidline = true,
+                Presets = atHome ? null : board.MainWardPresets(player, shapeSpec, semiMinor),
+                ShowMidline = !atHome,
             };
-            if (_hover.HasValue)
+            if (_hover.HasValue && !atHome)
                 preview.GhostWard = board.PreviewWard(player, shapeSpec, Placement.MainWard(board.SnapMainWard(player, shapeSpec, _hover.Value, semiMinor), semiMinor));
             if (_pointA.HasValue)
             {
@@ -437,11 +445,11 @@ namespace RithmaticDuels.Presentation
                     GUILayout.Label("Click a bind point on your main Line of Warding to attach it there.");
                     if (_bindA >= 0)
                     {
-                        placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : board.AttachedSize(spec, Placement.AtBindPoint(_bindA, _attachedSize)));
+                        placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : AttachedSize(board, player, spec));
                         IReadOnlyList<Vec2> points;
                         preview.Ward = board.PreviewWard(player, spec, placement, out points);
                         preview.WardBindPoints = points;
-                        if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward);
+                        if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
                     }
                     break;
 
@@ -457,7 +465,7 @@ namespace RithmaticDuels.Presentation
                         case ForbiddanceMode.Tangent:
                             GUILayout.Label("Click a bind point. The line lies along the circle there. Scroll to change its length.");
                             spec = DrawingSpec.Forbiddance(1);
-                            if (_bindA >= 0) placement = Placement.TangentAt(_bindA, Length(config));
+                            if (_bindA >= 0) placement = Placement.TangentAt(_bindA, FittedLength(config, board, player));
                             break;
                         case ForbiddanceMode.Free:
                             GUILayout.Label("Click where the line starts, then click to set its direction. Scroll to change its length.");
@@ -465,7 +473,7 @@ namespace RithmaticDuels.Presentation
                             Vec2? toward = _pointB ?? _hover;
                             if (_pointA.HasValue && toward.HasValue && Vec2.Distance(_pointA.Value, toward.Value) > 1e-3f)
                             {
-                                Vec2 end = _pointA.Value + (toward.Value - _pointA.Value).Normalized * Length(config);
+                                Vec2 end = _pointA.Value + (toward.Value - _pointA.Value).Normalized * FittedLength(config, board, player);
                                 preview.Segment = new Segment(_pointA.Value, end);
                                 if (_pointB.HasValue) placement = Placement.Segment(_pointA.Value, end);
                             }
@@ -673,6 +681,31 @@ namespace RithmaticDuels.Presentation
         private float Length(RulesConfig config)
         {
             return _length > 0f ? _length : config.Geometry.TangentForbiddanceLength;
+        }
+
+        /// <summary>The longest a tangent or free LoF being placed can be and stay on the player's half.</summary>
+        private float MaxLength(RulesConfig config, ChalkBoard board, Player player)
+        {
+            if (_forbiddanceMode == ForbiddanceMode.Tangent && _bindA >= 0)
+                return board.MaxForbiddanceLength(player, Placement.TangentAt(_bindA), Vec2.Zero);
+            Vec2? toward = _pointB ?? _hover;
+            if (_forbiddanceMode == ForbiddanceMode.Free && _pointA.HasValue && toward.HasValue && Vec2.Distance(_pointA.Value, toward.Value) > 1e-3f)
+                return board.MaxForbiddanceLength(player, Placement.Segment(_pointA.Value, _pointA.Value), toward.Value - _pointA.Value);
+            return config.Geometry.MaxForbiddanceLength;
+        }
+
+        /// <summary>The chosen LoF length, cut back if it would reach off the player's half.</summary>
+        private float FittedLength(RulesConfig config, ChalkBoard board, Player player)
+        {
+            return Mathf.Clamp(Length(config), config.Geometry.MinForbiddanceLength, MaxLength(config, board, player));
+        }
+
+        /// <summary>The chosen size of an attached LoW, cut back if it would reach off the player's half.</summary>
+        private float AttachedSize(ChalkBoard board, Player player, DrawingSpec spec)
+        {
+            float size = board.AttachedSize(spec, Placement.AtBindPoint(0, _attachedSize));
+            if (_bindA >= 0) size = Mathf.Min(size, board.MaxAttachedSize(player, spec, _bindA));
+            return size;
         }
 
         /// <summary>Select the bind point nearest the click. With <paramref name="two"/>, alternate between two picks.</summary>

@@ -153,6 +153,7 @@ namespace RithmaticDuels.Rules.Tests
         public void SetUp()
         {
             _config = new RulesConfig();
+            _config.CentreWall.Enabled = false; // the centre LoF has its own tests
             _board = new ChalkBoard(_config);
             _duel = new Duel(_config, new ScriptedRandom(Rolls.NoModifier), _board);
 
@@ -333,7 +334,103 @@ namespace RithmaticDuels.Rules.Tests
             var spec = DrawingSpec.Warding(4);
             Assert.IsNotNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, geometry.AttachedWardMaxRadius + 1f)));
             Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Warding(2), Placement.AtBindPoint(0, geometry.AttachedEllipseMinSemiMinor / 2f)));
-            Assert.IsNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, geometry.AttachedWardMinRadius)));
+            var placement = Placement.AtBindPoint(0, geometry.AttachedWardMinRadius);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, placement), placement));
+        }
+
+        [Test]
+        public void TheMainWardAlwaysGoesHome()
+        {
+            // Setup in SetUp asked for nothing in particular; a placement elsewhere is ignored too.
+            var config = new RulesConfig();
+            var board = new ChalkBoard(config);
+            var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), board);
+            var circle = DrawingSpec.Warding(4);
+            board.SetPendingPlacement(Player.A, circle, Placement.MainWard(V(12f, 6f)));
+            duel.ResolveTurn(PlayerAction.Start(circle), PlayerAction.Start(circle));
+            Assert.AreEqual(board.Home(Player.A).X, board.MainWardOf(Player.A).Shape.Centre.X, 1e-4);
+            Assert.AreEqual(board.Home(Player.A).Y, board.MainWardOf(Player.A).Shape.Centre.Y, 1e-4);
+        }
+
+        [Test]
+        public void NothingCanBeDrawnReachingIntoTheOpponentsHalf()
+        {
+            // A free LoF from x=14 toward B, 3 long, would end at x=17.
+            var free = Placement.Segment(V(14f, 4f), V(17f, 4f));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), free), free));
+            // The longest it can be is up to the centre line.
+            Assert.AreEqual(2f, _board.MaxForbiddanceLength(Player.A, Placement.Segment(V(14f, 4f), V(14f, 4f)), V(1f, 0f)), 1e-3);
+        }
+
+        [Test]
+        public void AttachedWardsMustStayOnTheirHalf()
+        {
+            _config.Geometry.AttachedWardMaxRadius = 5f;
+            var spec = DrawingSpec.Warding(4);
+            // Front bind point at x=9: a circle there of radius r reaches x = 9 + 2r, so 3.5 is the most that fits.
+            Assert.AreEqual(3.5f, _board.MaxAttachedSize(Player.A, spec, 0), 1e-2);
+            var tooBig = Placement.AtBindPoint(0, 4f);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, tooBig), tooBig));
+        }
+
+        [Test]
+        public void EachBindPointTakesOneMoreWard()
+        {
+            Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var again = Placement.AtBindPoint(0);
+            var spec = DrawingSpec.Warding(4);
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, again), again), Does.Contain("already"));
+            var other = Placement.AtBindPoint(1);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, other), other));
+        }
+
+        [Test]
+        public void AMarksCrossIsBracedBetweenItsBindPoints()
+        {
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var body = (WardBody)_board.BodyOf(cross.Id);
+            Assert.AreEqual(2, body.Braces.Count);
+            foreach (var brace in body.Braces)
+            {
+                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.A) < 1e-4f));
+                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.B) < 1e-4f));
+                Assert.AreEqual(2f * _config.Warding.MarksCrossRadius, brace.Length, 1e-3);
+            }
+        }
+
+        [Test]
+        public void BiggerAttachedWardsTakeLonger()
+        {
+            var small = _board.Measure(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1f));
+            var normal = _board.Measure(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
+            var big = _board.Measure(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 2.5f));
+            Assert.AreEqual(1, DrawTimes.BaseTurns(small, _config));
+            Assert.AreEqual(2, DrawTimes.BaseTurns(normal, _config), "the default size keeps bind points div 2");
+            Assert.AreEqual(3, DrawTimes.BaseTurns(big, _config));
+        }
+
+        [Test]
+        public void TheCentreWallReflectsVigorForItsTurns()
+        {
+            var config = new RulesConfig { MainWardFirst = false };
+            config.CentreWall.Turns = 4;
+            var board = new ChalkBoard(config);
+            var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), board);
+            Assert.IsTrue(board.CentreWallUp);
+
+            // A rushed High LoV from x=14 toward B: it reaches the wall at x=16 straight away and bounces back.
+            var spec = DrawingSpec.Vigor(VigorTier.High);
+            var aim = Placement.Aimed(V(14f, 2f), V(26f, 2f));
+            board.SetPendingPlacement(Player.A, spec, aim);
+            duel.ResolveTurn(PlayerAction.Start(spec, DrawingPace.Rush), Pass);
+            duel.ResolveTurn(Continue, Pass);
+            var vigor = duel.Lines.First(l => l.Type == LineType.Vigor);
+            var body = (VigorBody)board.BodyOf(vigor.Id);
+            Assert.Less(body.Direction.X, 0f, "reflected back toward A");
+            Assert.That(board.LastTickNotes, Has.Some.Contains("centre"));
+
+            for (int i = 0; i < 2; i++) duel.ResolveTurn(Pass, Pass);
+            Assert.IsFalse(board.CentreWallUp, "gone from turn 5");
         }
 
         [Test]
@@ -525,6 +622,7 @@ namespace RithmaticDuels.Rules.Tests
         public void TheMainWardCanBePlacedAndShapedOnItsOwnHalf()
         {
             var config = new RulesConfig();
+            config.Geometry.MainWardAtHome = false;
             var board = new ChalkBoard(config);
             var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), board);
 

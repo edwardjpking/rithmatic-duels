@@ -230,9 +230,8 @@ namespace RithmaticDuels.Presentation
             GUILayout.BeginHorizontal();
             if (_duel != null)
             {
-                string limit = _duel.CountedTurns + " of " + _duel.Config.TurnLimit + " counted";
-                if (_duel.CountedTurns == 0) limit += " (the count starts once both main LoW are drawn)";
-                GUILayout.Label("Turn " + (_duel.Turn + 1) + "   ·   " + limit
+                string wall = _board.CentreWallUp ? "   ·   centre wall up until turn " + _duel.Config.CentreWall.Turns : "";
+                GUILayout.Label("Turn " + (_duel.Turn + 1) + " of " + _duel.Config.TurnLimit + wall
                     + (_duel.ChalkFatigueActive ? "   ·   CHALK FATIGUE" : "") + "   ·   seed " + _currentSeed);
             }
             GUILayout.FlexibleSpace();
