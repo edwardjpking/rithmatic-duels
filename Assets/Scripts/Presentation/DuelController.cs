@@ -370,7 +370,7 @@ namespace RithmaticDuels.Presentation
                 case LineType.Vigor: return spec.Tier + " tier";
                 default:
                     return spec.DurabilityBuffs + "/" + spec.DamageBuffs + "/" + spec.SpeedBuffs
-                        + " durability/damage/speed buffs, " + spec.Glyphs + " glyph(s)";
+                        + " durability/damage/speed buffs, glyphs: " + spec.Glyphs;
             }
         }
 

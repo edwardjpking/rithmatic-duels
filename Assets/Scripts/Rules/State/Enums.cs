@@ -1,3 +1,5 @@
+using System;
+
 namespace RithmaticDuels.Rules
 {
     public enum Player
@@ -34,6 +36,15 @@ namespace RithmaticDuels.Rules
         Durability,
         Damage,
         Speed,
+    }
+
+    /// <summary>The glyphs a chalkling can carry (DESIGN.md section 4.4). A chalkling may carry both.</summary>
+    [Flags]
+    public enum Glyph
+    {
+        None = 0,
+        Attack = 1,
+        Defend = 2,
     }
 
     public enum DuelOutcome

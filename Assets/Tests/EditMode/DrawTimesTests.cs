@@ -60,13 +60,31 @@ namespace RithmaticDuels.Rules.Tests
         [TestCase(3, 0, 0, 0, 1)]
         [TestCase(4, 0, 0, 0, 1)]
         [TestCase(2, 2, 1, 0, 2)]
-        [TestCase(2, 2, 2, 2, 3)]
-        [TestCase(6, 3, 0, 3, 5)]
+        [TestCase(2, 2, 2, 1, 2)]
         [TestCase(0, 0, 0, 1, 1)]
         [TestCase(0, 0, 0, 0, 1)]
-        public void MakingTakesOnePerFourStatBuffsPlusOnePerExtraGlyph(int durability, int damage, int speed, int glyphs, int expected)
+        public void MakingTakesOnePerFourStatBuffsPlusOnePerExtraGlyph(int durability, int damage, int speed, int attack, int expected)
         {
+            var glyphs = attack > 0 ? Glyph.Attack : Glyph.None;
             Assert.AreEqual(expected, DrawTimes.BaseTurns(DrawingSpec.Making(durability, damage, speed, glyphs), _config));
+        }
+
+        [Test]
+        public void ABoundChalklingGetsDefendForFree()
+        {
+            // Bound with Attack too: Defend is free, Attack is the free glyph, so no extra turn and within the cap.
+            var spec = DrawingSpec.Making(glyphs: Glyph.Attack, boundBindPoints: 1);
+            Assert.AreEqual(Glyph.Attack | Glyph.Defend, spec.Glyphs);
+            Assert.AreEqual(1, spec.PaidGlyphs);
+            Assert.AreEqual(1, DrawTimes.BaseTurns(spec, _config));
+            Assert.IsNull(DrawTimes.Validate(spec, _config));
+        }
+
+        [Test]
+        public void OnlyABoundChalklingCarriesDefend()
+        {
+            var free = DrawingSpec.Making(glyphs: Glyph.Defend);
+            Assert.IsNotNull(DrawTimes.Validate(free, _config));
         }
 
         [TestCase(VigorTier.Low, 1)]
@@ -116,16 +134,19 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(2, DrawTimes.BaseTurns(DrawingSpec.Forbiddance(1), _config));
         }
 
-        [TestCase(0, 1, true)]
-        [TestCase(0, 2, false)]
-        [TestCase(2, 2, false)]
-        [TestCase(3, 2, true)]
-        [TestCase(5, 3, false)]
-        [TestCase(6, 3, true)]
-        public void ChalklingsGetOneFreeGlyphPlusOnePerThreeStatBuffs(int buffs, int glyphs, bool valid)
+        [Test]
+        public void AnUnbuffedChalklingCanCarryTheFreeAttackGlyph()
         {
-            string reason = DrawTimes.Validate(DrawingSpec.Making(durabilityBuffs: buffs, glyphs: glyphs), _config);
-            Assert.AreEqual(valid, reason == null, reason);
+            Assert.IsNull(DrawTimes.Validate(DrawingSpec.Making(glyphs: Glyph.Attack), _config));
+        }
+
+        [Test]
+        public void TheGlyphCapStillApplies()
+        {
+            // With no free glyphs, an Attack glyph needs StatBuffsPerExtraGlyph buffs.
+            _config.Making.FreeGlyphs = 0;
+            Assert.IsNotNull(DrawTimes.Validate(DrawingSpec.Making(durabilityBuffs: 2, glyphs: Glyph.Attack), _config));
+            Assert.IsNull(DrawTimes.Validate(DrawingSpec.Making(durabilityBuffs: 3, glyphs: Glyph.Attack), _config));
         }
 
         [Test]

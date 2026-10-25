@@ -43,7 +43,7 @@ namespace RithmaticDuels.Rules
         public int DurabilityBuffs { get; private set; }
         public int DamageBuffs { get; private set; }
         public int SpeedBuffs { get; private set; }
-        public int Glyphs { get; private set; }
+        public Glyph Glyphs { get; private set; }
         public int TotalStatBuffs { get { return DurabilityBuffs + DamageBuffs + SpeedBuffs; } }
 
         public bool IsActive { get { return Status == LineStatus.Active; } }

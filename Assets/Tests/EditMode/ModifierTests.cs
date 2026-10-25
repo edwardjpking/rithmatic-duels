@@ -143,7 +143,7 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void UnbuffedChalklingHasBaseStats()
         {
-            var line = new Line(1, Player.A, DrawingSpec.Making(glyphs: 1), 0, _config);
+            var line = new Line(1, Player.A, DrawingSpec.Making(glyphs: Glyph.Attack), 0, _config);
             Assert.AreEqual(1, line.MaxDurability);
             Assert.AreEqual(0, line.Damage);
             Assert.AreEqual(0, line.Speed);

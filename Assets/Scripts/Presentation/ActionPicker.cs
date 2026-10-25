@@ -88,7 +88,7 @@ namespace RithmaticDuels.Presentation
         private int _durabilityBuffs;
         private int _damageBuffs;
         private int _speedBuffs;
-        private int _glyphs;
+        private bool _attackGlyph;
         private ChalklingStat? _modifierStat;
         private int _targetLineId = -1;
         private int _amount = 1;
@@ -577,12 +577,12 @@ namespace RithmaticDuels.Presentation
             Stepper("Durability " + (making.BaseDurability + _durabilityBuffs * making.DurabilityPerBuff), ref _durabilityBuffs, 0, 12);
             Stepper("Damage " + (making.BaseDamage + _damageBuffs * making.DamagePerBuff), ref _damageBuffs, 0, 12);
             Stepper("Speed " + (making.BaseSpeed + _speedBuffs * making.SpeedPerBuff), ref _speedBuffs, 0, 12);
-            int maxGlyphs = DrawTimes.MaxGlyphs(_durabilityBuffs + _damageBuffs + _speedBuffs, config);
-            _glyphs = Mathf.Clamp(_glyphs, 0, maxGlyphs);
-            Stepper("Glyphs " + _glyphs + " of " + maxGlyphs + " (first free)", ref _glyphs, 0, maxGlyphs);
             GUILayout.Label("A positive modifier goes to:");
             Choose(ref _modifierStat, StatLabels);
             Choose(ref _chalklingMode, ChalklingLabels);
+            // Glyphs are Attack and Defend only; a bound chalkling carries Defend for free.
+            _attackGlyph = GUILayout.Toggle(_attackGlyph, " Attack glyph (the first glyph is free)");
+            if (_chalklingMode == ChalklingMode.Bound) GUILayout.Label("Bound, so it carries the Defend glyph for free.");
             GUILayout.Label("Chalklings stand still until chalkling behaviour is built.");
             if (!_modifierStat.HasValue || !_chalklingMode.HasValue)
             {
@@ -591,7 +591,8 @@ namespace RithmaticDuels.Presentation
             }
             hint = null;
             bool bound = _chalklingMode == ChalklingMode.Bound;
-            return DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, _glyphs, bound ? 1 : 0, _modifierStat.Value);
+            var glyphs = _attackGlyph ? Glyph.Attack : Glyph.None;
+            return DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, glyphs, bound ? 1 : 0, _modifierStat.Value);
         }
 
         private void DrawTiming(RulesConfig config, DrawingSpec spec)

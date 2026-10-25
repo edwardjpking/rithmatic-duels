@@ -941,7 +941,7 @@ namespace RithmaticDuels.Rules.Geometry
                     case HitKind.Ward:
                         var ward = (WardBody)hit.Other;
                         var shield = ShieldingChord(ward, hit.Vigor.Position, chalklingDamage);
-                        if (shield != null) HitShieldingChord(hit.Vigor, shield, ward, now, chalklingDamage, result);
+                        if (shield != null) HitShieldedArc(hit.Vigor, shield, ward, now, result);
                         else HitWard(hit.Vigor, ward, now, result);
                         Absorb(hit.Vigor, flying, result);
                         break;
@@ -1080,14 +1080,18 @@ namespace RithmaticDuels.Rules.Geometry
 
         private void HitWard(VigorBody vigor, WardBody ward, float time, MovementResult result)
         {
-            int damage = vigor.Line.Damage;
+            HitWard(vigor, ward, vigor.Line.Damage, time, result, "");
+        }
+
+        private void HitWard(VigorBody vigor, WardBody ward, int damage, float time, MovementResult result, string because)
+        {
             int before = ward.Weakest;
             ward.ApplyHit(vigor.Position, damage, _config.Warding.HitHalfWidth);
             int drop = before - ward.Weakest;
 
             // The rules core tracks the weakest point, so report how far that fell.
             result.Damage.Add(new DamageEvent(ward.LineId, drop, vigor.LineId, time));
-            _notes.Add(Name(vigor) + " hit " + Name(ward) + " for " + damage + (drop == damage ? "." : " at a point stronger than its weakest."));
+            _notes.Add(Name(vigor) + " hit " + Name(ward) + " for " + damage + because + (drop == damage ? "." : " at a point stronger than its weakest."));
         }
 
         private void HitChalkling(VigorBody vigor, ChalklingBody chalkling, float time, Dictionary<int, int> used, MovementResult result)
@@ -1150,9 +1154,8 @@ namespace RithmaticDuels.Rules.Geometry
         }
 
         /// <summary>
-        /// A LoF joining two bind points of one LoW shields the arc of that LoW between them: a LoV hitting that
-        /// arc deals its full damage to the LoF instead (DESIGN.md section 4.2). Returns the first such
-        /// LoF that is still standing, or null.
+        /// A LoF joining two bind points of one LoW toughens the smaller arc of that LoW between them
+        /// (DESIGN.md section 4.2). Returns the first such LoF that is still standing, or null.
         /// </summary>
         private ForbiddanceBody ShieldingChord(WardBody ward, Vec2 impact, Dictionary<int, int> used)
         {
@@ -1179,11 +1182,15 @@ namespace RithmaticDuels.Rules.Geometry
             return Vec2.Cross(along, impact - chord.A) * centreSide < 0f;
         }
 
-        private void HitShieldingChord(VigorBody vigor, ForbiddanceBody forbiddance, WardBody ward, float time, Dictionary<int, int> used, MovementResult result)
+        /// <summary>
+        /// A LoF joining two bind points of a LoW toughens the smaller arc it cuts off: a LoV hitting that arc
+        /// deals only Forbiddance.ChordArcDamageMultiplier of its damage, rounded up (DESIGN.md section 4.2).
+        /// The LoF itself takes nothing.
+        /// </summary>
+        private void HitShieldedArc(VigorBody vigor, ForbiddanceBody forbiddance, WardBody ward, float time, MovementResult result)
         {
-            int damage = vigor.Line.Damage;
-            DamageForbiddance(forbiddance, damage, vigor, time, used, result);
-            _notes.Add(Name(vigor) + " hit " + Name(ward) + " where " + Name(forbiddance) + " shields it. The LoF took " + damage + ".");
+            int damage = (int)Math.Ceiling(vigor.Line.Damage * _config.Forbiddance.ChordArcDamageMultiplier - 1e-6);
+            HitWard(vigor, ward, damage, time, result, " (reduced by " + Name(forbiddance) + ")");
         }
 
         private static void DamageForbiddance(ForbiddanceBody forbiddance, int damage, VigorBody vigor, float time, Dictionary<int, int> used, MovementResult result)
@@ -1236,6 +1243,7 @@ namespace RithmaticDuels.Rules.Geometry
                 if (!OnBoard(point)) return "It must fit on the board.";
                 if (halfOnly && !OnOwnHalf(player, point)) return "It must fit on your own half of the board.";
             }
+            if (OverlapsLines(player, shape)) return "It can't overlap your other lines. It may only touch them.";
             return null;
         }
 
@@ -1256,7 +1264,66 @@ namespace RithmaticDuels.Rules.Geometry
             Vec2 along = segment.B - segment.A;
             Vec2 side = along.Length > 1e-6f ? along.Perp.Normalized * (_config.Geometry.ForbiddanceWidth / 2f) : Vec2.Zero;
             return CheckPoint(player, segment.A + side, halfOnly) ?? CheckPoint(player, segment.A - side, halfOnly)
-                ?? CheckPoint(player, segment.B + side, halfOnly) ?? CheckPoint(player, segment.B - side, halfOnly);
+                ?? CheckPoint(player, segment.B + side, halfOnly) ?? CheckPoint(player, segment.B - side, halfOnly)
+                ?? (CrossesAWard(player, segment) ? "A Line of Forbiddance can't cross a Line of Warding. It can lie along one as a tangent, or join two bind points of one." : null);
+        }
+
+        /// <summary>Points this close to an outline (as a share of the shape's size) count as touching it, not crossing.</summary>
+        private const float TouchTolerance = 0.03f;
+
+        /// <summary>Inside (-1), outside (1), or touching the outline (0).</summary>
+        private static int Side(WardShape shape, Vec2 point)
+        {
+            float level = shape.Level(point);
+            if (level < 1f - TouchTolerance) return -1;
+            if (level > 1f + TouchTolerance) return 1;
+            return 0;
+        }
+
+        /// <summary>
+        /// True if the segment goes through the outline of one of the player's LoW: part of it is inside
+        /// and part outside. A tangent only touches, and a chord stays inside (DESIGN.md section 4.2).
+        /// </summary>
+        private bool CrossesAWard(Player player, Segment segment)
+        {
+            const int steps = 64;
+            foreach (var ward in WardsOf(player))
+            {
+                bool inside = false, outside = false;
+                for (int i = 1; i < steps; i++)
+                {
+                    int side = Side(ward.Shape, segment.A + (segment.B - segment.A) * ((float)i / steps));
+                    inside |= side < 0;
+                    outside |= side > 0;
+                }
+                if (inside && outside) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// True if the shape overlaps one of the player's LoW or crosses one of their LoF. Touching at a
+        /// point, as a LoW bound at a bind point does, is fine (DESIGN.md section 4.1).
+        /// </summary>
+        private bool OverlapsLines(Player player, WardShape shape)
+        {
+            const int steps = 64;
+            foreach (var ward in WardsOf(player))
+            {
+                for (int i = 0; i < steps; i++)
+                {
+                    float t = 2f * (float)Math.PI * i / steps;
+                    if (Side(ward.Shape, shape.PointAt(t)) < 0 || Side(shape, ward.Shape.PointAt(t)) < 0) return true;
+                }
+            }
+            foreach (var body in _bodies.Values)
+            {
+                var forbiddance = body as ForbiddanceBody;
+                if (forbiddance == null || forbiddance.Owner != player || !forbiddance.Line.IsActive) continue;
+                for (int i = 0; i <= steps; i++)
+                    if (Side(shape, forbiddance.Segment.A + (forbiddance.Segment.B - forbiddance.Segment.A) * ((float)i / steps)) < 0) return true;
+            }
+            return false;
         }
 
         private string CheckPoint(Player player, Vec2 point, bool halfOnly)

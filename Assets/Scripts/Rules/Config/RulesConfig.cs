@@ -59,6 +59,13 @@ namespace RithmaticDuels.Rules
         /// <summary>Rushing a 1-turn drawing makes it complete in the same tick it is started.</summary>
         public bool RushedOneTurnDrawingsCompleteImmediately = true;
 
+        /// <summary>
+        /// A rushed drawing joins the board before animated lines act (stage 2 of DESIGN.md section 3) only if
+        /// it would take at most this many turns at normal pace, travel included (decided 2026-10-25).
+        /// Other rushed drawings finish with everything else.
+        /// </summary>
+        public int RushedEarlyMaxNormalTurns = 1;
+
         /// <summary>PROVISIONAL: a negative modifier can never take a fresh line below this durability.</summary>
         public int MinimumDurabilityAfterModifier = 1;
 
@@ -267,6 +274,11 @@ namespace RithmaticDuels.Rules
         public int DismissTurns = 1;
         /// <summary>A LoV hitting a LoF reflects and deals this share of its damage to it, rounded up (DESIGN.md section 4.2).</summary>
         public float VigorDamageMultiplier = 0.5f;
+        /// <summary>
+        /// A LoF joining two bind points of one LoW toughens the smaller arc it cuts off: a LoV hitting that
+        /// arc deals this share of its damage, rounded up (decided 2026-10-25; the share is a placeholder).
+        /// </summary>
+        public float ChordArcDamageMultiplier = 0.5f;
     }
 
     [Serializable]

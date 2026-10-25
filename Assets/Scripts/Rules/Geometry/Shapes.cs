@@ -165,6 +165,16 @@ namespace RithmaticDuels.Rules.Geometry
             return Intersect.RayEllipseLocal(localOrigin, localDirection, A, B, out distance);
         }
 
+        /// <summary>
+        /// How far out a point is, as a multiple of the outline: below 1 inside, 1 on it, above 1 outside.
+        /// Points the same fraction of the way out have the same level.
+        /// </summary>
+        public float Level(Vec2 point)
+        {
+            var local = (point - Centre).Rotated(-Rotation);
+            return (float)Math.Sqrt(local.X * local.X / (A * A) + local.Y * local.Y / (B * B));
+        }
+
         public bool Contains(Vec2 point)
         {
             var local = (point - Centre).Rotated(-Rotation);

@@ -25,7 +25,7 @@ namespace RithmaticDuels.Rules
         public int DurabilityBuffs;
         public int DamageBuffs;
         public int SpeedBuffs;
-        public int Glyphs;
+        public Glyph Glyphs;
 
         /// <summary>
         /// LoM only. PROVISIONAL: the stat a positive modifier ("+1 to a stat of choice") goes to is
@@ -48,6 +48,19 @@ namespace RithmaticDuels.Rules
 
         public int TotalStatBuffs { get { return DurabilityBuffs + DamageBuffs + SpeedBuffs; } }
 
+        /// <summary>LoM only: a bound chalkling carries the Defend glyph at no cost.</summary>
+        public bool IsBound { get { return Type == LineType.Making && BindPoints > 0; } }
+
+        /// <summary>LoM only: glyphs that count toward the glyph cap and draw time (Defend is free when bound).</summary>
+        public int PaidGlyphs
+        {
+            get
+            {
+                var paid = IsBound ? Glyphs & ~Glyph.Defend : Glyphs;
+                return ((paid & Glyph.Attack) != 0 ? 1 : 0) + ((paid & Glyph.Defend) != 0 ? 1 : 0);
+            }
+        }
+
         public static DrawingSpec Warding(int bindPoints)
         {
             return new DrawingSpec { Type = LineType.Warding, BindPoints = bindPoints };
@@ -69,7 +82,7 @@ namespace RithmaticDuels.Rules
         }
 
         public static DrawingSpec Making(
-            int durabilityBuffs = 0, int damageBuffs = 0, int speedBuffs = 0, int glyphs = 0,
+            int durabilityBuffs = 0, int damageBuffs = 0, int speedBuffs = 0, Glyph glyphs = Glyph.None,
             int boundBindPoints = 0, ChalklingStat positiveModifierStat = ChalklingStat.Durability)
         {
             return new DrawingSpec
@@ -78,7 +91,8 @@ namespace RithmaticDuels.Rules
                 DurabilityBuffs = durabilityBuffs,
                 DamageBuffs = damageBuffs,
                 SpeedBuffs = speedBuffs,
-                Glyphs = glyphs,
+                // A bound chalkling always carries Defend, for free.
+                Glyphs = boundBindPoints > 0 ? glyphs | Glyph.Defend : glyphs,
                 BindPoints = boundBindPoints,
                 PositiveModifierStat = positiveModifierStat,
             };

@@ -365,7 +365,7 @@ namespace RithmaticDuels.Rules.Tests
         public void OpponentSeesLineTypeButNotSpec()
         {
             var duel = NewDuel();
-            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Making(durabilityBuffs: 6, glyphs: 2), DrawingPace.Steady), Pass);
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Making(durabilityBuffs: 6, glyphs: Glyph.Attack, boundBindPoints: 1), DrawingPace.Steady), Pass);
             var view = duel.ViewWorkOf(Player.A);
             Assert.AreEqual(WorkKind.Drawing, view.Kind);
             Assert.AreEqual(LineType.Making, view.LineType);

@@ -37,7 +37,7 @@ namespace RithmaticDuels.Rules
                 case LineType.Making:
                     int perTurn = Math.Max(1, config.Making.StatBuffsPerDrawTurn);
                     turns = (spec.TotalStatBuffs + perTurn - 1) / perTurn
-                        + Math.Max(0, spec.Glyphs - config.Making.FreeGlyphs) * config.Making.DrawTurnsPerGlyph;
+                        + Math.Max(0, spec.PaidGlyphs - config.Making.FreeGlyphs) * config.Making.DrawTurnsPerGlyph;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(spec));
@@ -64,7 +64,7 @@ namespace RithmaticDuels.Rules
             return Math.Max(config.MinimumWorkTurns, Round(baseTurns * settings.TimeMultiplier, settings.Rounding));
         }
 
-        /// <summary>Most glyphs a chalkling with this many stat buffs may carry.</summary>
+        /// <summary>Most paid glyphs (a bound chalkling's Defend is free) a chalkling with this many stat buffs may carry.</summary>
         public static int MaxGlyphs(int statBuffs, RulesConfig config)
         {
             return config.Making.FreeGlyphs + statBuffs / config.Making.StatBuffsPerExtraGlyph;
@@ -85,9 +85,13 @@ namespace RithmaticDuels.Rules
                         return "A Line of Warding has at most " + config.Warding.MaxBindPoints + " bind points.";
                     break;
                 case LineType.Making:
-                    if (spec.DurabilityBuffs < 0 || spec.DamageBuffs < 0 || spec.SpeedBuffs < 0 || spec.Glyphs < 0)
-                        return "Stat buffs and glyphs cannot be negative.";
-                    if (spec.Glyphs > MaxGlyphs(spec.TotalStatBuffs, config))
+                    if (spec.DurabilityBuffs < 0 || spec.DamageBuffs < 0 || spec.SpeedBuffs < 0)
+                        return "Stat buffs cannot be negative.";
+                    if ((spec.Glyphs & ~(Glyph.Attack | Glyph.Defend)) != 0) return "Unknown glyph.";
+                    // PROVISIONAL: Defend only means something for a bound chalkling, which gets it free.
+                    if (spec.IsBound != ((spec.Glyphs & Glyph.Defend) != 0))
+                        return spec.IsBound ? "A bound chalkling always carries the Defend glyph." : "Only a bound chalkling can carry the Defend glyph.";
+                    if (spec.PaidGlyphs > MaxGlyphs(spec.TotalStatBuffs, config))
                         return "A chalkling may carry " + config.Making.FreeGlyphs + " glyph plus one per "
                             + config.Making.StatBuffsPerExtraGlyph + " stat buffs.";
                     break;
