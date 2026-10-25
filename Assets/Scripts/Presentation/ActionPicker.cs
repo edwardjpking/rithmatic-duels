@@ -92,6 +92,11 @@ namespace RithmaticDuels.Presentation
         private int _amount = 1;
         private ChalklingStat? _buffStat;
 
+        // What the player has typed into each chalkling stat box (see StatEntry).
+        private readonly TypedStat _durabilityEntry = new TypedStat();
+        private readonly TypedStat _damageEntry = new TypedStat();
+        private readonly TypedStat _speedEntry = new TypedStat();
+
         // Sizes set with the scroll wheel. Negative means "not touched yet", so the config default is used.
         private float _semiMinor = -1f;
         private float _length = -1f;
@@ -568,9 +573,10 @@ namespace RithmaticDuels.Presentation
         {
             var making = config.Making;
             GUILayout.Label("Spend points on stats. Every " + making.StatBuffsPerDrawTurn + " points take a turn to draw.");
-            Stepper("Durability " + (making.BaseDurability + _durabilityBuffs * making.DurabilityPerBuff), ref _durabilityBuffs, 0, 12);
-            Stepper("Damage " + (making.BaseDamage + _damageBuffs * making.DamagePerBuff), ref _damageBuffs, 0, 12);
-            Stepper("Speed " + (making.BaseSpeed + _speedBuffs * making.SpeedPerBuff), ref _speedBuffs, 0, 12);
+            GUILayout.Label("Type the stat you want, or use - and +.");
+            StatEntry("Durability", _durabilityEntry, ref _durabilityBuffs, making.BaseDurability, making.DurabilityPerBuff);
+            StatEntry("Damage", _damageEntry, ref _damageBuffs, making.BaseDamage, making.DamagePerBuff);
+            StatEntry("Speed", _speedEntry, ref _speedBuffs, making.BaseSpeed, making.SpeedPerBuff);
             int maxGlyphs = DrawTimes.MaxGlyphs(_durabilityBuffs + _damageBuffs + _speedBuffs, config);
             _glyphs = Mathf.Clamp(_glyphs, 0, maxGlyphs);
             Stepper("Glyphs " + _glyphs + " of " + maxGlyphs + " (first free)", ref _glyphs, 0, maxGlyphs);
@@ -759,6 +765,96 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A label with - and + buttons. A button that would go past the limits is greyed out.</summary>
+        /// <summary>The most buffs one chalkling stat can take in the point buy.</summary>
+        private const int MaxStatBuffs = 12;
+
+        /// <summary>The text in one stat box, kept between frames so a half-typed number isn't wiped.</summary>
+        private sealed class TypedStat
+        {
+            public string Text = "";
+            // The buffs the box last showed, so a change from the - and + buttons refreshes it.
+            public int ShownBuffs = -1;
+        }
+
+        /// <summary>
+        /// One chalkling stat: a box the player can type the stat they want into, and - and + buttons.
+        /// Both go through the same rule: the stat is base + buffs × perBuff, with 0 to MaxStatBuffs buffs.
+        /// A typed number moves to the nearest value the point buy can make (for example 4 becomes 5 when
+        /// durability goes 1, 3, 5...), and the box shows that value once the player presses Enter or clicks away.
+        /// </summary>
+        private static void StatEntry(string name, TypedStat entry, ref int buffs, int baseValue, int perBuff)
+        {
+            int value = baseValue + buffs * perBuff;
+            string control = "stat-" + name;
+            bool focused = GUI.GetNameOfFocusedControl() == control;
+            if (focused && Event.current.type == EventType.KeyDown
+                && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter))
+            {
+                GUI.FocusControl(null);
+                focused = false;
+                Event.current.Use();
+            }
+            // Show the real value unless the player is typing, or the buttons changed it since they typed.
+            if (!focused || entry.ShownBuffs != buffs)
+            {
+                entry.Text = value.ToString();
+                entry.ShownBuffs = buffs;
+            }
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(name, GUILayout.Width(100));
+            GUI.SetNextControlName(control);
+            string typed = GUILayout.TextField(entry.Text, 3, GUILayout.Width(50));
+            if (typed != entry.Text)
+            {
+                entry.Text = FilterDigits(typed);
+                int wanted;
+                if (int.TryParse(entry.Text, out wanted))
+                {
+                    buffs = BuffsFor(wanted, baseValue, perBuff, 0, MaxStatBuffs);
+                    entry.ShownBuffs = buffs;
+                }
+            }
+            string note = perBuff > 1 ? "steps of " + perBuff : "";
+            GUILayout.Label(note, GUILayout.Width(70));
+            int step = 0;
+            bool enabled = GUI.enabled;
+            GUI.enabled = enabled && buffs > 0;
+            if (GUILayout.Button("-", GUILayout.Width(30))) step = -1;
+            GUI.enabled = enabled && buffs < MaxStatBuffs;
+            if (GUILayout.Button("+", GUILayout.Width(30))) step = 1;
+            GUI.enabled = enabled;
+            GUILayout.EndHorizontal();
+
+            int next = Mathf.Clamp(buffs + step, 0, MaxStatBuffs);
+            bool changed = next != buffs;
+            buffs = next;
+            if (changed) GUIUtility.ExitGUI();
+        }
+
+        /// <summary>
+        /// The number of buffs whose stat (base + buffs × perBuff) is nearest the wanted value, kept between
+        /// min and max. A tie goes to the higher value.
+        /// </summary>
+        private static int BuffsFor(int wanted, int baseValue, int perBuff, int min, int max)
+        {
+            if (perBuff <= 0) return min;
+            int above = wanted - baseValue;
+            int buffs = (above * 2 + perBuff) / (perBuff * 2);
+            if (above < 0) buffs = min;
+            return Mathf.Clamp(buffs, min, max);
+        }
+
+        private static string FilterDigits(string text)
+        {
+            var kept = new System.Text.StringBuilder();
+            foreach (char c in text)
+            {
+                if (c >= '0' && c <= '9') kept.Append(c);
+            }
+            return kept.ToString();
+        }
+
         private static void Stepper(string label, ref int value, int min, int max)
         {
             GUILayout.BeginHorizontal();
