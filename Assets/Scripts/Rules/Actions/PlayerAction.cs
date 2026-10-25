@@ -5,7 +5,6 @@ namespace RithmaticDuels.Rules
         StartDrawing,
         ContinueDrawing,
         CancelDrawing,
-        AddToDrawing,
         DismissForbiddance,
         /// <summary>Draw the bind points of the main LoW (DESIGN.md section 2). Amount is how many.</summary>
         DrawBindPoints,
@@ -19,10 +18,8 @@ namespace RithmaticDuels.Rules
         public DrawingSpec Spec { get; private set; }
         public DrawingPace Pace { get; private set; }
         public int TargetLineId { get; private set; }
-        /// <summary>Add to drawing: stat buffs to add to a chalkling (LoM).</summary>
+        /// <summary>Draw bind points: how many.</summary>
         public int Amount { get; private set; }
-        /// <summary>Add to drawing on a LoM: which chalkling stat the buffs go to.</summary>
-        public ChalklingStat Stat { get; private set; }
         /// <summary>
         /// Cancel the drawing in progress first, then do this action in the same turn (DESIGN.md section 5.1).
         /// Cancelling on its own is <see cref="Cancel"/>, which is the same as cancelling and passing.
@@ -43,12 +40,6 @@ namespace RithmaticDuels.Rules
         public static PlayerAction Continue() { return new PlayerAction(ActionKind.ContinueDrawing); }
         public static PlayerAction Cancel() { return new PlayerAction(ActionKind.CancelDrawing); }
         public static PlayerAction Pass() { return new PlayerAction(ActionKind.Pass); }
-
-        /// <summary>Buff a chalkling (LoM) with this many stat buffs on one stat.</summary>
-        public static PlayerAction Buff(int chalklingLineId, ChalklingStat stat, int buffs)
-        {
-            return new PlayerAction(ActionKind.AddToDrawing) { TargetLineId = chalklingLineId, Amount = buffs, Stat = stat };
-        }
 
         public static PlayerAction Dismiss(int forbiddanceLineId)
         {

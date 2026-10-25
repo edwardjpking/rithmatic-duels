@@ -92,7 +92,7 @@ Once both players have locked in their choices (decided 2026-10-25):
    - **LoV hits LoV:** the two absorb each other's energy (section 4.3).
    - **LoM hits LoW / LoF / LoM:** an attacking LoM deals its damage to the line at its current position.
    - Any line left with no durability loses effect.
-4. **Other lines are finished.** Every other drawing that finishes this tick (including chalkling buffs) is added to the board and gains its durability. A LoV finished here first flies on the next tick.
+4. **Other lines are finished.** Every other drawing that finishes this tick is added to the board and gains its durability. A LoV finished here first flies on the next tick.
 
 Stages 3 and 4 may be swapped later (`RulesConfig.LinesFinishBeforeMovement`), which would let every finished line act or block in the tick it is finished.
 
@@ -244,11 +244,12 @@ Each turn a player picks one of these (availability depends on state):
 |---|---|
 | **Start drawing** | Only available with no drawing in progress. Choose one of the 4 line types. Optionally **rush** or **steady** (below), except for the main LoW. The turn spent starting counts as the first turn of progress: a 1-turn drawing completes in the tick it is started, and a 2-turn drawing needs one Continue drawing. |
 | **Continue drawing** | Advance the current drawing. Uses the action for the turn. |
-| **Cancel drawing** | Abandon the current drawing and lose all progress, then choose another action for the same turn (start a new drawing, add to one, dismiss a LoF, or pass). Cancelling does not use up the turn (decided 2026-10-25). |
-| **Add to drawing** | Buff LoM: 2 turns per stat buff. LoW and LoF can't be repaired (removed 2026-10-25 so duels don't drag on; see `docs/FUTURE_IDEAS.md`). |
+| **Cancel drawing** | Abandon the current drawing and lose all progress, then choose another action for the same turn (start a new drawing, dismiss a LoF, or pass). Cancelling does not use up the turn (decided 2026-10-25). |
 | **Dismiss LoF** | Duration 1 turn (changed from 2 on 2026-10-25): the LoF disappears at the start of the tick it is chosen (section 3). Select one LoF to dismiss (by clicking it on the board). |
 | **Pass the turn** | Do nothing. Not available during the setup. |
 | **Draw bind points** | Only while the main LoW has no bind points (after cancelling them): start drawing them again (section 2). |
+
+**Add to drawing was removed (2026-10-25)** so duels don't drag on: lines can't be repaired and chalklings can't be buffed after they are drawn. See `docs/FUTURE_IDEAS.md`.
 
 **Travel cost (decided 2026-10-24).** Drawing away from the main LoW takes extra time to get into position. The distance is measured from the main LoW's outline to the nearest point of the new drawing (a LoV's starting point, an unbound chalkling, or the nearest point of a free LoF). Anything inside the main LoW or on its bind points costs nothing extra. Placeholder bands: up to 2 units +0 turns, over 2 units +1, over 4 units +2, over 7 units +3. Travel turns are added after rush or steady, which do not change them.
 
@@ -430,9 +431,9 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 
 | Rule | Current default | Where |
 |---|---|---|
-| Do Add to drawing and Dismiss LoF use the one-drawing slot? | Yes: they occupy it, advance with Continue drawing, and can be cancelled. Like Start drawing, the turn they are chosen counts as progress. | `WorkInProgress`, `StartActionCountsAsProgress` |
+| Do Dismiss LoF and drawing bind points use the one-drawing slot? | Yes: they occupy it, advance with Continue drawing, and can be cancelled. Like Start drawing, the turn they are chosen counts as progress. | `WorkInProgress`, `StartActionCountsAsProgress` |
 | When chalk fatigue wears down a main LoW | Every 3rd turn of the last 15 (turns 48, 51, 54, 57 and 60 of 60), in the damage step. It can breach. | `ChalkFatigue` |
-| Buffs and modifiers | Buffs do not roll a modifier. | `Duel.Complete` |
+| Bind points and modifiers | Dismissal and bind points do not roll a modifier. | `Duel.Complete` |
 | A "2x" modifier | Applies the modifier twice. | `*PerModifierStep` |
 | Negative modifier on a low-durability line | Durability never drops below 1 at completion. | `MinimumDurabilityAfterModifier` |
 | Which stat a chalkling's +ve modifier goes to | Chosen with the stat specification when the LoM is started. | `DrawingSpec.PositiveModifierStat` |
@@ -441,11 +442,11 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 | LoW durability per point (section 4.1) | The rules core keeps one durability number per LoW, standing for its weakest point. The geometry layer tracks per-point durability and curvature scaling and reports damage to that weakest point. | `Line.Durability`, `IMovementResolver` |
 | Tiebreak with per-point durability | "Share of maximum durability left" uses the weakest point: its durability over that point's maximum. | `Duel.Tiebreak` |
 | Breach timing for chalk fatigue | Fatigue lands at the end of the tick, so a breach by a LoV earlier in the same tick comes first. | `Duel.ApplyChalkFatigue` |
-| What the opponent sees of a drawing in progress | Its kind (drawing, buff, dismiss) and line type only; not spec, pace or progress. | `Duel.ViewWorkOf` |
+| What the opponent sees of a drawing in progress | Its kind (drawing, dismiss, bind points) and line type only; not spec, pace or progress. | `Duel.ViewWorkOf` |
 | Elliptical main LoW | Semi-major axis 3.5, long axis toward the opponent, bind points at its two ends. Semi-minor axis set by the player within 1.5 to 3.25 (default 2.5). | `GeometryConfig.Ellipse*` |
 | Main LoW on timeout before it is set up | A four-point circle in the default spot. With no bind points under way, timeout restarts them at the set-up count. | `Warding.TimeoutMainWardBindPoints`, `Duel.TimeoutAction` |
 | Travel cost bands | +1 turn past each of 2, 4 and 7 units from the main LoW's outline. | `GeometryConfig.TravelTurnThresholds` |
-| Travel for buffs and dismissal | None. | `Duel.ApplyChoice` |
+| Travel for dismissal | None. | `Duel.ApplyChoice` |
 | LoF length range | 1 to 8 units, 0.25 per scroll notch. | `GeometryConfig.*ForbiddanceLength`, `ScrollStep` |
 | LoV damage to a LoF it reflects off | Half, rounded up (a Low LoV still deals 1). | `Forbiddance.VigorDamageMultiplier` |
 | LoF between bind points through the centre | Both arcs are the same size; it toughens the half facing the opponent. | `ChalkBoard.ChordShields` |
@@ -476,7 +477,7 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 
 **Sixth round, 2026-10-25:** a LoF's only roles are mirror/shield and, between two bind points of one LoW, halving damage on the smaller arc (section 4.2); no LoF may cross a LoW and no LoW may overlap another line (section 4.2); only rushed drawings that would take 1 turn at normal pace finish at stage 2 (section 3); glyphs are just Attack and Defend, one free glyph per chalkling, and bound chalklings must Defend (section 4.4); the LoF toughening an arc takes the same halved damage as the LoW.
 
-**Seventh round, 2026-10-25:** repairing LoW and LoF is removed (section 5.1); hovering a LoV shows what it would deal on a hit; the rush helper text says when rushing only gains the early finish (section 3).
+**Seventh round, 2026-10-25:** Add to drawing is removed, so no repairs or chalkling buffs (section 5.1); hovering a LoV shows its damage on a hit; the rush helper text says when rushing only gains the early finish (section 3).
 
 **Settled 2026-10-24:** the start turn counts as progress, main LoW setup comes first (shape, position on own half, then bind points), travel cost for drawing away from the main LoW, variable LoF length, and LoF damage (half from LoV that reflect off them, full when shielding the smaller arc between their bind points, and chalklings hit them before the LoW).
 

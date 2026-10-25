@@ -6,7 +6,9 @@ Ideas to return to once the basic features are implemented. None of these are cu
 
 Features that were built and then taken out. Keep them in mind for future developments.
 
-- **Repairing LoW and LoF** (removed 2026-10-25). Add to drawing could repair a LoW or LoF at 2 turns per point of durability, up to its durability at completion, and not during chalk fatigue. The user removed it because it would make duels go on too long. The Warder and Mender archetypes (section 4) were built around it.
+- **Add to drawing** (removed 2026-10-25), because it would make duels go on too long:
+  - **Repairing LoW and LoF:** 2 turns per point of durability, up to the line's durability at completion, and not during chalk fatigue. The Warder and Mender archetypes (section 4) were built around it.
+  - **Buffing chalklings:** 2 turns per stat buff on one stat of a chalkling already on the board, applied as if drawn in at the start, with no modifier roll.
 - **Glyph cap and extra glyphs** (removed 2026-10-25): see section 5.
 
 ## Priority order

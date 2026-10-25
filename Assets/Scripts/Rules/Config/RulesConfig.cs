@@ -36,7 +36,7 @@ namespace RithmaticDuels.Rules
         /// <summary>
         /// The turn spent on Start drawing counts as the first turn of progress, so a 2-turn drawing needs
         /// one Continue and a 1-turn drawing completes in the tick it is started (DESIGN.md section 5.1).
-        /// PROVISIONAL: the same applies to Add to drawing and Dismiss LoF.
+        /// PROVISIONAL: the same applies to Dismiss LoF.
         /// </summary>
         public bool StartActionCountsAsProgress = true;
 
@@ -78,7 +78,6 @@ namespace RithmaticDuels.Rules
         public ForbiddanceConfig Forbiddance = new ForbiddanceConfig();
         public VigorConfig Vigor = new VigorConfig();
         public MakingConfig Making = new MakingConfig();
-        public AddToDrawingConfig AddToDrawing = new AddToDrawingConfig();
 
         public PaceConfig Rush = new PaceConfig { TimeMultiplier = 0.5, Rounding = RoundingMode.Up };
         public PaceConfig Steady = new PaceConfig { TimeMultiplier = 1.5, Rounding = RoundingMode.Up };
@@ -331,12 +330,6 @@ namespace RithmaticDuels.Rules
         public int StatPerModifierStep = 1;
         /// <summary>Draw time is ceil(stat buffs / StatBuffsPerDrawTurn), at least the minimum. The one glyph is free.</summary>
         public int StatBuffsPerDrawTurn = 4;
-    }
-
-    [Serializable]
-    public sealed class AddToDrawingConfig
-    {
-        public int TurnsPerStatBuff = 2;
     }
 
     public enum RoundingMode

@@ -8,11 +8,10 @@ namespace RithmaticDuels.Rules
         WorkProgressed,
         WorkCancelled,
         DrawingCompleted,
-        BuffCompleted,
         DismissCompleted,
         /// <summary>A main LoW's bind points are drawn. Value is how many.</summary>
         BindPointsCompleted,
-        /// <summary>A buff or dismissal finished but its target was gone.</summary>
+        /// <summary>A dismissal finished but its target was gone.</summary>
         WorkFizzled,
         LineDamaged,
         /// <summary>Chalk fatigue wore down a main LoW (DESIGN.md section 2.1).</summary>
@@ -30,7 +29,7 @@ namespace RithmaticDuels.Rules
         public TurnEventType Type { get; private set; }
         public Player Player { get; private set; }
         public int LineId { get; private set; }
-        /// <summary>Damage dealt, modifier steps rolled, buffs added and so on, depending on Type.</summary>
+        /// <summary>Damage dealt, modifier steps rolled and so on, depending on Type.</summary>
         public int Value { get; private set; }
 
         public TurnEvent(TurnEventType type, Player player, int lineId = -1, int value = 0)

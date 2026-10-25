@@ -213,12 +213,7 @@ namespace RithmaticDuels.Presentation
             var line = body.Line;
             string text = TurnNarrator.LineName(line);
             if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability + (line.Type == LineType.Warding ? " (weakest point)" : "");
-            if (line.Type == LineType.Vigor)
-            {
-                text += "\n" + line.Tier + " tier, speed " + line.Speed;
-                text += "\nOn a hit, it deals:\n  " + line.Damage + " to a LoW or chalkling\n  " + _board.ReflectDamage(line.Damage) + " to a LoF it bounces off\n  "
-                    + _board.ToughenedArcDamage(line.Damage) + " each to a LoW arc and the LoF toughening it";
-            }
+            if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
             var ward = body as WardBody;

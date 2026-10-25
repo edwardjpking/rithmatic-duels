@@ -592,7 +592,7 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(ActionKind.ContinueDrawing, duel.TimeoutAction(Player.A).Kind);
         }
 
-        // ---- Dismiss and buff ----
+        // ---- Dismiss ----
 
         [Test]
         public void DismissingForbiddanceTakesOneTurn()
@@ -631,52 +631,6 @@ namespace RithmaticDuels.Rules.Tests
             var lof = DrawForA(duel, DrawingSpec.Forbiddance(3));
             Assert.IsNotNull(duel.Validate(Player.B, PlayerAction.Dismiss(lof.Id)));
             Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Dismiss(duel.GetPlayer(Player.A).MainWard.Id)));
-        }
-
-        [Test]
-        public void BuffingAChalklingTakesTwoTurnsPerBuff()
-        {
-            var duel = NewDuel();
-            var chalkling = DrawForA(duel, DrawingSpec.Making(damageBuffs: 1));
-
-            duel.ResolveTurn(PlayerAction.Buff(chalkling.Id, ChalklingStat.Durability, 1), Pass);
-            Assert.AreEqual(WorkKind.Buff, duel.GetPlayer(Player.A).Work.Kind);
-            Assert.AreEqual(2, duel.GetPlayer(Player.A).Work.TotalTurns);
-            FinishWorkForA(duel);
-
-            Assert.AreEqual(1, chalkling.DurabilityBuffs);
-            Assert.AreEqual(3, chalkling.MaxDurability);
-            Assert.AreEqual(3, chalkling.Durability);
-            Assert.AreEqual(1, chalkling.Damage);
-        }
-
-        [Test]
-        public void ABuffOnAChalklingThatBrokeMeanwhileFizzles()
-        {
-            var duel = NewDuel();
-            var chalkling = DrawForA(duel, DrawingSpec.Making(damageBuffs: 1));
-
-            // The buff takes 2 turns; the chalkling breaks in the tick it is started.
-            _movement.NextDamage.Add(new DamageEvent(chalkling.Id, 99));
-            duel.ResolveTurn(PlayerAction.Buff(chalkling.Id, ChalklingStat.Damage, 1), Pass);
-            var report = duel.ResolveTurn(Continue, Pass);
-            Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.WorkFizzled));
-        }
-
-        [Test]
-        public void OnlyChalklingsCanBeAddedTo()
-        {
-            // Repairing LoW and LoF was removed on 2026-10-25.
-            var duel = NewDuel();
-            DrawMainWards(duel);
-            var ward = duel.GetPlayer(Player.A).MainWard;
-            _movement.NextDamage.Add(new DamageEvent(ward.Id, 4));
-            duel.ResolveTurn(Pass, Pass);
-            Assert.IsFalse(duel.AvailableActions(Player.A).Contains(ActionKind.AddToDrawing), "a damaged LoW can't be repaired");
-            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Buff(ward.Id, ChalklingStat.Durability, 1)));
-
-            var lov = DrawForA(duel, DrawingSpec.Vigor(VigorTier.Low));
-            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Buff(lov.Id, ChalklingStat.Damage, 1)));
         }
 
         // ---- Reproducibility ----

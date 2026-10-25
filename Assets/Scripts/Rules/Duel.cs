@@ -108,7 +108,6 @@ namespace RithmaticDuels.Rules
             else
             {
                 actions.Add(ActionKind.StartDrawing);
-                if (HasAddTarget(player)) actions.Add(ActionKind.AddToDrawing);
                 if (HasDismissTarget(player)) actions.Add(ActionKind.DismissForbiddance);
             }
             actions.Add(ActionKind.Pass);
@@ -164,10 +163,6 @@ namespace RithmaticDuels.Rules
                 case ActionKind.ContinueDrawing:
                 case ActionKind.CancelDrawing:
                     return state.HasWorkInProgress ? null : "There is no drawing in progress.";
-
-                case ActionKind.AddToDrawing:
-                    if (busy) return "Only one drawing can be in progress at a time.";
-                    return ValidateAddTo(player, action);
 
                 case ActionKind.DismissForbiddance:
                     if (busy) return "Only one drawing can be in progress at a time.";
@@ -310,14 +305,6 @@ namespace RithmaticDuels.Rules
                     state.Work = null;
                     break;
 
-                case ActionKind.AddToDrawing:
-                    var target = FindLine(action.TargetLineId);
-                    int turns = Math.Max(Config.MinimumWorkTurns, action.Amount * Config.AddToDrawing.TurnsPerStatBuff);
-                    state.Work = WorkInProgress.NewJob(WorkKind.Buff, target.Id, action.Amount, turns, action.Stat);
-                    state.Work.Progress = startProgress;
-                    report.Events.Add(new TurnEvent(TurnEventType.WorkStarted, player, target.Id, turns));
-                    break;
-
                 case ActionKind.DismissForbiddance:
                     int dismissTurns = Math.Max(Config.MinimumWorkTurns, Config.Forbiddance.DismissTurns);
                     state.Work = WorkInProgress.NewJob(WorkKind.Dismiss, action.TargetLineId, 0, dismissTurns);
@@ -380,10 +367,6 @@ namespace RithmaticDuels.Rules
 
             switch (work.Kind)
             {
-                case WorkKind.Buff:
-                    target.AddStatBuffs(work.Stat, work.Amount, Config);
-                    report.Events.Add(new TurnEvent(TurnEventType.BuffCompleted, player, target.Id, work.Amount));
-                    break;
                 case WorkKind.Dismiss:
                     target.Status = LineStatus.Dismissed;
                     report.Events.Add(new TurnEvent(TurnEventType.DismissCompleted, player, target.Id));
@@ -490,26 +473,6 @@ namespace RithmaticDuels.Rules
             int owner = (int)line.Owner;
             breachTime[owner] = Math.Min(breachTime[owner], time);
             report.Events.Add(new TurnEvent(TurnEventType.MainWardBreached, line.Owner, line.Id));
-        }
-
-        private string ValidateAddTo(Player player, PlayerAction action)
-        {
-            var target = FindLine(action.TargetLineId);
-            if (target == null || target.Owner != player || !target.IsActive)
-                return "You can only add to one of your own lines that is still in effect.";
-            if (action.Amount <= 0) return "Add at least one point.";
-
-            // Repairing LoW and LoF was removed on 2026-10-25 (docs/FUTURE_IDEAS.md); only chalklings can be added to.
-            return target.Type == LineType.Making ? null : "Only chalklings (Lines of Making) can be added to.";
-        }
-
-        private bool HasAddTarget(Player player)
-        {
-            foreach (var line in _lines)
-            {
-                if (line.Owner == player && line.IsActive && line.Type == LineType.Making) return true;
-            }
-            return false;
         }
 
         private bool HasDismissTarget(Player player)

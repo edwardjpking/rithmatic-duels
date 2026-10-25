@@ -93,7 +93,6 @@ namespace RithmaticDuels.Presentation
         private ChalklingStat? _modifierStat;
         private int _targetLineId = -1;
         private int _amount = 1;
-        private ChalklingStat? _buffStat;
 
         // What the player has typed into each chalkling stat box (see StatEntry).
         private readonly TypedStat _durabilityEntry = new TypedStat();
@@ -188,9 +187,6 @@ namespace RithmaticDuels.Presentation
                     GUILayout.Label("Keep going. " + duel.GetPlayer(player).Work.TurnsRemaining + " turn(s) left, including this one.");
                     action = PlayerAction.Continue();
                     break;
-                case ActionKind.AddToDrawing:
-                    action = DrawAddTo(duel, player, out hint);
-                    break;
                 case ActionKind.DismissForbiddance:
                     action = DrawDismiss(duel, board, player, out hint);
                     break;
@@ -224,14 +220,12 @@ namespace RithmaticDuels.Presentation
             if (duel.GetPlayer(player).NeedsBindPoints) return new List<ActionKind> { ActionKind.DrawBindPoints, ActionKind.Pass };
             var after = new List<ActionKind> { ActionKind.StartDrawing };
             if (board.MainWardOf(player) == null && duel.Config.MainWardFirst) return after;
-            bool buffable = false, dismissable = false;
+            bool dismissable = false;
             foreach (var line in duel.Lines)
             {
                 if (line.Owner != player || !line.IsActive) continue;
                 if (line.Type == LineType.Forbiddance) dismissable = true;
-                if (line.Type == LineType.Making) buffable = true;
             }
-            if (buffable) after.Add(ActionKind.AddToDrawing);
             if (dismissable) after.Add(ActionKind.DismissForbiddance);
             after.Add(ActionKind.Pass);
             return after;
@@ -626,31 +620,6 @@ namespace RithmaticDuels.Presentation
             return text + " Rushing saves " + (normal - total) + " turn(s). The modifier odds are worse.";
         }
 
-        private PlayerAction DrawAddTo(Duel duel, Player player, out string hint)
-        {
-            var targets = new List<Line>();
-            foreach (var line in duel.Lines)
-            {
-                if (line.Owner != player || !line.IsActive) continue;
-                if (line.Type == LineType.Making) targets.Add(line);
-            }
-
-            hint = "Pick a chalkling to add to.";
-            var target = PickTarget(targets);
-            if (target == null) return null;
-
-            var config = duel.Config;
-            Choose(ref _buffStat, StatLabels);
-            Stepper("Stat buffs " + _amount, ref _amount, 1, 12);
-            GUILayout.Label("Takes " + _amount * config.AddToDrawing.TurnsPerStatBuff + " turn(s).");
-            if (!_buffStat.HasValue)
-            {
-                hint = "Choose a stat to buff.";
-                return null;
-            }
-            return PlayerAction.Buff(target.Id, _buffStat.Value, _amount);
-        }
-
         private PlayerAction DrawDismiss(Duel duel, ChalkBoard board, Player player, out string hint)
         {
             var targets = new List<Line>();
@@ -956,7 +925,6 @@ namespace RithmaticDuels.Presentation
                 case ActionKind.StartDrawing: return "Start drawing";
                 case ActionKind.ContinueDrawing: return "Continue";
                 case ActionKind.CancelDrawing: return "Cancel";
-                case ActionKind.AddToDrawing: return "Add to drawing";
                 case ActionKind.DismissForbiddance: return "Dismiss LoF";
                 case ActionKind.DrawBindPoints: return "Draw bind points";
                 default: return "Pass";

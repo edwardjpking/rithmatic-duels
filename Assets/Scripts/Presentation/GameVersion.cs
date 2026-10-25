@@ -9,7 +9,7 @@ namespace RithmaticDuels.Presentation
         public const string Number = "0.14";
         public const string Date = "2026-10-25";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "no repairs, LoV hit damage on hover, rush text";
+        public const string Summary = "no Add to drawing, LoV damage on hover, rush text";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }
