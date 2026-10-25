@@ -651,6 +651,21 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void HoveringNearSeveralLinesPicksByType()
+        {
+            // Order: LoM, LoV, LoW, LoF, whichever is nearest.
+            var chalkling = Draw(Player.A, DrawingSpec.Making(glyph: Glyph.Defend, boundBindPoints: 1), Placement.AtBindPoint(0));
+            var body = (ChalklingBody)_board.BodyOf(chalkling.Id);
+            Vec2 onOutline = body.Tether.Value;
+            Assert.AreSame(body, _board.BodyAt(onOutline, 2f), "the chalkling beats the nearer LoW");
+
+            var lof = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(1));
+            var segment = ((ForbiddanceBody)_board.BodyOf(lof.Id)).Segment;
+            Vec2 touching = (segment.A + segment.B) / 2f;
+            Assert.AreEqual(MainWard(Player.A).Id, _board.BodyAt(touching, 0.3f).LineId, "the LoW beats a LoF touching it");
+        }
+
+        [Test]
         public void AnEllipticalMainWardIsWeakestAlongItsSides()
         {
             var config = new RulesConfig();

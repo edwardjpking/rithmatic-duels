@@ -562,7 +562,6 @@ namespace RithmaticDuels.Rules.Geometry
             return best;
         }
 
-        /// <summary>The line nearest the point, if any is within <paramref name="within"/>: for showing its stats.</summary>
         /// <summary>What a LoV with this damage deals to a LoF it reflects off: half, rounded up (DESIGN.md section 4.2).</summary>
         public int ReflectDamage(int vigorDamage)
         {
@@ -575,9 +574,20 @@ namespace RithmaticDuels.Rules.Geometry
             return (int)Math.Ceiling(vigorDamage * _config.Forbiddance.ChordArcDamageMultiplier - 1e-6);
         }
 
+        /// <summary>
+        /// Which line wins when the mouse is near several at once, first to last. Smaller and moving lines come
+        /// first, since they are the hardest to reach otherwise.
+        /// </summary>
+        private static readonly LineType[] HoverPriority = { LineType.Making, LineType.Vigor, LineType.Warding, LineType.Forbiddance };
+
+        /// <summary>
+        /// The line under the point, if any is within <paramref name="within"/>: for showing its stats. When several
+        /// are in reach, the one first in <see cref="HoverPriority"/> wins, and the nearest of that type.
+        /// </summary>
         public LineBody BodyAt(Vec2 point, float within)
         {
             LineBody best = null;
+            int bestRank = int.MaxValue;
             float bestDistance = within;
             foreach (var body in _bodies.Values)
             {
@@ -593,7 +603,15 @@ namespace RithmaticDuels.Rules.Geometry
                 else if (vigor != null)
                     distance = DistanceToSegment(point, new Segment(vigor.Position - vigor.Direction * _config.Geometry.VigorDrawnLength, vigor.Position));
                 else if (chalkling != null) distance = Math.Max(0f, Vec2.Distance(chalkling.Position, point) - _config.Making.Radius);
-                if (distance <= bestDistance) { bestDistance = distance; best = body; }
+                if (distance > within) continue;
+                int rank = Array.IndexOf(HoverPriority, body.Line.Type);
+                if (rank < 0) rank = HoverPriority.Length;
+                if (rank < bestRank || (rank == bestRank && distance <= bestDistance))
+                {
+                    bestRank = rank;
+                    bestDistance = distance;
+                    best = body;
+                }
             }
             return best;
         }

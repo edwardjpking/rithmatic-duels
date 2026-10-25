@@ -4,8 +4,9 @@ namespace RithmaticDuels.Presentation
 {
     /// <summary>
     /// The look of the menus. It starts from Unity's built-in GUI skin and replaces the scroll bars, which by
-    /// default are chunky light-grey bars with arrow buttons, with thin ones that match the dark panels: a dark
-    /// track with a thin outline, and a grey-green handle that brightens when hovered over and again while dragged.
+    /// default are chunky light-grey bars with arrow buttons, with thin rounded ones that match the dark panels: a
+    /// dark track with a thin outline, and a grey-green handle that brightens when hovered over and again while
+    /// dragged. Only the handle's fill changes; the outlines stay the same.
     ///
     /// Unity looks scroll bar parts up by name in the active skin (a scroll bar called "verticalscrollbar" finds
     /// "verticalscrollbarthumb" and so on), so they can't be swapped one style at a time. Instead this keeps its own
@@ -20,11 +21,9 @@ namespace RithmaticDuels.Presentation
         // Fill and outline colours. The track matches the hover stats panel; the handle matches the buttons.
         private static readonly Color TrackFill = new Color(0.05f, 0.07f, 0.06f, 1f);
         private static readonly Color TrackOutline = new Color(0.35f, 0.40f, 0.37f, 1f);
-        private static readonly Color TrackOutlineHover = new Color(0.55f, 0.60f, 0.57f, 1f);
         private static readonly Color ThumbFill = new Color(0.24f, 0.28f, 0.26f, 1f);
         private static readonly Color ThumbOutline = new Color(0.50f, 0.55f, 0.52f, 1f);
         private static readonly Color ThumbFillHover = new Color(0.38f, 0.43f, 0.40f, 1f);
-        private static readonly Color ThumbOutlineHover = new Color(0.85f, 0.88f, 0.86f, 1f);
         private static readonly Color ThumbFillDragged = new Color(0.48f, 0.53f, 0.50f, 1f);
 
         private static GUISkin _skin;
@@ -51,10 +50,10 @@ namespace RithmaticDuels.Presentation
         private static void StyleTrack(GUIStyle style, bool vertical)
         {
             ClearStates(style);
-            style.normal.background = Panel(TrackFill, TrackOutline);
-            style.hover.background = Panel(TrackFill, TrackOutlineHover);
-            style.active.background = style.hover.background;
-            style.border = new RectOffset(1, 1, 1, 1);
+            // Round ends: the corner radius is half the bar's width.
+            int radius = BarWidth / 2;
+            style.normal.background = Rounded(radius, TrackFill, TrackOutline);
+            style.border = new RectOffset(radius, radius, radius, radius);
             // The handle sits 2 pixels inside the outline.
             style.padding = new RectOffset(2, 2, 2, 2);
             style.overflow = new RectOffset();
@@ -75,10 +74,12 @@ namespace RithmaticDuels.Presentation
         private static void StyleThumb(GUIStyle style, bool vertical)
         {
             ClearStates(style);
-            style.normal.background = Panel(ThumbFill, ThumbOutline);
-            style.hover.background = Panel(ThumbFillHover, ThumbOutlineHover);
-            style.active.background = Panel(ThumbFillDragged, ThumbOutlineHover);
-            style.border = new RectOffset(1, 1, 1, 1);
+            // The handle sits inside the track's padding, so it is that much narrower; round its ends too.
+            int radius = (BarWidth - 4) / 2;
+            style.normal.background = Rounded(radius, ThumbFill, ThumbOutline);
+            style.hover.background = Rounded(radius, ThumbFillHover, ThumbOutline);
+            style.active.background = Rounded(radius, ThumbFillDragged, ThumbOutline);
+            style.border = new RectOffset(radius, radius, radius, radius);
             style.margin = new RectOffset();
             style.overflow = new RectOffset();
             style.fixedWidth = 0;
@@ -113,20 +114,38 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>
-        /// A 3x3 texture: a one-pixel outline round a filled middle. With a style border of 1 Unity stretches
-        /// only the middle, so it draws as a filled box with a thin outline at any size.
+        /// A small rounded box: a one-pixel outline round a filled middle, with corners of the given radius and
+        /// see-through outside them. The texture is (2 × radius + 1) pixels square. With a style border of radius
+        /// on every side Unity keeps the corners as they are and stretches only the middle row and column, so it
+        /// draws as a rounded box at any size (a pill shape when the box is exactly 2 × radius across).
         /// </summary>
-        private static Texture2D Panel(Color fill, Color outline)
+        private static Texture2D Rounded(int radius, Color fill, Color outline)
         {
-            var texture = new Texture2D(3, 3, TextureFormat.RGBA32, false)
+            int size = radius * 2 + 1;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
             {
-                filterMode = FilterMode.Point,
+                filterMode = FilterMode.Bilinear,
                 wrapMode = TextureWrapMode.Clamp,
                 hideFlags = HideFlags.HideAndDontSave,
             };
-            var pixels = new Color[9];
-            for (int i = 0; i < pixels.Length; i++) pixels[i] = outline;
-            pixels[4] = fill;
+            var pixels = new Color[size * size];
+            float centre = size / 2f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    // How far this pixel's centre is outside the rounded box (negative inside), in pixels.
+                    float dx = Mathf.Max(0f, Mathf.Abs(x + 0.5f - centre) - 0.5f);
+                    float dy = Mathf.Max(0f, Mathf.Abs(y + 0.5f - centre) - 0.5f);
+                    float outside = Mathf.Sqrt(dx * dx + dy * dy) - radius;
+                    // Soft edges, half a pixel each way: the outer edge fades to clear, the inner one to the fill.
+                    float coverage = Mathf.Clamp01(0.5f - outside);
+                    float filled = Mathf.Clamp01(-0.5f - outside);
+                    var colour = Color.Lerp(outline, fill, filled);
+                    colour.a *= coverage;
+                    pixels[y * size + x] = colour;
+                }
+            }
             texture.SetPixels(pixels);
             texture.Apply();
             return texture;
