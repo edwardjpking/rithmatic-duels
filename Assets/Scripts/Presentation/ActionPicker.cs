@@ -18,8 +18,8 @@ namespace RithmaticDuels.Presentation
         public IReadOnlyList<Vec2> WardBindPoints;
         /// <summary>A previewed Mark's Cross's crossed LoF.</summary>
         public IReadOnlyList<Segment> Braces;
-        /// <summary>Bind points that already have their LoW, shown crossed out while placing another LoW.</summary>
-        public IReadOnlyList<Vec2> FullBindPoints;
+        /// <summary>Bind points that can't be picked for this drawing, filled in red.</summary>
+        public IReadOnlyList<Vec2> BlockedBindPoints;
         /// <summary>Preset spots for the main LoW, drawn as markers that can be clicked.</summary>
         public IReadOnlyList<Vec2> Presets;
         /// <summary>Show the midline of the player's half, which the main LoW snaps to.</summary>
@@ -459,10 +459,7 @@ namespace RithmaticDuels.Presentation
                         if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
                         if (preview.Ward != null) GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability, before its modifier.");
                     }
-                    var full = new List<Vec2>();
-                    var allPoints = board.BindPointsOf(player);
-                    for (int i = 0; i < allPoints.Count; i++) if (board.BindPointFull(player, i)) full.Add(allPoints[i]);
-                    preview.FullBindPoints = full;
+                    preview.BlockedBindPoints = BlockedBindPoints(board, player);
                     break;
 
                 case LineType.Forbiddance:
@@ -495,6 +492,8 @@ namespace RithmaticDuels.Presentation
                             hint = "Choose how to place it.";
                             break;
                     }
+                    if (_forbiddanceMode == ForbiddanceMode.Between || _forbiddanceMode == ForbiddanceMode.Tangent)
+                        preview.BlockedBindPoints = BlockedBindPoints(board, player);
                     if (placement != null) preview.Segment = board.PreviewForbiddance(player, placement);
                     if (spec != null && placement != null)
                         GUILayout.Label("Length " + board.Measure(player, spec, placement).Length.ToString("0.0")
@@ -698,6 +697,8 @@ namespace RithmaticDuels.Presentation
         private List<float> _mainSteps;
         private List<float> _attachedSteps;
         private string _attachedStepsKey;
+        private bool[] _blocked;
+        private string _blockedKey;
 
         private List<float> MainSteps(ChalkBoard board, Player player)
         {
@@ -767,17 +768,21 @@ namespace RithmaticDuels.Presentation
             var bindPoints = board.BindPointsOf(player);
             int nearest = -1;
             float best = PickRadius;
-            bool forWard = _lineType == LineType.Warding;
             for (int i = 0; i < bindPoints.Count; i++)
             {
-                // A bind point that already has its LoW can't take another, so it can't be picked for one.
-                if (forWard && board.BindPointFull(player, i)) continue;
+                // Bind points filled in red can't be picked.
+                if (Blocked(board, player)[i]) continue;
                 float distance = Vec2.Distance(bindPoints[i], point);
                 if (distance < best) { best = distance; nearest = i; }
             }
             if (nearest < 0) return false;
 
-            if (!two || _bindA < 0 || _bindB >= 0)
+            if (two && nearest == _bindA && _bindB < 0)
+            {
+                // Clicking the first pick again lets go of it.
+                _bindA = -1;
+            }
+            else if (!two || _bindA < 0 || _bindB >= 0)
             {
                 _bindA = nearest;
                 _bindB = -1;
@@ -787,6 +792,70 @@ namespace RithmaticDuels.Presentation
                 _bindB = nearest;
             }
             return true;
+        }
+
+        /// <summary>The bind points that can't be picked right now (see <see cref="BindPointBlocked"/>).</summary>
+        private List<Vec2> BlockedBindPoints(ChalkBoard board, Player player)
+        {
+            var blocked = new List<Vec2>();
+            var points = board.BindPointsOf(player);
+            var isBlocked = Blocked(board, player);
+            for (int i = 0; i < points.Count; i++) if (isBlocked[i]) blocked.Add(points[i]);
+            return blocked;
+        }
+
+        /// <summary>
+        /// <see cref="BindPointBlocked"/> for every bind point, worked out again only when the choice changes,
+        /// since checking every pair of points each frame is slow. The board can't change while choosing,
+        /// because each turn starts with a fresh picker.
+        /// </summary>
+        private bool[] Blocked(ChalkBoard board, Player player)
+        {
+            int count = board.BindPointsOf(player).Count;
+            string key = _lineType + "/" + _forbiddanceMode + "/" + _bindA + "/" + _bindB + "/" + count;
+            if (_blocked == null || key != _blockedKey)
+            {
+                _blocked = new bool[count];
+                for (int i = 0; i < count; i++) _blocked[i] = BindPointBlocked(board, player, i);
+                _blockedKey = key;
+            }
+            return _blocked;
+        }
+
+        /// <summary>
+        /// True if this bind point can't be picked for the drawing being placed, so it is filled in red and
+        /// clicks on it are ignored:
+        /// a LoW can't bind at a point that already has its LoW;
+        /// a tangent LoF can't go where even the shortest one wouldn't fit (it would cross a LoW or leave your half);
+        /// a LoF between two bind points can't join two points whose line wouldn't fit. Before the first pick, a
+        /// point is blocked if no other point can join it; after it, a point is blocked if it can't join the first.
+        /// </summary>
+        private bool BindPointBlocked(ChalkBoard board, Player player, int index)
+        {
+            switch (_lineType)
+            {
+                case LineType.Warding:
+                    return board.BindPointFull(player, index);
+                case LineType.Forbiddance:
+                    if (_forbiddanceMode == ForbiddanceMode.Tangent)
+                        return !ForbiddanceFits(board, player, DrawingSpec.Forbiddance(1),
+                            Placement.TangentAt(index, board.Config.Geometry.MinForbiddanceLength));
+                    if (_forbiddanceMode != ForbiddanceMode.Between) return false;
+                    var spec = DrawingSpec.Forbiddance(2);
+                    if (_bindA >= 0 && _bindB < 0)
+                        return index != _bindA && !ForbiddanceFits(board, player, spec, Placement.BetweenBindPoints(_bindA, index));
+                    int count = board.BindPointsOf(player).Count;
+                    for (int other = 0; other < count; other++)
+                        if (other != index && ForbiddanceFits(board, player, spec, Placement.BetweenBindPoints(index, other))) return false;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool ForbiddanceFits(ChalkBoard board, Player player, DrawingSpec spec, Placement placement)
+        {
+            return board.ValidatePlacement(player, board.Measure(player, spec, placement), placement) == null;
         }
 
         /// <summary>First click sets the start, second the end; a third starts over.</summary>
