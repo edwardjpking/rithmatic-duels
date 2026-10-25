@@ -138,6 +138,8 @@ namespace RithmaticDuels.Presentation
 
         private void OnGUI()
         {
+            // Unity resets the skin every OnGUI, so set ours each time (it restyles the scroll bars).
+            GUI.skin = MenuSkin.Get();
             // Read the click in screen pixels before scaling the GUI.
             GUI.matrix = Matrix4x4.identity;
             var current = Event.current;
@@ -213,7 +215,7 @@ namespace RithmaticDuels.Presentation
             var line = body.Line;
             string text = TurnNarrator.LineName(line);
             if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability + (line.Type == LineType.Warding ? " (weakest point)" : "");
-            if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, damage " + line.Damage + ", speed " + line.Speed;
+            if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
             var ward = body as WardBody;

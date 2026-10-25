@@ -581,28 +581,6 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(DuelOutcome.PlayerAWins, duel.Outcome);
         }
 
-        [Test]
-        public void NoRepairsDuringChalkFatigue()
-        {
-            _config.TurnLimit = 30;
-            var duel = NewDuel();
-            DrawMainWards(duel);
-            var ward = duel.GetPlayer(Player.A).MainWard;
-            _movement.NextDamage.Add(new DamageEvent(ward.Id, 4));
-            duel.ResolveTurn(Pass, Pass);
-
-            // Start a 2-point repair (4 turns) that would finish inside the fatigue window.
-            for (int i = 0; i < 12; i++) duel.ResolveTurn(Pass, Pass);
-            Assert.IsFalse(duel.ChalkFatigueActive);
-            duel.ResolveTurn(PlayerAction.Repair(ward.Id, 2), Pass);
-            var events = new List<TurnEvent>();
-            while (duel.GetPlayer(Player.A).HasWorkInProgress) events.AddRange(duel.ResolveTurn(Continue, Pass).Events);
-
-            Assert.IsTrue(events.Any(e => e.Type == TurnEventType.WorkFizzled));
-            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Repair(ward.Id, 1)));
-            Assert.IsFalse(duel.AvailableActions(Player.A).Contains(ActionKind.AddToDrawing));
-        }
-
         // ---- Decision timer ----
 
         [Test]
@@ -614,7 +592,7 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(ActionKind.ContinueDrawing, duel.TimeoutAction(Player.A).Kind);
         }
 
-        // ---- Dismiss, repair and buff ----
+        // ---- Dismiss ----
 
         [Test]
         public void DismissingForbiddanceTakesOneTurn()
@@ -653,69 +631,6 @@ namespace RithmaticDuels.Rules.Tests
             var lof = DrawForA(duel, DrawingSpec.Forbiddance(3));
             Assert.IsNotNull(duel.Validate(Player.B, PlayerAction.Dismiss(lof.Id)));
             Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Dismiss(duel.GetPlayer(Player.A).MainWard.Id)));
-        }
-
-        [Test]
-        public void RepairTakesTwoTurnsPerPointAndIsCapped()
-        {
-            var duel = NewDuel();
-            DrawMainWards(duel);
-            var ward = duel.GetPlayer(Player.A).MainWard;
-            Assert.IsFalse(duel.AvailableActions(Player.A).Contains(ActionKind.AddToDrawing), "nothing to repair at full durability");
-
-            _movement.NextDamage.Add(new DamageEvent(ward.Id, 4));
-            duel.ResolveTurn(Pass, Pass);
-            Assert.AreEqual(8, ward.Durability);
-            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Repair(ward.Id, 5)));
-
-            duel.ResolveTurn(PlayerAction.Repair(ward.Id, 2), Pass);
-            Assert.AreEqual(4, duel.GetPlayer(Player.A).Work.TotalTurns);
-            for (int i = 0; i < 2; i++) duel.ResolveTurn(Continue, Pass);
-            Assert.AreEqual(8, ward.Durability, "repair lands only on completion");
-            duel.ResolveTurn(Continue, Pass);
-            Assert.AreEqual(10, ward.Durability);
-        }
-
-        [Test]
-        public void BuffingAChalklingTakesTwoTurnsPerBuff()
-        {
-            var duel = NewDuel();
-            var chalkling = DrawForA(duel, DrawingSpec.Making(damageBuffs: 1));
-
-            duel.ResolveTurn(PlayerAction.Buff(chalkling.Id, ChalklingStat.Durability, 1), Pass);
-            Assert.AreEqual(WorkKind.Buff, duel.GetPlayer(Player.A).Work.Kind);
-            Assert.AreEqual(2, duel.GetPlayer(Player.A).Work.TotalTurns);
-            FinishWorkForA(duel);
-
-            Assert.AreEqual(1, chalkling.DurabilityBuffs);
-            Assert.AreEqual(3, chalkling.MaxDurability);
-            Assert.AreEqual(3, chalkling.Durability);
-            Assert.AreEqual(1, chalkling.Damage);
-        }
-
-        [Test]
-        public void RepairOnALineThatBrokeMeanwhileFizzles()
-        {
-            var duel = NewDuel();
-            DrawMainWards(duel);
-            var lof = DrawForA(duel, DrawingSpec.Forbiddance(3));
-            _movement.NextDamage.Add(new DamageEvent(lof.Id, 2));
-            duel.ResolveTurn(Pass, Pass);
-
-            // The repair takes 2 turns; the LoF breaks in the tick it is started.
-            _movement.NextDamage.Add(new DamageEvent(lof.Id, 99));
-            duel.ResolveTurn(PlayerAction.Repair(lof.Id, 1), Pass);
-            var report = duel.ResolveTurn(Continue, Pass);
-            Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.WorkFizzled));
-            Assert.AreEqual(0, lof.Durability);
-        }
-
-        [Test]
-        public void VigorCannotBeAddedTo()
-        {
-            var duel = NewDuel();
-            var lov = DrawForA(duel, DrawingSpec.Vigor(VigorTier.Low));
-            Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Repair(lov.Id, 1)));
         }
 
         // ---- Reproducibility ----

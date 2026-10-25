@@ -2,6 +2,15 @@
 
 Ideas to return to once the basic features are implemented. None of these are current rules; `docs/DESIGN.md` remains the source of truth. All numbers below are placeholders.
 
+## Removed from the base game
+
+Features that were built and then taken out. Keep them in mind for future developments.
+
+- **Add to drawing** (removed 2026-10-25), because it would make duels go on too long:
+  - **Repairing LoW and LoF:** 2 turns per point of durability, up to the line's durability at completion, and not during chalk fatigue. The Warder and Mender archetypes (section 4) were built around it.
+  - **Buffing chalklings:** 2 turns per stat buff on one stat of a chalkling already on the board, applied as if drawn in at the start, with no modifier roll.
+- **Glyph cap and extra glyphs** (removed 2026-10-25): see section 5.
+
 ## Priority order
 
 Set by the user on 2026-10-24.
@@ -55,9 +64,9 @@ A player picks an archetype before the duel. Each gives one strength and one cos
 | # | Name | Theme | Perk | Cost |
 |---|---|---|---|---|
 | 1 | Balanced | Baseline | None | None |
-| 2 | Warder | Defence | Main LoW +2 durability; repairs cost 1 turn per point | LoV deal 1 less damage |
+| 2 | Warder | Defence | Main LoW +2 durability; repairs cost 1 turn per point (needs repairs back) | LoV deal 1 less damage |
 | 3 | Bulwark | Defence | Every LoW other than the main LoW gets +2 durability | Main LoW takes 1 turn longer to draw |
-| 4 | Mender | Defence | Repairs are allowed during chalk fatigue | Main LoW -1 durability |
+| 4 | Mender | Defence | Repairs are allowed during chalk fatigue (needs repairs back) | Main LoW -1 durability |
 | 5 | Anchorer | Defence | LoF bound at 2 or more bind points get +3 durability | Free-standing LoF take 1 turn longer to draw |
 | 6 | Geometer | Defence | Main LoW draw time is bind points div 3 instead of div 2 (minimum 1) | Main LoW -1 durability |
 | 7 | Striker | Vigor | LoV take 1 turn less to draw (minimum 1) | Main LoW -2 durability |

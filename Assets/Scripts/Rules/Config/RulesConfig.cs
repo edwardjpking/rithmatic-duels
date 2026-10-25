@@ -36,7 +36,7 @@ namespace RithmaticDuels.Rules
         /// <summary>
         /// The turn spent on Start drawing counts as the first turn of progress, so a 2-turn drawing needs
         /// one Continue and a 1-turn drawing completes in the tick it is started (DESIGN.md section 5.1).
-        /// PROVISIONAL: the same applies to Add to drawing and Dismiss LoF.
+        /// PROVISIONAL: the same applies to Dismiss LoF.
         /// </summary>
         public bool StartActionCountsAsProgress = true;
 
@@ -69,9 +69,6 @@ namespace RithmaticDuels.Rules
         /// <summary>PROVISIONAL: a negative modifier can never take a fresh line below this durability.</summary>
         public int MinimumDurabilityAfterModifier = 1;
 
-        /// <summary>PROVISIONAL: repairs cannot take a line above its durability at completion (including its modifier).</summary>
-        public bool RepairCappedAtMaxDurability = true;
-
         public ChalkFatigueConfig ChalkFatigue = new ChalkFatigueConfig();
         public CentreWallConfig CentreWall = new CentreWallConfig();
         public BoardConfig Board = new BoardConfig();
@@ -81,7 +78,6 @@ namespace RithmaticDuels.Rules
         public ForbiddanceConfig Forbiddance = new ForbiddanceConfig();
         public VigorConfig Vigor = new VigorConfig();
         public MakingConfig Making = new MakingConfig();
-        public AddToDrawingConfig AddToDrawing = new AddToDrawingConfig();
 
         public PaceConfig Rush = new PaceConfig { TimeMultiplier = 0.5, Rounding = RoundingMode.Up };
         public PaceConfig Steady = new PaceConfig { TimeMultiplier = 1.5, Rounding = RoundingMode.Up };
@@ -189,6 +185,8 @@ namespace RithmaticDuels.Rules
         public float MainWardSnapDistance = 0.6f;
         /// <summary>Two LoV collide when they come this close.</summary>
         public float VigorContactDistance = 0.3f;
+        /// <summary>How far behind its head a LoV is drawn (its wave). Hovering anywhere on it shows its stats.</summary>
+        public float VigorDrawnLength = 1.2f;
         /// <summary>Free placements (LoF, LoV, unbound chalklings) must be on the player's own half of the board (DESIGN.md section 1.1).</summary>
         public bool DrawOnOwnHalfOnly = true;
         /// <summary>Per-point durability is tracked at this many points around each LoW.</summary>
@@ -215,7 +213,6 @@ namespace RithmaticDuels.Rules
         /// <summary>Every main LoW loses DurabilityLoss once every this many fatigue turns.</summary>
         public int IntervalTurns = 3;
         public int DurabilityLoss = 1;
-        public bool RepairsAllowed = false;
     }
 
     [Serializable]
@@ -333,13 +330,6 @@ namespace RithmaticDuels.Rules
         public int StatPerModifierStep = 1;
         /// <summary>Draw time is ceil(stat buffs / StatBuffsPerDrawTurn), at least the minimum. The one glyph is free.</summary>
         public int StatBuffsPerDrawTurn = 4;
-    }
-
-    [Serializable]
-    public sealed class AddToDrawingConfig
-    {
-        public int TurnsPerStatBuff = 2;
-        public int TurnsPerDurabilityPoint = 2;
     }
 
     public enum RoundingMode

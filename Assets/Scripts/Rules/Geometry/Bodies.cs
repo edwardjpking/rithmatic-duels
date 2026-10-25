@@ -123,7 +123,7 @@ namespace RithmaticDuels.Rules.Geometry
             }
         }
 
-        /// <summary>Repairs (positive) or chalk fatigue (negative) act on the whole line.</summary>
+        /// <summary>Whole-line changes (chalk fatigue is negative) act on every point.</summary>
         public void ApplyEverywhere(int delta)
         {
             for (int i = 0; i < _durability.Length; i++)
@@ -179,5 +179,32 @@ namespace RithmaticDuels.Rules.Geometry
             Position = position;
             Tether = tether;
         }
+    }
+
+    /// <summary>
+    /// What everyone can see of a player's work in progress on the board (DESIGN.md section 2,
+    /// Information): where the drawing is going and its shape, but not its pace, progress, stats or
+    /// modifier. It is only a picture: nothing in the rules touches it until the line is complete.
+    /// Only the fields that fit <see cref="Kind"/> and <see cref="Type"/> are set.
+    /// </summary>
+    public sealed class WorkSketch
+    {
+        public Player Owner { get; internal set; }
+        public WorkKind Kind { get; internal set; }
+        public LineType Type { get; internal set; }
+
+        /// <summary>LoW: its outline, any Mark's Cross braces, and its bind points.</summary>
+        public WardShape Ward { get; internal set; }
+        public Segment[] Braces { get; internal set; }
+        /// <summary>LoW: the bind points it will have. Bind points under way on the main LoW: all its bind points once done.</summary>
+        public IReadOnlyList<Vec2> BindPoints { get; internal set; }
+        /// <summary>LoF: the segment it will cover.</summary>
+        public Segment? Segment { get; internal set; }
+        /// <summary>LoV: where it starts. LoM: where the chalkling will stand.</summary>
+        public Vec2? Point { get; internal set; }
+        /// <summary>LoV: which way it will travel.</summary>
+        public Vec2? Direction { get; internal set; }
+        /// <summary>Bound LoM: the bind point it will be tethered to.</summary>
+        public Vec2? Tether { get; internal set; }
     }
 }

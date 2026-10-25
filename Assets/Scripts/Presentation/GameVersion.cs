@@ -6,10 +6,10 @@ namespace RithmaticDuels.Presentation
     /// </summary>
     public static class GameVersion
     {
-        public const string Number = "0.13.1";
+        public const string Number = "0.15";
         public const string Date = "2026-10-25";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "one glyph per chalkling, chord LoF takes halved hits";
+        public const string Summary = "no Add to drawing, round bind points, sketches, scroll bars";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }

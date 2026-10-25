@@ -108,7 +108,6 @@ namespace RithmaticDuels.Rules
             else
             {
                 actions.Add(ActionKind.StartDrawing);
-                if (HasAddTarget(player)) actions.Add(ActionKind.AddToDrawing);
                 if (HasDismissTarget(player)) actions.Add(ActionKind.DismissForbiddance);
             }
             actions.Add(ActionKind.Pass);
@@ -165,10 +164,6 @@ namespace RithmaticDuels.Rules
                 case ActionKind.CancelDrawing:
                     return state.HasWorkInProgress ? null : "There is no drawing in progress.";
 
-                case ActionKind.AddToDrawing:
-                    if (busy) return "Only one drawing can be in progress at a time.";
-                    return ValidateAddTo(player, action);
-
                 case ActionKind.DismissForbiddance:
                     if (busy) return "Only one drawing can be in progress at a time.";
                     var target = FindLine(action.TargetLineId);
@@ -222,15 +217,14 @@ namespace RithmaticDuels.Rules
 
             // Tick resolution (DESIGN.md section 3). Within each stage player A goes first, so random
             // rolls happen in a fixed order.
-            bool fatigued = fatigueTurn > 0;
             // 1. LoF are dismissed.
-            CompleteWhere(w => w.Kind == WorkKind.Dismiss, report, fatigued);
+            CompleteWhere(w => w.Kind == WorkKind.Dismiss, report);
             // 2. Rushed drawings that finish this tick go down, if they would have taken 1 turn at normal pace
             // (longer drawings already get their time cut by rushing).
             CompleteWhere(w => w.Kind == WorkKind.Drawing && w.Pace == DrawingPace.Rush
-                && DrawTimes.Turns(w.Spec, DrawingPace.Normal, Config) <= Config.RushedEarlyMaxNormalTurns, report, fatigued);
+                && DrawTimes.Turns(w.Spec, DrawingPace.Normal, Config) <= Config.RushedEarlyMaxNormalTurns, report);
             // Optionally (LinesFinishBeforeMovement) everything else finishes before movement too.
-            if (Config.LinesFinishBeforeMovement) CompleteWhere(w => true, report, fatigued);
+            if (Config.LinesFinishBeforeMovement) CompleteWhere(w => true, report);
 
             // 3. Animated lines take actions (geometry layer), and their hits do damage.
             // Earliest breach time within the tick for each player. The earlier breach loses;
@@ -241,7 +235,7 @@ namespace RithmaticDuels.Rules
             ApplyMovementResult(movement, report, breachTime);
 
             // 4. Every other line that finishes this tick goes down, and the geometry layer places it.
-            CompleteWhere(w => true, report, fatigued);
+            CompleteWhere(w => true, report);
             var placed = new MovementResult();
             _movement.PlaceNewLines(this, placed);
             ApplyMovementResult(placed, report, breachTime);
@@ -311,16 +305,6 @@ namespace RithmaticDuels.Rules
                     state.Work = null;
                     break;
 
-                case ActionKind.AddToDrawing:
-                    var target = FindLine(action.TargetLineId);
-                    bool isBuff = target.Type == LineType.Making;
-                    int perUnit = isBuff ? Config.AddToDrawing.TurnsPerStatBuff : Config.AddToDrawing.TurnsPerDurabilityPoint;
-                    int turns = Math.Max(Config.MinimumWorkTurns, action.Amount * perUnit);
-                    state.Work = WorkInProgress.NewJob(isBuff ? WorkKind.Buff : WorkKind.Repair, target.Id, action.Amount, turns, action.Stat);
-                    state.Work.Progress = startProgress;
-                    report.Events.Add(new TurnEvent(TurnEventType.WorkStarted, player, target.Id, turns));
-                    break;
-
                 case ActionKind.DismissForbiddance:
                     int dismissTurns = Math.Max(Config.MinimumWorkTurns, Config.Forbiddance.DismissTurns);
                     state.Work = WorkInProgress.NewJob(WorkKind.Dismiss, action.TargetLineId, 0, dismissTurns);
@@ -330,12 +314,12 @@ namespace RithmaticDuels.Rules
             }
         }
 
-        private void CompleteWhere(Func<WorkInProgress, bool> stage, TurnReport report, bool fatigued)
+        private void CompleteWhere(Func<WorkInProgress, bool> stage, TurnReport report)
         {
             foreach (var state in _players)
             {
                 if (Outcome != DuelOutcome.InProgress) return;
-                if (state.Work != null && state.Work.IsComplete && stage(state.Work)) Complete(state, report, fatigued);
+                if (state.Work != null && state.Work.IsComplete && stage(state.Work)) Complete(state, report);
             }
         }
 
@@ -347,7 +331,7 @@ namespace RithmaticDuels.Rules
             report.Events.Add(new TurnEvent(TurnEventType.WorkStarted, state.Player, state.MainWard.Id, turns));
         }
 
-        private void Complete(PlayerState state, TurnReport report, bool fatigued)
+        private void Complete(PlayerState state, TurnReport report)
         {
             var work = state.Work;
             state.Work = null;
@@ -375,8 +359,7 @@ namespace RithmaticDuels.Rules
             }
 
             var target = FindLine(work.TargetLineId);
-            bool repairBlocked = work.Kind == WorkKind.Repair && fatigued && !Config.ChalkFatigue.RepairsAllowed;
-            if (target == null || !target.IsActive || repairBlocked)
+            if (target == null || !target.IsActive)
             {
                 report.Events.Add(new TurnEvent(TurnEventType.WorkFizzled, player, work.TargetLineId));
                 return;
@@ -384,17 +367,6 @@ namespace RithmaticDuels.Rules
 
             switch (work.Kind)
             {
-                case WorkKind.Repair:
-                    int repaired = work.Amount;
-                    if (Config.RepairCappedAtMaxDurability)
-                        repaired = Math.Min(repaired, target.MaxDurability - target.Durability);
-                    target.Durability += repaired;
-                    report.Events.Add(new TurnEvent(TurnEventType.RepairCompleted, player, target.Id, repaired));
-                    break;
-                case WorkKind.Buff:
-                    target.AddStatBuffs(work.Stat, work.Amount, Config);
-                    report.Events.Add(new TurnEvent(TurnEventType.BuffCompleted, player, target.Id, work.Amount));
-                    break;
                 case WorkKind.Dismiss:
                     target.Status = LineStatus.Dismissed;
                     report.Events.Add(new TurnEvent(TurnEventType.DismissCompleted, player, target.Id));
@@ -501,44 +473,6 @@ namespace RithmaticDuels.Rules
             int owner = (int)line.Owner;
             breachTime[owner] = Math.Min(breachTime[owner], time);
             report.Events.Add(new TurnEvent(TurnEventType.MainWardBreached, line.Owner, line.Id));
-        }
-
-        private string ValidateAddTo(Player player, PlayerAction action)
-        {
-            var target = FindLine(action.TargetLineId);
-            if (target == null || target.Owner != player || !target.IsActive)
-                return "You can only add to one of your own lines that is still in effect.";
-            if (action.Amount <= 0) return "Add at least one point.";
-
-            switch (target.Type)
-            {
-                case LineType.Making:
-                    return null;
-                case LineType.Warding:
-                case LineType.Forbiddance:
-                    if (ChalkFatigueActive && !Config.ChalkFatigue.RepairsAllowed)
-                        return "Repairs are not allowed during chalk fatigue.";
-                    if (Config.RepairCappedAtMaxDurability && action.Amount > target.MaxDurability - target.Durability)
-                        return "That would repair the line past its full durability.";
-                    return null;
-                default:
-                    return "Lines of Vigor cannot be added to.";
-            }
-        }
-
-        private bool HasAddTarget(Player player)
-        {
-            foreach (var line in _lines)
-            {
-                if (line.Owner != player || !line.IsActive) continue;
-                if (line.Type == LineType.Making) return true;
-                if (line.Type == LineType.Warding || line.Type == LineType.Forbiddance)
-                {
-                    if (ChalkFatigueActive && !Config.ChalkFatigue.RepairsAllowed) continue;
-                    if (!Config.RepairCappedAtMaxDurability || line.Durability < line.MaxDurability) return true;
-                }
-            }
-            return false;
         }
 
         private bool HasDismissTarget(Player player)

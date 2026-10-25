@@ -18,10 +18,16 @@ namespace RithmaticDuels.Presentation
         private static readonly Color Faint = new Color(1f, 1f, 1f, 0.15f);
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
+        private static readonly Color BlockedFill = new Color(0.95f, 0.3f, 0.25f, 0.75f);
 
         private const float WardWidth = 0.08f;
         private const float MainWardWidth = 0.12f;
         private const float BindPointSize = 0.4f;
+        private const float BindPointRingWidth = 0.05f;
+        /// <summary>How strongly a drawing in progress shows, compared with a finished line.</summary>
+        private const float SketchAlpha = 0.6f;
+        private const float DashLength = 0.35f;
+        private const float GapLength = 0.25f;
 
         private Material _material;
 
@@ -46,6 +52,9 @@ namespace RithmaticDuels.Presentation
             foreach (var trail in Board.LastTickTrails)
                 for (int i = 1; i < trail.Points.Count; i++)
                     Line(trail.Points[i - 1], trail.Points[i], 0.03f, WithAlpha(Owner(trail.Owner), 0.3f));
+            // Drawings in progress go underneath finished lines: they are only a picture until complete.
+            DrawSketch(Board.WorkInProgressOf(Player.A));
+            DrawSketch(Board.WorkInProgressOf(Player.B));
             foreach (var body in Board.Bodies) DrawBody(body);
             if (Preview != null) DrawPreview(Preview);
             GL.End();
@@ -82,7 +91,7 @@ namespace RithmaticDuels.Presentation
                     Line(ward.SamplePoint(i), ward.SamplePoint(next), width, Color.Lerp(Damaged, colour, health));
                 }
                 foreach (var brace in ward.Braces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, colour);
-                foreach (var point in ward.BindPoints) BindPoint(point, TangentAt(ward.Shape, point), colour);
+                foreach (var point in ward.BindPoints) BindPoint(point, colour);
                 return;
             }
 
@@ -96,7 +105,7 @@ namespace RithmaticDuels.Presentation
             var vigor = body as VigorBody;
             if (vigor != null)
             {
-                Wave(vigor.Position, vigor.Direction, colour);
+                Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, colour);
                 return;
             }
 
@@ -108,22 +117,69 @@ namespace RithmaticDuels.Presentation
             }
         }
 
+        /// <summary>
+        /// A player's work in progress, which both players can see: the line it will make, dashed and faint
+        /// in the owner's colour.
+        /// </summary>
+        private void DrawSketch(WorkSketch sketch)
+        {
+            if (sketch == null) return;
+            Color colour = WithAlpha(Owner(sketch.Owner), SketchAlpha);
+
+            switch (sketch.Kind)
+            {
+                case WorkKind.BindPoints:
+                    // Bind points still being drawn on the main LoW: faint markers where they will appear.
+                    var main = Board.MainWardOf(sketch.Owner);
+                    if (main != null && sketch.BindPoints != null)
+                        foreach (var point in sketch.BindPoints) BindPoint(point, colour);
+                    return;
+
+                case WorkKind.Drawing:
+                    break;
+
+                default:
+                    return;
+            }
+
+            switch (sketch.Type)
+            {
+                case LineType.Warding:
+                    if (sketch.Ward == null) return;
+                    Outline(sketch.Ward, true, colour);
+                    if (sketch.Braces != null)
+                        foreach (var brace in sketch.Braces) DashedLine(brace.A, brace.B, ForbiddanceWidth * 0.7f, colour);
+                    if (sketch.BindPoints != null)
+                        foreach (var point in sketch.BindPoints) BindPoint(point, colour);
+                    return;
+
+                case LineType.Forbiddance:
+                    if (sketch.Segment.HasValue) DashedLine(sketch.Segment.Value.A, sketch.Segment.Value.B, ForbiddanceWidth, colour);
+                    return;
+
+                case LineType.Vigor:
+                    if (sketch.Point.HasValue && sketch.Direction.HasValue) Wave(sketch.Point.Value, sketch.Direction.Value.Normalized, Board.Config.Geometry.VigorDrawnLength, colour, true);
+                    return;
+
+                default:
+                    if (!sketch.Point.HasValue) return;
+                    if (sketch.Tether.HasValue) DashedLine(sketch.Tether.Value, sketch.Point.Value, 0.02f, colour);
+                    DiamondOutline(sketch.Point.Value, 0.25f, colour);
+                    return;
+            }
+        }
+
         private void DrawPreview(PlacementPreview preview)
         {
             var bindPoints = Board.BindPointsOf(preview.Player);
             foreach (int index in preview.BindPoints)
                 if (index >= 0 && index < bindPoints.Count)
-                    Square(bindPoints[index], BindPointSize, Board.BindPointNormal(preview.Player, bindPoints[index]).Perp, PreviewColour);
+                    Disc(bindPoints[index], BindPointSize / 2f + BindPointRingWidth / 2f, PreviewColour);
             if (preview.WardBindPoints != null)
-            {
-                // Bind points still to be drawn on the main LoW follow its outline.
-                var main = Board.MainWardOf(preview.Player);
-                var shape = preview.Ward ?? (main != null ? main.Shape : null);
-                foreach (var point in preview.WardBindPoints)
-                    BindPoint(point, shape != null ? TangentAt(shape, point) : new Vec2(1f, 0f), PreviewColour);
-            }
-            if (preview.FullBindPoints != null)
-                foreach (var point in preview.FullBindPoints) Cross(point, BindPointSize * 0.6f, WithAlpha(Damaged, 0.8f));
+                foreach (var point in preview.WardBindPoints) BindPoint(point, PreviewColour);
+            // Bind points that can't be picked for this drawing are filled in red, inside their ring.
+            if (preview.BlockedBindPoints != null)
+                foreach (var point in preview.BlockedBindPoints) Disc(point, BindPointSize / 2f - BindPointRingWidth / 2f, BlockedFill);
 
             if (preview.ShowMidline)
             {
@@ -147,7 +203,7 @@ namespace RithmaticDuels.Presentation
                 if (preview.To.HasValue)
                 {
                     Vec2 direction = (preview.To.Value - preview.From.Value).Normalized;
-                    Wave(preview.From.Value, direction, PreviewColour);
+                    Wave(preview.From.Value, direction, Board.Config.Geometry.VigorDrawnLength, PreviewColour);
                     // Aim line, dashed out to the edge of the board.
                     for (float d = 1f; d < 40f; d += 1f)
                     {
@@ -172,10 +228,9 @@ namespace RithmaticDuels.Presentation
             }
         }
 
-        /// <summary>A LoV is drawn as a short sine wave along its direction of travel.</summary>
-        private static void Wave(Vec2 centre, Vec2 direction, Color colour)
+        /// <summary>A LoV is drawn as a short sine wave along its direction of travel; dotted while in progress.</summary>
+        private static void Wave(Vec2 centre, Vec2 direction, float length, Color colour, bool dotted = false)
         {
-            const float length = 1.2f;
             const float amplitude = 0.18f;
             const int steps = 16;
             Vec2 side = direction.Perp;
@@ -184,7 +239,7 @@ namespace RithmaticDuels.Presentation
             {
                 float s = (float)i / steps;
                 Vec2 point = centre + direction * ((s - 1f) * length) + side * (amplitude * Mathf.Sin(s * 4f * Mathf.PI));
-                if (i > 0) Line(previous, point, 0.06f, colour);
+                if (i > 0 && !(dotted && i % 2 == 0)) Line(previous, point, 0.06f, colour);
                 previous = point;
             }
         }
@@ -199,52 +254,80 @@ namespace RithmaticDuels.Presentation
             Vertex(b + offset);
         }
 
-        /// <summary>Unit direction along a LoW's outline at a point on it.</summary>
-        private static Vec2 TangentAt(WardShape shape, Vec2 point)
+        /// <summary>A line broken into dashes, for drawings in progress.</summary>
+        private static void DashedLine(Vec2 a, Vec2 b, float width, Color colour)
         {
-            return shape.OutwardNormalAt(shape.ParamOf(point)).Perp;
+            float length = Vec2.Distance(a, b);
+            if (length <= 0f) return;
+            Vec2 along = (b - a) / length;
+            for (float d = 0f; d < length; d += DashLength + GapLength)
+                Line(a + along * d, a + along * Math.Min(length, d + DashLength), width, colour);
         }
 
-        /// <summary>
-        /// A bind point: a hollow square with a dot in the middle, so it stands out on top of its line.
-        /// Its sides run along and across the line, following <paramref name="along"/>.
-        /// </summary>
-        private static void BindPoint(Vec2 centre, Vec2 along, Color colour)
+        /// <summary>The outline of a chalkling's diamond, for one still being drawn.</summary>
+        private static void DiamondOutline(Vec2 centre, float radius, Color colour)
         {
-            float h = BindPointSize / 2f;
             const float width = 0.05f;
-            Vec2 u = along.Normalized * h;
-            Vec2 v = u.Perp;
-            Line(centre - u - v, centre + u - v, width, colour);
-            Line(centre + u - v, centre + u + v, width, colour);
-            Line(centre + u + v, centre - u + v, width, colour);
-            Line(centre - u + v, centre - u - v, width, colour);
-            Square(centre, 0.1f, along, colour);
+            Vec2 up = new Vec2(0f, radius);
+            Vec2 right = new Vec2(radius, 0f);
+            Line(centre - up, centre + right, width, colour);
+            Line(centre + right, centre + up, width, colour);
+            Line(centre + up, centre - right, width, colour);
+            Line(centre - right, centre - up, width, colour);
         }
 
-        private static void Square(Vec2 centre, float size, Vec2 along, Color colour)
+        /// <summary>A bind point: a hollow circle with a dot in the middle, so it stands out on top of its line.</summary>
+        private static void BindPoint(Vec2 centre, Color colour)
         {
-            Vec2 u = along.Normalized * (size / 2f);
-            Vec2 v = u.Perp;
+            Ring(centre, BindPointSize / 2f, BindPointRingWidth, colour);
+            Disc(centre, 0.05f, colour);
+        }
+
+        private const int CircleSteps = 32;
+
+        private static Vec2 OnCircle(Vec2 centre, float radius, int step)
+        {
+            float angle = 2f * Mathf.PI * step / CircleSteps;
+            return centre + new Vec2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+        }
+
+        /// <summary>A circle outline <paramref name="width"/> thick, centred on <paramref name="radius"/>.</summary>
+        private static void Ring(Vec2 centre, float radius, float width, Color colour)
+        {
+            float inner = radius - width / 2f;
+            float outer = radius + width / 2f;
             GL.Color(colour);
-            Vertex(centre - u - v);
-            Vertex(centre + u - v);
-            Vertex(centre + u + v);
-            Vertex(centre - u + v);
+            for (int i = 0; i < CircleSteps; i++)
+            {
+                Vertex(OnCircle(centre, inner, i));
+                Vertex(OnCircle(centre, outer, i));
+                Vertex(OnCircle(centre, outer, i + 1));
+                Vertex(OnCircle(centre, inner, i + 1));
+            }
+        }
+
+        /// <summary>A filled circle, drawn as thin wedges from the centre.</summary>
+        private static void Disc(Vec2 centre, float radius, Color colour)
+        {
+            GL.Color(colour);
+            for (int i = 0; i < CircleSteps; i++)
+            {
+                // GL draws quads, so each wedge is a quad with its last corner repeated.
+                Vertex(centre);
+                Vertex(OnCircle(centre, radius, i));
+                Vertex(OnCircle(centre, radius, i + 1));
+                Vertex(OnCircle(centre, radius, i + 1));
+            }
         }
 
         private static void Square(Vec2 centre, float size, Color colour)
         {
-            Square(centre, size, new Vec2(1f, 0f), colour);
-        }
-
-        /// <summary>An X, for a bind point that can't be picked.</summary>
-        private static void Cross(Vec2 centre, float size, Color colour)
-        {
-            Vec2 d1 = new Vec2(1f, 1f).Normalized * size;
-            Vec2 d2 = new Vec2(1f, -1f).Normalized * size;
-            Line(centre - d1, centre + d1, 0.05f, colour);
-            Line(centre - d2, centre + d2, 0.05f, colour);
+            float h = size / 2f;
+            GL.Color(colour);
+            Vertex(centre + new Vec2(-h, -h));
+            Vertex(centre + new Vec2(h, -h));
+            Vertex(centre + new Vec2(h, h));
+            Vertex(centre + new Vec2(-h, h));
         }
 
         private static void Diamond(Vec2 centre, float radius, Color colour)

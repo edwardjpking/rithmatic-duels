@@ -39,7 +39,7 @@ namespace RithmaticDuels.Rules
         public int Damage { get; private set; }
         public int Speed { get; private set; }
 
-        /// <summary>LoM only: stat buffs spent on each stat, including any added later with Add to drawing.</summary>
+        /// <summary>LoM only: stat buffs spent on each stat.</summary>
         public int DurabilityBuffs { get; private set; }
         public int DamageBuffs { get; private set; }
         public int SpeedBuffs { get; private set; }
@@ -129,27 +129,6 @@ namespace RithmaticDuels.Rules
                 case ChalklingStat.Durability: MaxDurability += amount; break;
                 case ChalklingStat.Damage: Damage += amount; break;
                 case ChalklingStat.Speed: Speed += amount; break;
-            }
-        }
-
-        /// <summary>Add to drawing on a chalkling: one stat buff per point, as if drawn in at the start.</summary>
-        internal void AddStatBuffs(ChalklingStat stat, int buffs, RulesConfig config)
-        {
-            switch (stat)
-            {
-                case ChalklingStat.Durability:
-                    DurabilityBuffs += buffs;
-                    MaxDurability += buffs * config.Making.DurabilityPerBuff;
-                    Durability += buffs * config.Making.DurabilityPerBuff;
-                    break;
-                case ChalklingStat.Damage:
-                    DamageBuffs += buffs;
-                    Damage += buffs * config.Making.DamagePerBuff;
-                    break;
-                case ChalklingStat.Speed:
-                    SpeedBuffs += buffs;
-                    Speed += buffs * config.Making.SpeedPerBuff;
-                    break;
             }
         }
 

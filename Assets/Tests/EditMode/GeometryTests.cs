@@ -273,6 +273,44 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void ADrawingInProgressShowsWhereItWillGoButIsNotOnTheBoard()
+        {
+            var spec = DrawingSpec.Forbiddance(0);
+            var placement = Placement.Segment(V(20f, 6f), V(20f, 14f));
+            spec = _board.Measure(Player.B, spec, placement);
+            _board.SetPendingPlacement(Player.B, spec, placement);
+            Assert.IsNull(_board.WorkInProgressOf(Player.B), "a choice doesn't show before its turn resolves");
+
+            _duel.ResolveTurn(Pass, PlayerAction.Start(spec));
+            Assert.IsTrue(_duel.GetPlayer(Player.B).HasWorkInProgress, "this LoF takes more than one turn");
+            var sketch = _board.WorkInProgressOf(Player.B);
+            Assert.AreEqual(LineType.Forbiddance, sketch.Type);
+            Assert.AreEqual(20f, sketch.Segment.Value.A.X, 1e-4);
+            Assert.AreEqual(6f, sketch.Segment.Value.A.Y, 1e-4);
+            Assert.AreEqual(14f, sketch.Segment.Value.B.Y, 1e-4);
+            Assert.IsFalse(_board.Bodies.OfType<ForbiddanceBody>().Any(), "nothing is on the board until it is complete");
+            Assert.IsNull(_board.WorkInProgressOf(Player.A));
+
+            while (_duel.GetPlayer(Player.B).HasWorkInProgress) _duel.ResolveTurn(Pass, Continue);
+            Assert.IsNull(_board.WorkInProgressOf(Player.B));
+            Assert.AreEqual(14f, _board.Bodies.OfType<ForbiddanceBody>().Single().Segment.B.Y, 1e-4);
+        }
+
+        [Test]
+        public void CancellingADrawingClearsItsSketch()
+        {
+            var spec = DrawingSpec.Forbiddance(0);
+            var placement = Placement.Segment(V(20f, 6f), V(20f, 14f));
+            spec = _board.Measure(Player.B, spec, placement);
+            _board.SetPendingPlacement(Player.B, spec, placement);
+            _duel.ResolveTurn(Pass, PlayerAction.Start(spec));
+            Assert.IsNotNull(_board.WorkInProgressOf(Player.B));
+
+            _duel.ResolveTurn(Pass, PlayerAction.Cancel());
+            Assert.IsNull(_board.WorkInProgressOf(Player.B));
+        }
+
+        [Test]
         public void ForbiddanceReflectsVigorBack()
         {
             // B's wall on its own half, square to the line of fire.
@@ -580,19 +618,14 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void RepairsSpreadOverTheWholeWard()
+        public void HoveringAnywhereOnAFlyingVigorFindsIt()
         {
-            Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
-            PassTurn(); PassTurn();
-            Assert.AreEqual(9, MainWard(Player.B).Durability);
-
-            var repair = PlayerAction.Repair(MainWard(Player.B).Id, 2);
-            _duel.ResolveTurn(Pass, repair);
-            while (_duel.GetPlayer(Player.B).HasWorkInProgress) _duel.ResolveTurn(Pass, Continue);
-            PassTurn(); // the board catches up on the next tick
-
-            Assert.AreEqual(11, MainWard(Player.B).Durability);
-            Assert.AreEqual(11, _board.MainWardOf(Player.B).Weakest);
+            // The LoV is drawn as a wave trailing behind its head, so hovering its tail finds it too.
+            var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
+            var body = (VigorBody)_board.BodyOf(vigor.Id);
+            Vec2 tail = body.Position - body.Direction * (_config.Geometry.VigorDrawnLength * 0.9f);
+            Assert.AreSame(body, _board.BodyAt(tail, 0.3f));
+            Assert.AreEqual(2, _board.ReflectDamage(vigor.Damage), "half of 3, rounded up");
         }
 
         [Test]
