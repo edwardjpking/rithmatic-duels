@@ -96,7 +96,7 @@ namespace RithmaticDuels.Presentation
             var vigor = body as VigorBody;
             if (vigor != null)
             {
-                Wave(vigor.Position, vigor.Direction, colour);
+                Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, colour);
                 return;
             }
 
@@ -147,7 +147,7 @@ namespace RithmaticDuels.Presentation
                 if (preview.To.HasValue)
                 {
                     Vec2 direction = (preview.To.Value - preview.From.Value).Normalized;
-                    Wave(preview.From.Value, direction, PreviewColour);
+                    Wave(preview.From.Value, direction, Board.Config.Geometry.VigorDrawnLength, PreviewColour);
                     // Aim line, dashed out to the edge of the board.
                     for (float d = 1f; d < 40f; d += 1f)
                     {
@@ -173,9 +173,8 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A LoV is drawn as a short sine wave along its direction of travel.</summary>
-        private static void Wave(Vec2 centre, Vec2 direction, Color colour)
+        private static void Wave(Vec2 centre, Vec2 direction, float length, Color colour)
         {
-            const float length = 1.2f;
             const float amplitude = 0.18f;
             const int steps = 16;
             Vec2 side = direction.Perp;

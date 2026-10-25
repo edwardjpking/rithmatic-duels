@@ -580,19 +580,14 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void RepairsSpreadOverTheWholeWard()
+        public void HoveringAnywhereOnAFlyingVigorFindsIt()
         {
-            Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
-            PassTurn(); PassTurn();
-            Assert.AreEqual(9, MainWard(Player.B).Durability);
-
-            var repair = PlayerAction.Repair(MainWard(Player.B).Id, 2);
-            _duel.ResolveTurn(Pass, repair);
-            while (_duel.GetPlayer(Player.B).HasWorkInProgress) _duel.ResolveTurn(Pass, Continue);
-            PassTurn(); // the board catches up on the next tick
-
-            Assert.AreEqual(11, MainWard(Player.B).Durability);
-            Assert.AreEqual(11, _board.MainWardOf(Player.B).Weakest);
+            // The LoV is drawn as a wave trailing behind its head, so hovering its tail finds it too.
+            var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
+            var body = (VigorBody)_board.BodyOf(vigor.Id);
+            Vec2 tail = body.Position - body.Direction * (_config.Geometry.VigorDrawnLength * 0.9f);
+            Assert.AreSame(body, _board.BodyAt(tail, 0.3f));
+            Assert.AreEqual(2, _board.ReflectDamage(vigor.Damage), "half of 3, rounded up");
         }
 
         [Test]

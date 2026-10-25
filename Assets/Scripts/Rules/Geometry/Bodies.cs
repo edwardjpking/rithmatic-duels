@@ -123,7 +123,7 @@ namespace RithmaticDuels.Rules.Geometry
             }
         }
 
-        /// <summary>Repairs (positive) or chalk fatigue (negative) act on the whole line.</summary>
+        /// <summary>Whole-line changes (chalk fatigue is negative) act on every point.</summary>
         public void ApplyEverywhere(int delta)
         {
             for (int i = 0; i < _durability.Length; i++)

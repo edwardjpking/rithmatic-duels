@@ -556,6 +556,18 @@ namespace RithmaticDuels.Rules.Geometry
         }
 
         /// <summary>The line nearest the point, if any is within <paramref name="within"/>: for showing its stats.</summary>
+        /// <summary>What a LoV with this damage deals to a LoF it reflects off: half, rounded up (DESIGN.md section 4.2).</summary>
+        public int ReflectDamage(int vigorDamage)
+        {
+            return (int)Math.Ceiling(vigorDamage * _config.Forbiddance.VigorDamageMultiplier - 1e-6);
+        }
+
+        /// <summary>What a LoV with this damage deals to a LoW arc toughened by a LoF, and to that LoF (DESIGN.md section 4.2).</summary>
+        public int ToughenedArcDamage(int vigorDamage)
+        {
+            return (int)Math.Ceiling(vigorDamage * _config.Forbiddance.ChordArcDamageMultiplier - 1e-6);
+        }
+
         public LineBody BodyAt(Vec2 point, float within)
         {
             LineBody best = null;
@@ -571,7 +583,8 @@ namespace RithmaticDuels.Rules.Geometry
                 if (ward != null)
                     for (int i = 0; i < ward.SampleCount; i++) distance = Math.Min(distance, Vec2.Distance(ward.SamplePoint(i), point));
                 else if (forbiddance != null) distance = DistanceToSegment(point, forbiddance.Segment);
-                else if (vigor != null) distance = Vec2.Distance(vigor.Position, point);
+                else if (vigor != null)
+                    distance = DistanceToSegment(point, new Segment(vigor.Position - vigor.Direction * _config.Geometry.VigorDrawnLength, vigor.Position));
                 else if (chalkling != null) distance = Math.Max(0f, Vec2.Distance(chalkling.Position, point) - _config.Making.Radius);
                 if (distance <= bestDistance) { bestDistance = distance; best = body; }
             }
@@ -685,7 +698,7 @@ namespace RithmaticDuels.Rules.Geometry
                     continue;
                 }
 
-                // Repairs and chalk fatigue change the rules-side durability; spread them over the whole line.
+                // Chalk fatigue changes the rules-side durability; spread it over the whole line.
                 var ward = body as WardBody;
                 if (ward == null) continue;
                 if (line.IsMainWard && ward.BindPoints.Count != line.BindPointsDrawn)
@@ -1143,7 +1156,7 @@ namespace RithmaticDuels.Rules.Geometry
         {
             vigor.Direction = Vec2.Reflect(vigor.Direction, normal).Normalized;
             vigor.Position += vigor.Direction * Intersect.Epsilon;
-            int damage = (int)Math.Ceiling(vigor.Line.Damage * _config.Forbiddance.VigorDamageMultiplier - 1e-6);
+            int damage = ReflectDamage(vigor.Line.Damage);
             if (damage <= 0)
             {
                 _notes.Add(Name(vigor) + " was reflected by " + Name(forbiddance) + ".");
@@ -1189,7 +1202,7 @@ namespace RithmaticDuels.Rules.Geometry
         /// </summary>
         private void HitShieldedArc(VigorBody vigor, ForbiddanceBody forbiddance, WardBody ward, float time, Dictionary<int, int> used, MovementResult result)
         {
-            int damage = (int)Math.Ceiling(vigor.Line.Damage * _config.Forbiddance.ChordArcDamageMultiplier - 1e-6);
+            int damage = ToughenedArcDamage(vigor.Line.Damage);
             HitWard(vigor, ward, damage, time, result, " (reduced by " + Name(forbiddance) + ")");
             DamageForbiddance(forbiddance, damage, vigor, time, used, result);
             _notes.Add(Name(forbiddance) + " took " + damage + " for toughening the arc.");

@@ -3,7 +3,6 @@ namespace RithmaticDuels.Rules
     public enum WorkKind
     {
         Drawing,
-        Repair,
         Buff,
         Dismiss,
         /// <summary>Drawing the bind points of a main LoW whose outline is already down (DESIGN.md section 2).</summary>
@@ -12,7 +11,7 @@ namespace RithmaticDuels.Rules
 
     /// <summary>
     /// The single piece of work a player has under way.
-    /// PROVISIONAL: Add to drawing (repair/buff) and Dismiss LoF occupy the same one-at-a-time slot as a
+    /// PROVISIONAL: Add to drawing (buffing a chalkling) and Dismiss LoF occupy the same one-at-a-time slot as a
     /// new drawing, and advance through Continue drawing like one.
     /// </summary>
     public sealed class WorkInProgress
@@ -48,7 +47,7 @@ namespace RithmaticDuels.Rules
     {
         public WorkKind Kind { get; internal set; }
         public LineType LineType { get; internal set; }
-        /// <summary>For repair, buff and dismiss: the line being worked on, which is already on the ground.</summary>
+        /// <summary>For buff and dismiss: the line being worked on, which is already on the ground.</summary>
         public int TargetLineId { get; internal set; }
     }
 

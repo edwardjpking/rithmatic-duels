@@ -224,14 +224,14 @@ namespace RithmaticDuels.Presentation
             if (duel.GetPlayer(player).NeedsBindPoints) return new List<ActionKind> { ActionKind.DrawBindPoints, ActionKind.Pass };
             var after = new List<ActionKind> { ActionKind.StartDrawing };
             if (board.MainWardOf(player) == null && duel.Config.MainWardFirst) return after;
-            bool repairable = false, dismissable = false;
+            bool buffable = false, dismissable = false;
             foreach (var line in duel.Lines)
             {
                 if (line.Owner != player || !line.IsActive) continue;
                 if (line.Type == LineType.Forbiddance) dismissable = true;
-                if (line.Type == LineType.Making || line.Durability < line.MaxDurability) repairable |= line.Type != LineType.Vigor;
+                if (line.Type == LineType.Making) buffable = true;
             }
-            if (repairable) after.Add(ActionKind.AddToDrawing);
+            if (buffable) after.Add(ActionKind.AddToDrawing);
             if (dismissable) after.Add(ActionKind.DismissForbiddance);
             after.Add(ActionKind.Pass);
             return after;
@@ -615,7 +615,15 @@ namespace RithmaticDuels.Presentation
             bool instant = pace == DrawingPace.Rush && config.RushedOneTurnDrawingsCompleteImmediately
                 && DrawTimes.BaseTurns(spec, config) == 1 && spec.TravelTurns == 0;
             int more = instant ? 0 : total - (config.StartActionCountsAsProgress ? 1 : 0);
-            return more <= 0 ? "Completes this turn." : "Takes " + total + " turn(s): this one and " + more + " more of Continue drawing.";
+            string text = more <= 0 ? "Completes this turn." : "Takes " + total + " turn(s): this one and " + more + " more of Continue drawing.";
+            if (pace != DrawingPace.Rush) return text;
+
+            // Rushing a drawing that takes 1 turn anyway saves no time; its only gain is finishing before lines move (DESIGN.md section 3).
+            int normal = DrawTimes.Turns(spec, DrawingPace.Normal, config);
+            if (normal <= config.RushedEarlyMaxNormalTurns)
+                return text + " Rushing saves no time here. Its only benefit is that the line goes down before lines move this turn"
+                    + (spec.Type == LineType.Vigor ? ", so it flies straight away" : "") + ". The modifier odds are worse.";
+            return text + " Rushing saves " + (normal - total) + " turn(s). The modifier odds are worse.";
         }
 
         private PlayerAction DrawAddTo(Duel duel, Player player, out string hint)
@@ -624,33 +632,23 @@ namespace RithmaticDuels.Presentation
             foreach (var line in duel.Lines)
             {
                 if (line.Owner != player || !line.IsActive) continue;
-                if (line.Type == LineType.Making || line.Type == LineType.Warding || line.Type == LineType.Forbiddance)
-                    targets.Add(line);
+                if (line.Type == LineType.Making) targets.Add(line);
             }
 
-            hint = "Pick a line to add to.";
+            hint = "Pick a chalkling to add to.";
             var target = PickTarget(targets);
             if (target == null) return null;
 
             var config = duel.Config;
-            if (target.Type == LineType.Making)
+            Choose(ref _buffStat, StatLabels);
+            Stepper("Stat buffs " + _amount, ref _amount, 1, 12);
+            GUILayout.Label("Takes " + _amount * config.AddToDrawing.TurnsPerStatBuff + " turn(s).");
+            if (!_buffStat.HasValue)
             {
-                Choose(ref _buffStat, StatLabels);
-                Stepper("Stat buffs " + _amount, ref _amount, 1, 12);
-                GUILayout.Label("Takes " + _amount * config.AddToDrawing.TurnsPerStatBuff + " turn(s).");
-                if (!_buffStat.HasValue)
-                {
-                    hint = "Choose a stat to buff.";
-                    return null;
-                }
-                return PlayerAction.Buff(target.Id, _buffStat.Value, _amount);
+                hint = "Choose a stat to buff.";
+                return null;
             }
-
-            int missing = Mathf.Max(1, target.MaxDurability - target.Durability);
-            _amount = Mathf.Clamp(_amount, 1, missing);
-            Stepper("Durability to repair " + _amount, ref _amount, 1, missing);
-            GUILayout.Label("Takes " + _amount * config.AddToDrawing.TurnsPerDurabilityPoint + " turn(s).");
-            return PlayerAction.Repair(target.Id, _amount);
+            return PlayerAction.Buff(target.Id, _buffStat.Value, _amount);
         }
 
         private PlayerAction DrawDismiss(Duel duel, ChalkBoard board, Player player, out string hint)

@@ -110,8 +110,6 @@ namespace RithmaticDuels.Rules
                     return who + " cancelled their work and lost its progress.";
                 case TurnEventType.DrawingCompleted:
                     return who + " completed " + LineName(line) + " with " + ModifierName(e.Value) + ".";
-                case TurnEventType.RepairCompleted:
-                    return who + " repaired " + LineName(line) + " by " + e.Value + ".";
                 case TurnEventType.BuffCompleted:
                     return who + " buffed " + LineName(line) + " by " + e.Value + ".";
                 case TurnEventType.DismissCompleted:
@@ -151,7 +149,6 @@ namespace RithmaticDuels.Rules
 
             switch (view.Kind)
             {
-                case WorkKind.Repair: return "repairing " + LineName(duel.FindLine(view.TargetLineId));
                 case WorkKind.Buff: return "buffing " + LineName(duel.FindLine(view.TargetLineId));
                 case WorkKind.Dismiss: return "dismissing " + LineName(duel.FindLine(view.TargetLineId));
                 default: return "drawing a " + LineTypeName(view.LineType);
