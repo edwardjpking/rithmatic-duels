@@ -9,9 +9,19 @@ namespace RithmaticDuels.Presentation
     public sealed class PlacementPreview
     {
         public Player Player;
+        /// <summary>A LoW the player has placed (drawn solid when <see cref="WardChosen"/>, dashed otherwise).</summary>
         public WardShape Ward;
+        public bool WardChosen;
+        /// <summary>Where a main LoW would go if the player clicked now: follows the mouse, dashed.</summary>
+        public WardShape GhostWard;
         /// <summary>Bind points the previewed LoW would have.</summary>
         public IReadOnlyList<Vec2> WardBindPoints;
+        /// <summary>A previewed Mark's Cross's crossed LoF.</summary>
+        public IReadOnlyList<Segment> Braces;
+        /// <summary>Preset spots for the main LoW, drawn as markers that can be clicked.</summary>
+        public IReadOnlyList<Vec2> Presets;
+        /// <summary>Show the midline of the player's half, which the main LoW snaps to.</summary>
+        public bool ShowMidline;
         public Segment? Segment;
         public Vec2? From;
         public Vec2? To;
@@ -30,7 +40,8 @@ namespace RithmaticDuels.Presentation
     /// <summary>
     /// The action menu for one player in the hot-seat duel, drawn with Unity's immediate-mode GUI.
     /// It builds a <see cref="PlayerAction"/> and, for new drawings, a <see cref="Placement"/> from clicks
-    /// and the scroll wheel on the board. The rules engine and the board decide whether they are legal.
+    /// and the scroll wheel on the board. The rules engine and the board decide whether they are legal,
+    /// and the menu greys out or snaps away anything they would refuse, so rules show rather than tell.
     /// The duel controller makes a fresh picker at the start of each player's turn, so nothing is
     /// selected until the player selects it.
     ///
@@ -47,13 +58,14 @@ namespace RithmaticDuels.Presentation
         private static readonly string[] ShapeLabels = { "Circle", "Ellipse" };
         private static readonly string[] CircleBindPointLabels = { "4", "6", "9" };
         private static readonly int[] CircleBindPointCounts = { 4, 6, 9 };
-        private static readonly string[] AttachedBindPointLabels = { "2", "4", "6", "9" };
-        private static readonly int[] AttachedBindPointCounts = { 2, 4, 6, 9 };
+        // A LoW added during the duel: a Mark's Cross, or a LoW with this many bind points (0 means Mark's Cross).
+        private static readonly string[] AttachedWardLabels = { "Mark's Cross", "2 (ellipse)", "4", "6", "9" };
+        private static readonly int[] AttachedWardBindPoints = { 0, 2, 4, 6, 9 };
         private static readonly string[] ForbiddanceLabels = { "Between 2 bind points", "Tangent at 1", "Free line" };
         private static readonly string[] ChalklingLabels = { "Bound to a bind point", "Free" };
 
-        /// <summary>How close a click must be to a bind point to pick it.</summary>
-        private const float BindPointPickRadius = 0.75f;
+        /// <summary>How close a click must be to a bind point, or a LoF to dismiss, to pick it.</summary>
+        private const float PickRadius = 0.75f;
 
         private enum MainShape { Circle, Ellipse }
         private enum ForbiddanceMode { Between, Tangent, Free }
@@ -61,15 +73,16 @@ namespace RithmaticDuels.Presentation
 
         // Every choice starts unselected (null or -1). Pace defaults to Normal.
         private ActionKind? _kind;
+        private ActionKind? _afterCancel;
         private LineType? _lineType;
         private DrawingPace _pace;
         private MainShape? _mainShape;
         private int _bindPointChoice = -1;
-        private bool _marksCross;
+        private int _attachedWardChoice = -1;
         private ForbiddanceMode? _forbiddanceMode;
         private ChalklingMode? _chalklingMode;
         private VigorTier? _tier;
-        private int _durabilityBuffs = 1;
+        private int _durabilityBuffs;
         private int _damageBuffs;
         private int _speedBuffs;
         private int _glyphs;
@@ -81,6 +94,7 @@ namespace RithmaticDuels.Presentation
         // Sizes set with the scroll wheel. Negative means "not touched yet", so the config default is used.
         private float _semiMinor = -1f;
         private float _length = -1f;
+        private float _attachedSize = -1f;
 
         // Placement clicks: up to two bind points or two board points, whichever the mode uses.
         private int _bindA = -1;
@@ -98,6 +112,9 @@ namespace RithmaticDuels.Presentation
         {
             _hover = point;
         }
+
+        /// <summary>The action being built: after Cancel, the one chosen to follow it.</summary>
+        private ActionKind? Effective { get { return _kind == ActionKind.CancelDrawing ? _afterCancel : _kind; } }
 
         /// <summary>Draws the menu. Returns the choice once the player locks it in, otherwise null.</summary>
         public LockedChoice Draw(Duel duel, ChalkBoard board, Player player)
@@ -126,13 +143,32 @@ namespace RithmaticDuels.Presentation
                 GUILayout.Space(8);
             }
 
+            bool cancelling = _kind == ActionKind.CancelDrawing;
+            if (cancelling)
+            {
+                GUILayout.Label("Abandon your current work (all progress on it is lost), then this turn:");
+                var after = ActionsAfterCancel(duel, board, player);
+                var labels = new string[after.Count];
+                for (int i = 0; i < after.Count; i++) labels[i] = ActionLabel(after[i]);
+                int index = _afterCancel.HasValue ? after.IndexOf(_afterCancel.Value) : -1;
+                int chosen = GUILayout.Toolbar(index, labels);
+                if (chosen != index && chosen >= 0)
+                {
+                    _afterCancel = after[chosen];
+                    GUIUtility.ExitGUI();
+                }
+                GUILayout.Space(8);
+            }
+
             PlayerAction action = null;
             Placement placement = null;
-            string hint = "Choose an action.";
-            switch (_kind)
+            string hint = cancelling ? "Choose what to do instead." : "Choose an action.";
+            // After a cancel the main LoW may need starting again, so check what the board has, not the menu.
+            bool needsMain = board.MainWardOf(player) == null && duel.Config.MainWardFirst;
+            switch (Effective)
             {
                 case ActionKind.StartDrawing:
-                    action = board.MainWardOf(player) == null
+                    action = needsMain
                         ? DrawMainWardSetup(duel.Config, board, player, out placement, out hint)
                         : DrawStart(duel.Config, board, player, out placement, out hint);
                     break;
@@ -140,21 +176,22 @@ namespace RithmaticDuels.Presentation
                     GUILayout.Label("Keep going. " + duel.GetPlayer(player).Work.TurnsRemaining + " turn(s) left, including this one.");
                     action = PlayerAction.Continue();
                     break;
-                case ActionKind.CancelDrawing:
-                    GUILayout.Label("Abandon your current work. All progress on it is lost.");
-                    action = PlayerAction.Cancel();
-                    break;
                 case ActionKind.AddToDrawing:
                     action = DrawAddTo(duel, player, out hint);
                     break;
                 case ActionKind.DismissForbiddance:
-                    action = DrawDismiss(duel, player, out hint);
+                    action = DrawDismiss(duel, board, player, out hint);
+                    break;
+                case ActionKind.DrawBindPoints:
+                    action = DrawBindPointsMenu(duel, board, player, out hint);
                     break;
                 case ActionKind.Pass:
-                    GUILayout.Label("Do nothing this turn.");
+                    if (!cancelling) GUILayout.Label("Do nothing this turn.");
                     action = PlayerAction.Pass();
                     break;
             }
+            if (cancelling && action != null)
+                action = action.Kind == ActionKind.Pass ? PlayerAction.Cancel() : action.AfterCancelling();
 
             GUILayout.FlexibleSpace();
             string problem = action == null ? hint : duel.Validate(player, action);
@@ -169,15 +206,41 @@ namespace RithmaticDuels.Presentation
             return new LockedChoice { Action = action, Placement = placement };
         }
 
-        /// <summary>A click on the board, in board units. Returns true if it changed the choice.</summary>
-        public bool HandleBoardClick(ChalkBoard board, Player player, Vec2 point)
+        /// <summary>What can follow a cancel: the menu as it would be with nothing in progress.</summary>
+        private static List<ActionKind> ActionsAfterCancel(Duel duel, ChalkBoard board, Player player)
         {
-            if (_kind != ActionKind.StartDrawing) return false;
+            if (duel.GetPlayer(player).NeedsBindPoints) return new List<ActionKind> { ActionKind.DrawBindPoints, ActionKind.Pass };
+            var after = new List<ActionKind> { ActionKind.StartDrawing };
+            if (board.MainWardOf(player) == null && duel.Config.MainWardFirst) return after;
+            bool repairable = false, dismissable = false;
+            foreach (var line in duel.Lines)
+            {
+                if (line.Owner != player || !line.IsActive) continue;
+                if (line.Type == LineType.Forbiddance) dismissable = true;
+                if (line.Type == LineType.Making || line.Durability < line.MaxDurability) repairable |= line.Type != LineType.Vigor;
+            }
+            if (repairable) after.Add(ActionKind.AddToDrawing);
+            if (dismissable) after.Add(ActionKind.DismissForbiddance);
+            after.Add(ActionKind.Pass);
+            return after;
+        }
 
-            if (board.MainWardOf(player) == null)
+        /// <summary>A click on the board, in board units. Returns true if it changed the choice.</summary>
+        public bool HandleBoardClick(ChalkBoard board, Player player, RulesConfig config, Vec2 point)
+        {
+            if (Effective == ActionKind.DismissForbiddance)
+            {
+                var forbiddance = board.ForbiddanceAt(player, point, PickRadius);
+                if (forbiddance == null) return false;
+                _targetLineId = forbiddance.LineId;
+                return true;
+            }
+            if (Effective != ActionKind.StartDrawing) return false;
+
+            if (board.MainWardOf(player) == null && config.MainWardFirst)
             {
                 if (!_mainShape.HasValue) return false;
-                _pointA = point;
+                _pointA = board.SnapMainWard(player, MainShapeSpec(), point, MainSemiMinor(config));
                 return true;
             }
 
@@ -205,20 +268,29 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>
-        /// The scroll wheel over the board: makes a main LoW ellipse flatter or rounder, or a LoF not bound at
-        /// two points shorter or longer. Returns true if it changed the choice.
+        /// The scroll wheel over the board: makes a LoW ellipse flatter or rounder, an attached LoW circle
+        /// bigger or smaller, or a LoF not bound at two points shorter or longer. Returns true if it changed the choice.
         /// </summary>
         public bool HandleScroll(ChalkBoard board, Player player, RulesConfig config, float delta)
         {
-            if (_kind != ActionKind.StartDrawing || Mathf.Abs(delta) < 1e-6f) return false;
+            if (Effective != ActionKind.StartDrawing || Mathf.Abs(delta) < 1e-6f) return false;
             var geometry = config.Geometry;
             // Scrolling up (negative delta) makes things bigger.
             float step = delta < 0f ? geometry.ScrollStep : -geometry.ScrollStep;
 
-            if (board.MainWardOf(player) == null)
+            if (board.MainWardOf(player) == null && config.MainWardFirst)
             {
                 if (_mainShape != MainShape.Ellipse) return false;
                 _semiMinor = Mathf.Clamp(SemiMinor(config) + step, geometry.EllipseMinSemiMinor, geometry.EllipseMaxSemiMinor);
+                return true;
+            }
+
+            if (_lineType == LineType.Warding && _attachedWardChoice > 0)
+            {
+                var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
+                float min, max, start;
+                board.AttachedSizeRange(spec, out min, out max, out start);
+                _attachedSize = Mathf.Clamp(board.AttachedSize(spec, Placement.AtBindPoint(0, _attachedSize)) + step, min, max);
                 return true;
             }
 
@@ -232,7 +304,9 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// The first thing each player does (DESIGN.md section 2): choose the main LoW's shape, place it on
-        /// their half, then choose its bind points. Each step unlocks once the one before is done.
+        /// their half, then choose its bind points. Each step unlocks once the one before is done. Where it
+        /// can go is shown, not told: the outline follows the mouse but never leaves the player's half, and
+        /// snaps to the preset spots and the midline.
         /// </summary>
         private PlayerAction DrawMainWardSetup(RulesConfig config, ChalkBoard board, Player player, out Placement placement, out string hint)
         {
@@ -248,11 +322,8 @@ namespace RithmaticDuels.Presentation
                 return null;
             }
             bool ellipse = _mainShape == MainShape.Ellipse;
-            if (ellipse)
-                GUILayout.Label("Scroll over the board to make it flatter or rounder (" + (2f * SemiMinor(config)).ToString("0.00")
-                    + " across, " + (2f * config.Geometry.EllipseSemiMajor).ToString("0.0") + " long). Flatter ellipses are weaker along their sides.");
-
-            GUILayout.Label("2. Click on your half of the board to place it" + (_pointA.HasValue ? ". Click again to move it." : "."));
+            if (ellipse) GUILayout.Label("Scroll over the board to make it flatter or rounder. Flatter ellipses are weaker along their sides.");
+            GUILayout.Label("2. Click on your half of the board to place it.");
 
             GUILayout.Label("3. Bind points:");
             int bindPoints = -1;
@@ -269,15 +340,24 @@ namespace RithmaticDuels.Presentation
                 if (_pointA.HasValue && _bindPointChoice >= 0) bindPoints = CircleBindPointCounts[_bindPointChoice];
             }
 
-            // Preview at the click, or following the mouse until then.
-            Vec2? centre = _pointA ?? _hover;
-            var preview = new PlacementPreview { Player = player };
-            if (centre.HasValue)
+            var shapeSpec = MainShapeSpec();
+            float semiMinor = MainSemiMinor(config);
+            // A shape or size change can push a placed outline off its half, so keep it inside.
+            if (_pointA.HasValue) _pointA = board.ClampMainWard(player, shapeSpec, _pointA.Value, semiMinor);
+
+            var preview = new PlacementPreview
             {
-                var shapeSpec = DrawingSpec.Warding(ellipse ? 2 : Mathf.Max(4, bindPoints));
-                var shapePlacement = Placement.MainWard(centre.Value, ellipse ? SemiMinor(config) : 0f);
+                Player = player,
+                Presets = board.MainWardPresets(player, shapeSpec, semiMinor),
+                ShowMidline = true,
+            };
+            if (_hover.HasValue)
+                preview.GhostWard = board.PreviewWard(player, shapeSpec, Placement.MainWard(board.SnapMainWard(player, shapeSpec, _hover.Value, semiMinor), semiMinor));
+            if (_pointA.HasValue)
+            {
                 IReadOnlyList<Vec2> points;
-                preview.Ward = board.PreviewWard(player, shapeSpec, shapePlacement, out points);
+                preview.Ward = board.PreviewWard(player, bindPoints > 0 ? DrawingSpec.Warding(bindPoints) : shapeSpec, Placement.MainWard(_pointA.Value, semiMinor), out points);
+                preview.WardChosen = true;
                 if (bindPoints > 0) preview.WardBindPoints = points;
             }
             Preview = preview;
@@ -294,17 +374,29 @@ namespace RithmaticDuels.Presentation
             }
 
             var spec = DrawingSpec.Warding(bindPoints);
-            placement = Placement.MainWard(_pointA.Value, ellipse ? SemiMinor(config) : 0f);
+            placement = Placement.MainWard(_pointA.Value, semiMinor);
             GUILayout.Space(8);
-            DrawPaceAndTiming(config, spec);
+            _pace = DrawingPace.Normal; // the main LoW can't be rushed or steadied
+            GUILayout.Label("Both outlines are drawn as soon as both players lock in. " + BindPointTimingText(config, bindPoints)
+                + " Nothing else can be drawn until they are done.");
             hint = null;
             return PlayerAction.Start(spec, _pace);
+        }
+
+        private DrawingSpec MainShapeSpec()
+        {
+            return DrawingSpec.Warding(_mainShape == MainShape.Ellipse ? 2 : 4);
+        }
+
+        private float MainSemiMinor(RulesConfig config)
+        {
+            return _mainShape == MainShape.Ellipse ? SemiMinor(config) : 0f;
         }
 
         private PlayerAction DrawStart(RulesConfig config, ChalkBoard board, Player player, out Placement placement, out string hint)
         {
             // Clicks belong to one line type and placement mode; switching either starts placement over.
-            ResetClicksIfChanged(_lineType + "/" + _forbiddanceMode + "/" + _chalklingMode + "/" + _marksCross);
+            ResetClicksIfChanged(_lineType + "/" + _forbiddanceMode + "/" + _chalklingMode + "/" + _attachedWardChoice);
             placement = null;
             Choose(ref _lineType, LineTypeLabels);
             if (!_lineType.HasValue)
@@ -320,22 +412,36 @@ namespace RithmaticDuels.Presentation
             switch (_lineType)
             {
                 case LineType.Warding:
-                    Toggle(ref _marksCross, " Mark's Cross (a small brace)");
-                    if (_marksCross) spec = DrawingSpec.MarksCross(config);
+                    GUILayout.Label("Bind points:");
+                    int before = _attachedWardChoice;
+                    Choose(ref _attachedWardChoice, AttachedWardLabels);
+                    if (_attachedWardChoice != before) _attachedSize = -1f;
+                    if (_attachedWardChoice < 0)
+                    {
+                        hint = "Choose a Mark's Cross or how many bind points.";
+                        break;
+                    }
+                    int count = AttachedWardBindPoints[_attachedWardChoice];
+                    if (count == 0)
+                    {
+                        GUILayout.Label("A Mark's Cross: a small circle braced by two crossed Lines of Forbiddance.");
+                        spec = DrawingSpec.MarksCross(config);
+                    }
                     else
                     {
-                        GUILayout.Label("Bind points:");
-                        Choose(ref _bindPointChoice, AttachedBindPointLabels);
-                        if (_bindPointChoice >= 0) spec = DrawingSpec.Warding(AttachedBindPointCounts[_bindPointChoice]);
-                        else hint = "Choose how many bind points it has.";
+                        spec = DrawingSpec.Warding(count);
+                        GUILayout.Label(count == 2
+                            ? "An ellipse sticking out from the bind point. Scroll to make it rounder or flatter."
+                            : "A circle outside the bind point. Scroll to make it bigger or smaller.");
                     }
-                    GUILayout.Label("Click a bind point on your main Line of Warding to attach this circle there.");
-                    if (_bindA >= 0) placement = Placement.AtBindPoint(_bindA);
-                    if (spec != null && placement != null)
+                    GUILayout.Label("Click a bind point on your main Line of Warding to attach it there.");
+                    if (_bindA >= 0)
                     {
+                        placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : board.AttachedSize(spec, Placement.AtBindPoint(_bindA, _attachedSize)));
                         IReadOnlyList<Vec2> points;
                         preview.Ward = board.PreviewWard(player, spec, placement, out points);
                         preview.WardBindPoints = points;
+                        if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward);
                     }
                     break;
 
@@ -349,14 +455,12 @@ namespace RithmaticDuels.Presentation
                             if (_bindA >= 0 && _bindB >= 0) placement = Placement.BetweenBindPoints(_bindA, _bindB);
                             break;
                         case ForbiddanceMode.Tangent:
-                            GUILayout.Label("Click a bind point. The line lies along the circle there.");
-                            GUILayout.Label("Scroll over the board to change its length (" + Length(config).ToString("0.00") + ").");
+                            GUILayout.Label("Click a bind point. The line lies along the circle there. Scroll to change its length.");
                             spec = DrawingSpec.Forbiddance(1);
                             if (_bindA >= 0) placement = Placement.TangentAt(_bindA, Length(config));
                             break;
                         case ForbiddanceMode.Free:
-                            GUILayout.Label("Click where the line starts, then click to set its direction. Draw on your half.");
-                            GUILayout.Label("Scroll over the board to change its length (" + Length(config).ToString("0.00") + ").");
+                            GUILayout.Label("Click where the line starts, then click to set its direction. Scroll to change its length.");
                             spec = DrawingSpec.Forbiddance(0);
                             Vec2? toward = _pointB ?? _hover;
                             if (_pointA.HasValue && toward.HasValue && Vec2.Distance(_pointA.Value, toward.Value) > 1e-3f)
@@ -372,6 +476,9 @@ namespace RithmaticDuels.Presentation
                             break;
                     }
                     if (placement != null) preview.Segment = board.PreviewForbiddance(player, placement);
+                    if (spec != null && placement != null)
+                        GUILayout.Label("Length " + board.Measure(player, spec, placement).Length.ToString("0.0")
+                            + ": longer lines take longer to draw.");
                     break;
 
                 case LineType.Vigor:
@@ -391,23 +498,10 @@ namespace RithmaticDuels.Presentation
                     break;
 
                 case LineType.Making:
-                    Stepper("Durability buffs", ref _durabilityBuffs, 0, 12);
-                    Stepper("Damage buffs", ref _damageBuffs, 0, 12);
-                    Stepper("Speed buffs", ref _speedBuffs, 0, 12);
-                    int maxGlyphs = DrawTimes.MaxGlyphs(_durabilityBuffs + _damageBuffs + _speedBuffs, config);
-                    Stepper("Glyphs (max " + maxGlyphs + ")", ref _glyphs, 0, maxGlyphs);
-                    GUILayout.Label("A positive modifier goes to:");
-                    Choose(ref _modifierStat, StatLabels);
-                    Choose(ref _chalklingMode, ChalklingLabels);
-                    GUILayout.Label("Chalklings stand still until chalkling behaviour is built.");
-                    if (!_modifierStat.HasValue || !_chalklingMode.HasValue)
-                    {
-                        hint = !_modifierStat.HasValue ? "Choose where a positive modifier goes." : "Choose whether it is bound.";
-                        break;
-                    }
+                    spec = DrawMakingPointBuy(config, out hint);
+                    if (spec == null) break;
                     bool bound = _chalklingMode == ChalklingMode.Bound;
                     GUILayout.Label(bound ? "Click a bind point to tether it there." : "Click where to draw it on your half.");
-                    spec = DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, _glyphs, bound ? 1 : 0, _modifierStat.Value);
                     if (bound && _bindA >= 0) placement = Placement.AtBindPoint(_bindA);
                     if (!bound && _pointA.HasValue) placement = Placement.At(_pointA.Value);
                     preview.Point = bound ? null : _pointA;
@@ -419,30 +513,86 @@ namespace RithmaticDuels.Presentation
 
             if (placement != null)
             {
-                int travel = board.TravelTurns(player, placement);
-                spec = spec.WithTravel(travel);
-                if (travel > 0)
+                spec = board.Measure(player, spec, placement);
+                if (spec.TravelTurns > 0)
                     GUILayout.Label("This is " + board.TravelDistance(player, placement).ToString("0.0")
-                        + " units from your main Line of Warding: +" + travel + " turn(s) to get there.");
+                        + " units from your main Line of Warding: +" + spec.TravelTurns + " turn(s) to get there.");
             }
 
             GUILayout.Space(8);
-            DrawPaceAndTiming(config, spec);
+            Choose(ref _pace, PaceLabels);
+            DrawTiming(config, spec);
             return PlayerAction.Start(spec, _pace);
         }
 
-        private void DrawPaceAndTiming(RulesConfig config, DrawingSpec spec)
+        /// <summary>Redrawing the main LoW's bind points after a cancel. The count is offered as the shape allows.</summary>
+        private PlayerAction DrawBindPointsMenu(Duel duel, ChalkBoard board, Player player, out string hint)
         {
-            Choose(ref _pace, PaceLabels);
-            if (DrawTimes.Validate(spec, config) != null) return;
+            var choices = board.BindPointChoices(player);
+            var labels = new string[choices.Length];
+            for (int i = 0; i < choices.Length; i++) labels[i] = choices[i].ToString();
+            if (choices.Length == 1) _bindPointChoice = 0;
+            GUILayout.Label("Bind points:");
+            Choose(ref _bindPointChoice, labels);
+            if (_bindPointChoice < 0 || _bindPointChoice >= choices.Length)
+            {
+                hint = "Choose how many bind points to draw.";
+                return null;
+            }
+            int count = choices[_bindPointChoice];
+            Preview = new PlacementPreview { Player = player, WardBindPoints = board.PreviewBindPoints(player, count) };
+            GUILayout.Label(BindPointTimingText(duel.Config, count) + " Nothing else can be drawn until they are done.");
+            hint = null;
+            return PlayerAction.DrawBindPoints(count);
+        }
 
-            int total = DrawTimes.Turns(spec, _pace, config);
-            bool instant = _pace == DrawingPace.Rush && config.RushedOneTurnDrawingsCompleteImmediately
+        private static string BindPointTimingText(RulesConfig config, int count)
+        {
+            int total = DrawTimes.BindPointTurns(count, config);
+            int more = total - (config.StartActionCountsAsProgress ? 1 : 0);
+            return more <= 0
+                ? "The bind points are done this turn."
+                : "The bind points take " + total + " turn(s): this one and " + more + " more of Continue.";
+        }
+
+        /// <summary>The chalkling point buy: each stat shows its value, and buttons that can't be used are greyed out.</summary>
+        private DrawingSpec DrawMakingPointBuy(RulesConfig config, out string hint)
+        {
+            var making = config.Making;
+            GUILayout.Label("Spend points on stats. Every " + making.StatBuffsPerDrawTurn + " points take a turn to draw.");
+            Stepper("Durability " + (making.BaseDurability + _durabilityBuffs * making.DurabilityPerBuff), ref _durabilityBuffs, 0, 12);
+            Stepper("Damage " + (making.BaseDamage + _damageBuffs * making.DamagePerBuff), ref _damageBuffs, 0, 12);
+            Stepper("Speed " + (making.BaseSpeed + _speedBuffs * making.SpeedPerBuff), ref _speedBuffs, 0, 12);
+            int maxGlyphs = DrawTimes.MaxGlyphs(_durabilityBuffs + _damageBuffs + _speedBuffs, config);
+            _glyphs = Mathf.Clamp(_glyphs, 0, maxGlyphs);
+            Stepper("Glyphs " + _glyphs + " of " + maxGlyphs + " (first free)", ref _glyphs, 0, maxGlyphs);
+            GUILayout.Label("A positive modifier goes to:");
+            Choose(ref _modifierStat, StatLabels);
+            Choose(ref _chalklingMode, ChalklingLabels);
+            GUILayout.Label("Chalklings stand still until chalkling behaviour is built.");
+            if (!_modifierStat.HasValue || !_chalklingMode.HasValue)
+            {
+                hint = !_modifierStat.HasValue ? "Choose where a positive modifier goes." : "Choose whether it is bound.";
+                return null;
+            }
+            hint = null;
+            bool bound = _chalklingMode == ChalklingMode.Bound;
+            return DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, _glyphs, bound ? 1 : 0, _modifierStat.Value);
+        }
+
+        private void DrawTiming(RulesConfig config, DrawingSpec spec)
+        {
+            if (DrawTimes.Validate(spec, config) != null) return;
+            GUILayout.Label(TimingText(config, spec, _pace));
+        }
+
+        private static string TimingText(RulesConfig config, DrawingSpec spec, DrawingPace pace)
+        {
+            int total = DrawTimes.Turns(spec, pace, config);
+            bool instant = pace == DrawingPace.Rush && config.RushedOneTurnDrawingsCompleteImmediately
                 && DrawTimes.BaseTurns(spec, config) == 1 && spec.TravelTurns == 0;
             int more = instant ? 0 : total - (config.StartActionCountsAsProgress ? 1 : 0);
-            GUILayout.Label(more <= 0
-                ? "Completes this turn."
-                : "Takes " + total + " turn(s): this one and " + more + " more of Continue drawing.");
+            return more <= 0 ? "Completes this turn." : "Takes " + total + " turn(s): this one and " + more + " more of Continue drawing.";
         }
 
         private PlayerAction DrawAddTo(Duel duel, Player player, out string hint)
@@ -463,7 +613,7 @@ namespace RithmaticDuels.Presentation
             if (target.Type == LineType.Making)
             {
                 Choose(ref _buffStat, StatLabels);
-                Stepper("Stat buffs", ref _amount, 1, 12);
+                Stepper("Stat buffs " + _amount, ref _amount, 1, 12);
                 GUILayout.Label("Takes " + _amount * config.AddToDrawing.TurnsPerStatBuff + " turn(s).");
                 if (!_buffStat.HasValue)
                 {
@@ -474,20 +624,25 @@ namespace RithmaticDuels.Presentation
             }
 
             int missing = Mathf.Max(1, target.MaxDurability - target.Durability);
-            Stepper("Durability to repair", ref _amount, 1, missing);
+            _amount = Mathf.Clamp(_amount, 1, missing);
+            Stepper("Durability to repair " + _amount, ref _amount, 1, missing);
             GUILayout.Label("Takes " + _amount * config.AddToDrawing.TurnsPerDurabilityPoint + " turn(s).");
             return PlayerAction.Repair(target.Id, _amount);
         }
 
-        private PlayerAction DrawDismiss(Duel duel, Player player, out string hint)
+        private PlayerAction DrawDismiss(Duel duel, ChalkBoard board, Player player, out string hint)
         {
             var targets = new List<Line>();
             foreach (var line in duel.Lines)
                 if (line.Owner == player && line.IsActive && line.Type == LineType.Forbiddance) targets.Add(line);
 
-            hint = "Pick a Line of Forbiddance to dismiss.";
+            hint = "Click one of your Lines of Forbiddance on the board, or pick it here.";
+            GUILayout.Label("Click the Line of Forbiddance to dismiss.");
             var target = PickTarget(targets);
             if (target == null) return null;
+
+            var body = board.BodyOf(target.Id) as ForbiddanceBody;
+            if (body != null) Preview = new PlacementPreview { Player = player, Segment = body.Segment };
             GUILayout.Label("Takes " + duel.Config.Forbiddance.DismissTurns + " turn(s).");
             return PlayerAction.Dismiss(target.Id);
         }
@@ -525,7 +680,7 @@ namespace RithmaticDuels.Presentation
         {
             var bindPoints = board.BindPointsOf(player);
             int nearest = -1;
-            float best = BindPointPickRadius;
+            float best = PickRadius;
             for (int i = 0; i < bindPoints.Count; i++)
             {
                 float distance = Vec2.Distance(bindPoints[i], point);
@@ -570,14 +725,18 @@ namespace RithmaticDuels.Presentation
             _clickKey = clickKey;
         }
 
+        /// <summary>A label with - and + buttons. A button that would go past the limits is greyed out.</summary>
         private static void Stepper(string label, ref int value, int min, int max)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(180));
+            GUILayout.Label(label, GUILayout.Width(220));
             int step = 0;
+            bool enabled = GUI.enabled;
+            GUI.enabled = enabled && value > min;
             if (GUILayout.Button("-", GUILayout.Width(30))) step = -1;
-            GUILayout.Label(value.ToString(), GUILayout.Width(30));
+            GUI.enabled = enabled && value < max;
             if (GUILayout.Button("+", GUILayout.Width(30))) step = 1;
+            GUI.enabled = enabled;
             GUILayout.EndHorizontal();
 
             int next = Mathf.Clamp(value + step, min, max);
@@ -613,14 +772,6 @@ namespace RithmaticDuels.Presentation
             GUIUtility.ExitGUI();
         }
 
-        private static void Toggle(ref bool value, string label)
-        {
-            bool next = GUILayout.Toggle(value, label);
-            if (next == value) return;
-            value = next;
-            GUIUtility.ExitGUI();
-        }
-
         private static string ActionLabel(ActionKind kind)
         {
             switch (kind)
@@ -630,6 +781,7 @@ namespace RithmaticDuels.Presentation
                 case ActionKind.CancelDrawing: return "Cancel";
                 case ActionKind.AddToDrawing: return "Add to drawing";
                 case ActionKind.DismissForbiddance: return "Dismiss LoF";
+                case ActionKind.DrawBindPoints: return "Draw bind points";
                 default: return "Pass";
             }
         }

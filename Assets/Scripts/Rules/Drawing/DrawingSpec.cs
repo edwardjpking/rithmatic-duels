@@ -39,6 +39,12 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public int TravelTurns;
 
+        /// <summary>
+        /// LoF only: its length, which sets its draw time (DESIGN.md section 4.2). The geometry layer works
+        /// this out from the placement and checks it matches. 0 means the default length.
+        /// </summary>
+        public float Length;
+
         public int TotalStatBuffs { get { return DurabilityBuffs + DamageBuffs + SpeedBuffs; } }
 
         public static DrawingSpec Warding(int bindPoints)

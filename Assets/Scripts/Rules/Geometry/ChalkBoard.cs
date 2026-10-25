@@ -124,6 +124,8 @@ namespace RithmaticDuels.Rules.Geometry
             if (problem != null) return problem;
             if (spec.TravelTurns != TravelTurns(player, placement))
                 return "The travel time doesn't match how far this is from your main Line of Warding.";
+            if (spec.Type == LineType.Forbiddance && Math.Abs(spec.Length - Measure(player, spec, placement).Length) > 1e-3f)
+                return "The length doesn't match where the line goes.";
             return null;
         }
 
@@ -142,6 +144,13 @@ namespace RithmaticDuels.Rules.Geometry
                         return CheckMainWard(player, spec, placement, halfOnly);
                     }
                     if (placement.Kind != PlacementKind.AtBindPoint) return "Pick a bind point on your main Line of Warding.";
+                    if (!spec.IsMarksCross && placement.Size > 0f)
+                    {
+                        float min, max, start;
+                        AttachedSizeRange(spec, out min, out max, out start);
+                        if (placement.Size < min - 1e-4f || placement.Size > max + 1e-4f)
+                            return spec.BindPoints == 2 ? "That ellipse is too flat or too round." : "That circle is too small or too big.";
+                    }
                     return ValidBindPoint(placement.BindPointA, bindPoints);
 
                 case LineType.Forbiddance:
@@ -223,6 +232,162 @@ namespace RithmaticDuels.Rules.Geometry
             }
         }
 
+        /// <summary>
+        /// The spec with everything the board works out from the placement filled in: travel turns, and a
+        /// LoF's length. The UI calls this before locking in; <see cref="ValidatePlacement"/> checks it.
+        /// </summary>
+        public DrawingSpec Measure(Player player, DrawingSpec spec, Placement placement)
+        {
+            var measured = spec.WithTravel(TravelTurns(player, placement));
+            if (spec.Type == LineType.Forbiddance && placement != null)
+            {
+                var segment = ForbiddanceGeometry(player, placement);
+                if (segment.HasValue) measured.Length = segment.Value.Length;
+            }
+            return measured;
+        }
+
+        /// <summary>A Mark's Cross's two crossed LoF: the diagonals of its circle (DESIGN.md section 4.1).</summary>
+        public static Segment[] MarksCrossBraces(WardShape shape)
+        {
+            float r = shape.A;
+            Vec2 c = shape.Centre;
+            Vec2 d1 = new Vec2(1f, 1f).Normalized * r;
+            Vec2 d2 = new Vec2(1f, -1f).Normalized * r;
+            return new[] { new Segment(c - d1, c + d1), new Segment(c - d2, c + d2) };
+        }
+
+        /// <summary>Spots offered for the main LoW, all on the midline of the player's half: back (the default spot), centre and front.</summary>
+        public List<Vec2> MainWardPresets(Player player, DrawingSpec spec, float semiMinor)
+        {
+            float quarter = Width / 4f;
+            float centreX = player == Player.A ? quarter : Width - quarter;
+            var spots = new List<Vec2> { Home(player), new Vec2(centreX, Height / 2f), new Vec2(Width / 2f, Height / 2f) };
+            var presets = new List<Vec2>();
+            foreach (var spot in spots)
+            {
+                Vec2 clamped = ClampMainWard(player, spec, spot, semiMinor);
+                bool duplicate = false;
+                foreach (var existing in presets) duplicate |= Vec2.Distance(existing, clamped) < 0.1f;
+                if (!duplicate) presets.Add(clamped);
+            }
+            return presets;
+        }
+
+        /// <summary>
+        /// Where the main LoW goes for a mouse position: snapped to a preset or the board's midline when
+        /// close, then moved to the nearest spot where the whole shape fits (on the player's own half).
+        /// </summary>
+        public Vec2 SnapMainWard(Player player, DrawingSpec spec, Vec2 desired, float semiMinor)
+        {
+            float snap = _config.Geometry.MainWardSnapDistance;
+            Vec2 clamped = ClampMainWard(player, spec, desired, semiMinor);
+            foreach (var preset in MainWardPresets(player, spec, semiMinor))
+                if (Vec2.Distance(preset, clamped) <= snap) return preset;
+            if (Math.Abs(clamped.Y - Height / 2f) <= snap) clamped = ClampMainWard(player, spec, new Vec2(clamped.X, Height / 2f), semiMinor);
+            return clamped;
+        }
+
+        /// <summary>The nearest centre to <paramref name="desired"/> where the main LoW fits wholly on the board (and the player's half).</summary>
+        public Vec2 ClampMainWard(Player player, DrawingSpec spec, Vec2 desired, float semiMinor)
+        {
+            IReadOnlyList<Vec2> bindPoints;
+            var shape = WardGeometry(player, spec, Placement.MainWard(desired, semiMinor), out bindPoints, true);
+            // Half-extents of the shape around its centre.
+            float ex = 0f, ey = 0f;
+            const int steps = 64;
+            for (int i = 0; i < steps; i++)
+            {
+                Vec2 offset = shape.PointAt(2f * (float)Math.PI * i / steps) - shape.Centre;
+                ex = Math.Max(ex, Math.Abs(offset.X));
+                ey = Math.Max(ey, Math.Abs(offset.Y));
+            }
+            const float margin = 1e-3f;
+            float minX = 0f, maxX = Width;
+            if (_config.Geometry.DrawOnOwnHalfOnly)
+            {
+                if (player == Player.A) maxX = Width / 2f; else minX = Width / 2f;
+            }
+            float x = Clamp(desired.X, minX + ex + margin, maxX - ex - margin);
+            float y = Clamp(desired.Y, ey + margin, Height - ey - margin);
+            return new Vec2(x, y);
+        }
+
+        /// <summary>One of this player's LoF within <paramref name="within"/> of the point, nearest first; null if none.</summary>
+        public ForbiddanceBody ForbiddanceAt(Player owner, Vec2 point, float within)
+        {
+            ForbiddanceBody best = null;
+            float bestDistance = within;
+            foreach (var body in _bodies.Values)
+            {
+                var forbiddance = body as ForbiddanceBody;
+                if (forbiddance == null || forbiddance.Owner != owner || !forbiddance.Line.IsActive) continue;
+                float distance = DistanceToSegment(point, forbiddance.Segment);
+                if (distance <= bestDistance) { bestDistance = distance; best = forbiddance; }
+            }
+            return best;
+        }
+
+        /// <summary>The line nearest the point, if any is within <paramref name="within"/>: for showing its stats.</summary>
+        public LineBody BodyAt(Vec2 point, float within)
+        {
+            LineBody best = null;
+            float bestDistance = within;
+            foreach (var body in _bodies.Values)
+            {
+                if (!body.Line.IsActive) continue;
+                float distance = float.PositiveInfinity;
+                var ward = body as WardBody;
+                var forbiddance = body as ForbiddanceBody;
+                var vigor = body as VigorBody;
+                var chalkling = body as ChalklingBody;
+                if (ward != null)
+                    for (int i = 0; i < ward.SampleCount; i++) distance = Math.Min(distance, Vec2.Distance(ward.SamplePoint(i), point));
+                else if (forbiddance != null) distance = DistanceToSegment(point, forbiddance.Segment);
+                else if (vigor != null) distance = Vec2.Distance(vigor.Position, point);
+                else if (chalkling != null) distance = Math.Max(0f, Vec2.Distance(chalkling.Position, point) - _config.Making.Radius);
+                if (distance <= bestDistance) { bestDistance = distance; best = body; }
+            }
+            return best;
+        }
+
+        private static float DistanceToSegment(Vec2 point, Segment segment)
+        {
+            Vec2 along = segment.B - segment.A;
+            float lengthSquared = Vec2.Dot(along, along);
+            float t = lengthSquared < 1e-9f ? 0f : Clamp(Vec2.Dot(point - segment.A, along) / lengthSquared, 0f, 1f);
+            return Vec2.Distance(point, segment.A + along * t);
+        }
+
+        private static float Clamp(float value, float min, float max)
+        {
+            if (min > max) return (min + max) / 2f;
+            return Math.Max(min, Math.Min(max, value));
+        }
+
+        /// <summary>The bind points a main LoW gets once that many are drawn: an ellipse's two ends, or a circle's preset.</summary>
+        private IReadOnlyList<Vec2> MainBindPoints(Player owner, WardShape shape, int count)
+        {
+            if (count <= 0) return new List<Vec2>();
+            if (!shape.IsCircle) return BindPoints.ForEllipse(shape);
+            return BindPoints.ForCircle(count, shape.Centre, shape.A, Facing(owner));
+        }
+
+        /// <summary>Where a player's main LoW bind points would go if they drew this many, for previews.</summary>
+        public IReadOnlyList<Vec2> PreviewBindPoints(Player player, int count)
+        {
+            var main = MainWardOf(player);
+            return main != null ? MainBindPoints(player, main.Shape, count) : new List<Vec2>();
+        }
+
+        /// <summary>The bind point counts a player's main LoW can take: 2 on an ellipse; 4, 6 or 9 on a circle.</summary>
+        public int[] BindPointChoices(Player player)
+        {
+            var main = MainWardOf(player);
+            if (main == null) return new int[0];
+            return main.Shape.IsCircle ? new[] { 4, 6, 9 } : new[] { 2 };
+        }
+
         /// <summary>Extra turns for drawing this far from the main LoW: one per threshold passed.</summary>
         public int TravelTurns(Player player, Placement placement)
         {
@@ -261,6 +426,11 @@ namespace RithmaticDuels.Rules.Geometry
             FlyVigor(result);
         }
 
+        public void PlaceNewLines(Duel duel, MovementResult result)
+        {
+            Sync(duel, result);
+        }
+
         // ---- Keeping bodies in step with the duel's lines ----
 
         private void Sync(Duel duel, MovementResult result)
@@ -287,6 +457,8 @@ namespace RithmaticDuels.Rules.Geometry
                 // Repairs and chalk fatigue change the rules-side durability; spread them over the whole line.
                 var ward = body as WardBody;
                 if (ward == null) continue;
+                if (line.IsMainWard && ward.BindPoints.Count != line.BindPointsDrawn)
+                    ward.BindPoints = MainBindPoints(line.Owner, ward.Shape, line.BindPointsDrawn);
                 int delta = line.Durability - ward.Weakest;
                 if (delta != 0) ward.ApplyEverywhere(delta);
                 if (ward.Weakest != line.Durability || ward.WeakestMax != line.MaxDurability)
@@ -310,7 +482,10 @@ namespace RithmaticDuels.Rules.Geometry
                 case LineType.Warding:
                     IReadOnlyList<Vec2> bindPoints;
                     var shape = WardGeometry(owner, line.Spec, placement, out bindPoints, line.IsMainWard);
-                    return new WardBody(line, shape, bindPoints, _config);
+                    var wardBody = new WardBody(line, shape, bindPoints, _config);
+                    if (line.Spec.IsMarksCross) wardBody.Braces = MarksCrossBraces(shape);
+                    if (line.IsMainWard) wardBody.BindPoints = MainBindPoints(owner, shape, line.BindPointsDrawn);
+                    return wardBody;
 
                 case LineType.Forbiddance:
                     var segment = ForbiddanceGeometry(owner, placement) ?? ForbiddanceGeometry(owner, Placement.Default()).Value;
@@ -358,7 +533,11 @@ namespace RithmaticDuels.Rules.Geometry
                 return WardShape.Circle(home, radius);
             }
 
-            float attachedRadius = spec.IsMarksCross ? _config.Warding.MarksCrossRadius : _config.Geometry.AttachedWardRadius;
+            // An attached ellipse sticks straight out from the bind point, so it reaches as far as its long axis.
+            bool attachedEllipse = !spec.IsMarksCross && spec.BindPoints == 2;
+            float reach = spec.IsMarksCross ? _config.Warding.MarksCrossRadius
+                : attachedEllipse ? _config.Geometry.AttachedEllipseSemiMajor
+                : AttachedSize(spec, placement);
             int count = spec.IsMarksCross ? _config.Warding.MarksCrossBindPoints : spec.BindPoints;
             Vec2 centre;
             Vec2 outward;
@@ -366,7 +545,7 @@ namespace RithmaticDuels.Rules.Geometry
             {
                 // Nothing to attach to (only reachable without the UI): sit in front of home.
                 outward = facing;
-                centre = Home(owner) + facing * (_config.Warding.DefaultMainRadius + attachedRadius);
+                centre = Home(owner) + facing * (_config.Warding.DefaultMainRadius + reach);
             }
             else
             {
@@ -378,10 +557,46 @@ namespace RithmaticDuels.Rules.Geometry
                 }
                 Vec2 point = main.BindPoints[index];
                 outward = main.Shape.OutwardNormalAt(main.Shape.ParamOf(point));
-                centre = point + outward * attachedRadius;
+                centre = point + outward * reach;
             }
-            bindPoints = BindPoints.ForCircle(count, centre, attachedRadius, outward);
-            return WardShape.Circle(centre, attachedRadius);
+            if (attachedEllipse)
+            {
+                var shape = WardShape.Ellipse(centre, reach, AttachedSize(spec, placement), outward.Angle);
+                bindPoints = BindPoints.ForEllipse(shape);
+                return shape;
+            }
+            bindPoints = BindPoints.ForCircle(count, centre, reach, outward);
+            return WardShape.Circle(centre, reach);
+        }
+
+        /// <summary>
+        /// The size actually used for an attached LoW with this placement, within the configured range:
+        /// the semi-minor axis of an ellipse (2 bind points), otherwise the radius of a circle.
+        /// </summary>
+        public float AttachedSize(DrawingSpec spec, Placement placement)
+        {
+            float min, max, start;
+            AttachedSizeRange(spec, out min, out max, out start);
+            float wanted = placement != null && placement.Size > 0f ? placement.Size : start;
+            return Math.Max(min, Math.Min(max, wanted));
+        }
+
+        /// <summary>The range the scroll wheel can set an attached LoW's size in, and where it starts.</summary>
+        public void AttachedSizeRange(DrawingSpec spec, out float min, out float max, out float start)
+        {
+            var geometry = _config.Geometry;
+            if (spec.BindPoints == 2)
+            {
+                min = geometry.AttachedEllipseMinSemiMinor;
+                max = geometry.AttachedEllipseMaxSemiMinor;
+                start = geometry.AttachedEllipseSemiMinor;
+            }
+            else
+            {
+                min = geometry.AttachedWardMinRadius;
+                max = geometry.AttachedWardMaxRadius;
+                start = geometry.AttachedWardRadius;
+            }
         }
 
         private Segment? ForbiddanceGeometry(Player owner, Placement placement)

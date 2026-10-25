@@ -116,6 +116,8 @@ namespace RithmaticDuels.Rules
                     return who + " buffed " + LineName(line) + " by " + e.Value + ".";
                 case TurnEventType.DismissCompleted:
                     return who + " dismissed " + LineName(line) + ".";
+                case TurnEventType.BindPointsCompleted:
+                    return who + " finished the " + e.Value + " bind points of " + LineName(line) + ".";
                 case TurnEventType.WorkFizzled:
                     return who + "'s work came to nothing: its target was gone.";
                 case TurnEventType.LineDamaged:

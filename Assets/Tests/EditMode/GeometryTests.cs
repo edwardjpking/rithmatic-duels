@@ -166,11 +166,11 @@ namespace RithmaticDuels.Rules.Tests
 
         /// <summary>
         /// Start a drawing for one player with a placement, and continue until it completes. The other passes.
-        /// Travel turns are worked out from the placement, as the UI does.
+        /// Travel turns and LoF length are worked out from the placement, as the UI does.
         /// </summary>
         private Line Draw(Player player, DrawingSpec spec, Placement placement, DrawingPace pace = DrawingPace.Normal)
         {
-            spec = spec.WithTravel(_board.TravelTurns(player, placement));
+            spec = _board.Measure(player, spec, placement);
             Assert.IsNull(_board.ValidatePlacement(player, spec, placement));
             _board.SetPendingPlacement(player, spec, placement);
             var start = PlayerAction.Start(spec, pace);
@@ -202,11 +202,14 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void VigorFliesAndHitsTheOpponentsWard()
         {
-            // High tier: speed 7, damage 3. From x=10 it reaches B's ward front at x=23 on its second tick.
+            // High tier: speed 7, damage 3. A line finished at normal pace joins the board after movement
+            // (DESIGN.md section 3), so it first flies on the next tick, and reaches B's ward front at x=23 on the one after.
             var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
             var body = (VigorBody)_board.BodyOf(vigor.Id);
-            Assert.AreEqual(17f, body.Position.X, 1e-3);
+            Assert.AreEqual(10f, body.Position.X, 1e-3);
 
+            PassTurn();
+            Assert.AreEqual(17f, body.Position.X, 1e-3);
             var report = PassTurn();
             var damage = report.Events.Single(e => e.Type == TurnEventType.LineDamaged);
             Assert.AreEqual(MainWard(Player.B).Id, damage.LineId);
@@ -214,6 +217,23 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(9, MainWard(Player.B).Durability);
             Assert.IsFalse(vigor.IsActive);
             Assert.IsNull(_board.BodyOf(vigor.Id));
+        }
+
+        [Test]
+        public void ARushedVigorFliesTheTickItIsFinished()
+        {
+            // DESIGN.md section 3: rushed lines join the board before animated lines act.
+            var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)), DrawingPace.Rush);
+            Assert.AreEqual(17f, ((VigorBody)_board.BodyOf(vigor.Id)).Position.X, 1e-3);
+        }
+
+        [Test]
+        public void LinesCanBeSetToFinishBeforeMovement()
+        {
+            // The swappable order (stages 3 and 4) is a config switch.
+            _config.LinesFinishBeforeMovement = true;
+            var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
+            Assert.AreEqual(17f, ((VigorBody)_board.BodyOf(vigor.Id)).Position.X, 1e-3);
         }
 
         [Test]
@@ -285,12 +305,45 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void AnAttachedWardWithTwoBindPointsIsAnEllipseStickingOut()
+        {
+            var ward = Draw(Player.A, DrawingSpec.Warding(2), Placement.AtBindPoint(0, 1f));
+            var body = (WardBody)_board.BodyOf(ward.Id);
+            float semiMajor = _config.Geometry.AttachedEllipseSemiMajor;
+            Assert.AreEqual(semiMajor, body.Shape.A, 1e-4);
+            Assert.AreEqual(1f, body.Shape.B, 1e-4);
+            Assert.AreEqual(9f + semiMajor, body.Shape.Centre.X, 1e-3); // front bind point at x=9, long axis toward B
+            Assert.AreEqual(2, body.BindPoints.Count);
+            Assert.AreEqual(9f, Math.Min(body.BindPoints[0].X, body.BindPoints[1].X), 1e-3);
+        }
+
+        [Test]
+        public void AnAttachedCircleCanBeSized()
+        {
+            var ward = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 2f));
+            var body = (WardBody)_board.BodyOf(ward.Id);
+            Assert.AreEqual(2f, body.Shape.A, 1e-4);
+            Assert.AreEqual(11f, body.Shape.Centre.X, 1e-3);
+        }
+
+        [Test]
+        public void AttachedWardSizesStayInTheirRange()
+        {
+            var geometry = _config.Geometry;
+            var spec = DrawingSpec.Warding(4);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, geometry.AttachedWardMaxRadius + 1f)));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Warding(2), Placement.AtBindPoint(0, geometry.AttachedEllipseMinSemiMinor / 2f)));
+            Assert.IsNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, geometry.AttachedWardMinRadius)));
+        }
+
+        [Test]
         public void VigorOnVigorUsesTheTierRules()
         {
             _board.SetPendingPlacement(Player.A, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(14f, 10f), V(26f, 10f)));
             _board.SetPendingPlacement(Player.B, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(18f, 10f), V(6f, 10f)));
             var low = PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low));
-            _duel.ResolveTurn(low, low); // both complete, fly 3 each and meet in the middle
+            _duel.ResolveTurn(low, low); // both complete, and join the board after movement
+            PassTurn(); // fly 3 each and meet in the middle
 
             Assert.IsFalse(_duel.Lines.Any(l => l.Type == LineType.Vigor && l.IsActive));
             Assert.That(_board.LastTickNotes.Single(), Does.Contain("cancelled"));
@@ -317,7 +370,7 @@ namespace RithmaticDuels.Rules.Tests
         public void RepairsSpreadOverTheWholeWard()
         {
             Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10f, 10f), V(26f, 10f)));
-            PassTurn();
+            PassTurn(); PassTurn();
             Assert.AreEqual(9, MainWard(Player.B).Durability);
 
             var repair = PlayerAction.Repair(MainWard(Player.B).Id, 2);
@@ -429,6 +482,46 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void SetupBindPointsAppearOnTheBoardOnlyWhenDrawn()
+        {
+            var config = new RulesConfig();
+            var board = new ChalkBoard(config);
+            var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), board);
+            board.SetPendingPlacement(Player.A, DrawingSpec.Warding(9), Placement.MainWard(V(8f, 10f)));
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(9)), PlayerAction.Start(DrawingSpec.Warding(2)));
+
+            Assert.IsNotNull(board.MainWardOf(Player.A), "the outline is on the board at once");
+            Assert.AreEqual(0, board.BindPointsOf(Player.A).Count);
+            Assert.AreEqual(2, board.BindPointsOf(Player.B).Count);
+            CollectionAssert.AreEqual(new[] { 4, 6, 9 }, board.BindPointChoices(Player.A));
+            CollectionAssert.AreEqual(new[] { 2 }, board.BindPointChoices(Player.B));
+            Assert.AreEqual(9, board.PreviewBindPoints(Player.A, 9).Count);
+
+            while (duel.GetPlayer(Player.A).HasWorkInProgress) duel.ResolveTurn(PlayerAction.Continue(), PlayerAction.Pass());
+            Assert.AreEqual(9, board.BindPointsOf(Player.A).Count, "the board catches up in the tick they complete");
+        }
+
+        [Test]
+        public void TheMainWardSnapsInsideItsHalfAndToPresets()
+        {
+            var board = new ChalkBoard(new RulesConfig());
+            var circle = DrawingSpec.Warding(4);
+
+            // Dragged past the centre line and off the top: pushed back so the whole circle fits.
+            Vec2 clamped = board.ClampMainWard(Player.A, circle, V(30f, 25f), 0f);
+            Assert.AreEqual(13f, clamped.X, 1e-2);
+            Assert.AreEqual(17f, clamped.Y, 1e-2);
+            Assert.IsNull(board.ValidatePlacement(Player.A, circle, Placement.MainWard(clamped)));
+
+            var presets = board.MainWardPresets(Player.B, circle, 0f);
+            CollectionAssert.IsNotEmpty(presets);
+            foreach (var preset in presets) Assert.IsNull(board.ValidatePlacement(Player.B, circle, Placement.MainWard(preset)));
+            Assert.AreEqual(24f, board.SnapMainWard(Player.B, circle, V(24.3f, 10.4f), 0f).X, 1e-3, "snaps to the centre of B's half");
+            Assert.AreEqual(10f, board.SnapMainWard(Player.A, circle, V(11f, 10.4f), 0f).Y, 1e-3, "snaps to the midline");
+            Assert.AreEqual(14f, board.SnapMainWard(Player.A, circle, V(11f, 14f), 0f).Y, 1e-3, "free away from the midline");
+        }
+
+        [Test]
         public void TheMainWardCanBePlacedAndShapedOnItsOwnHalf()
         {
             var config = new RulesConfig();
@@ -451,6 +544,44 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(6f, main.Shape.Centre.Y, 1e-4);
             Assert.AreEqual(2f, main.Shape.B, 1e-4);
             Assert.AreEqual(2, main.BindPoints.Count);
+        }
+
+        [Test]
+        public void MeasureFillsInTheLengthOfAForbiddance()
+        {
+            var points = _board.BindPointsOf(Player.A);
+            var chord = _board.Measure(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(0, 1));
+            Assert.AreEqual(Vec2.Distance(points[0], points[1]), chord.Length, 1e-4);
+            var free = _board.Measure(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(10f, 4f), V(10f, 10f)));
+            Assert.AreEqual(6f, free.Length, 1e-4);
+            Assert.AreEqual(3, DrawTimes.BaseTurns(free, _config));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, DrawingSpec.Forbiddance(0).WithTravel(free.TravelTurns),
+                Placement.Segment(V(10f, 4f), V(10f, 10f))), "a spec without the length is rejected");
+        }
+
+        [Test]
+        public void AMarksCrossHasItsCrossedForbiddanceInside()
+        {
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var body = (WardBody)_board.BodyOf(cross.Id);
+            Assert.AreEqual(2, body.Braces.Count);
+            foreach (var brace in body.Braces)
+            {
+                Assert.AreEqual(2f * _config.Warding.MarksCrossRadius, brace.Length, 1e-3);
+                Assert.AreEqual(0f, Vec2.Distance((brace.A + brace.B) / 2f, body.Shape.Centre), 1e-4);
+            }
+            Assert.AreEqual(0, ((WardBody)_board.BodyOf(MainWard(Player.A).Id)).Braces.Count);
+        }
+
+        [Test]
+        public void ClickingNearALineFindsIt()
+        {
+            var lof = Draw(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(12f, 6f), V(12f, 12f)));
+            Assert.AreEqual(lof.Id, _board.ForbiddanceAt(Player.A, V(12.2f, 9f), 0.5f).LineId);
+            Assert.IsNull(_board.ForbiddanceAt(Player.B, V(12.2f, 9f), 0.5f), "only your own");
+            Assert.IsNull(_board.ForbiddanceAt(Player.A, V(13f, 9f), 0.5f));
+            Assert.AreEqual(MainWard(Player.A).Id, _board.BodyAt(V(9.1f, 10f), 0.3f).LineId);
+            Assert.AreEqual(lof.Id, _board.BodyAt(V(12f, 7f), 0.3f).LineId);
         }
 
         [Test]

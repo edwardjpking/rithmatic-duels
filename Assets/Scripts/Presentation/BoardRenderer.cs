@@ -76,6 +76,7 @@ namespace RithmaticDuels.Presentation
                     float health = (float)ward.SampleDurability(i) / Math.Max(1, ward.SampleMax(i));
                     Line(ward.SamplePoint(i), ward.SamplePoint(next), width, Color.Lerp(Damaged, colour, health));
                 }
+                foreach (var brace in ward.Braces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, colour);
                 foreach (var point in ward.BindPoints) BindPoint(point, colour);
                 return;
             }
@@ -110,16 +111,20 @@ namespace RithmaticDuels.Presentation
             if (preview.WardBindPoints != null)
                 foreach (var point in preview.WardBindPoints) BindPoint(point, PreviewColour);
 
-            if (preview.Ward != null)
+            if (preview.ShowMidline)
             {
-                const int steps = 64;
-                for (int i = 0; i < steps; i++)
-                {
-                    float t0 = 2f * Mathf.PI * i / steps;
-                    float t1 = 2f * Mathf.PI * (i + 1) / steps;
-                    if (i % 2 == 0) Line(preview.Ward.PointAt(t0), preview.Ward.PointAt(t1), WardWidth, PreviewColour);
-                }
+                // The main LoW snaps to the midline of the player's half.
+                float half = Board.Width / 2f;
+                float from = preview.Player == Player.A ? 0f : half;
+                for (float x = from; x < from + half; x += 1f)
+                    Line(new Vec2(x, Board.Height / 2f), new Vec2(x + 0.5f, Board.Height / 2f), 0.03f, WithAlpha(PreviewColour, 0.35f));
             }
+            if (preview.Presets != null)
+                foreach (var spot in preview.Presets) Diamond(spot, 0.3f, WithAlpha(PreviewColour, 0.6f));
+            if (preview.GhostWard != null) Outline(preview.GhostWard, true, WithAlpha(PreviewColour, 0.6f));
+            if (preview.Ward != null) Outline(preview.Ward, !preview.WardChosen, PreviewColour);
+            if (preview.Braces != null)
+                foreach (var brace in preview.Braces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, PreviewColour);
             if (preview.Segment.HasValue) Line(preview.Segment.Value.A, preview.Segment.Value.B, ForbiddanceWidth, PreviewColour);
             if (preview.Point.HasValue) Diamond(preview.Point.Value, 0.25f, PreviewColour);
             if (preview.From.HasValue)
@@ -137,6 +142,19 @@ namespace RithmaticDuels.Presentation
                         Line(a, a + direction * 0.5f, 0.03f, PreviewColour);
                     }
                 }
+            }
+        }
+
+        /// <summary>A LoW outline for previews: dashed while it is only a suggestion, solid once chosen.</summary>
+        private static void Outline(WardShape shape, bool dashed, Color colour)
+        {
+            const int steps = 64;
+            for (int i = 0; i < steps; i++)
+            {
+                if (dashed && i % 2 == 1) continue;
+                float t0 = 2f * Mathf.PI * i / steps;
+                float t1 = 2f * Mathf.PI * (i + 1) / steps;
+                Line(shape.PointAt(t0), shape.PointAt(t1), dashed ? WardWidth : MainWardWidth, colour);
             }
         }
 

@@ -6,6 +6,8 @@ namespace RithmaticDuels.Rules
         Repair,
         Buff,
         Dismiss,
+        /// <summary>Drawing the bind points of a main LoW whose outline is already down (DESIGN.md section 2).</summary>
+        BindPoints,
     }
 
     /// <summary>
@@ -57,6 +59,9 @@ namespace RithmaticDuels.Rules
         public Line MainWard { get; internal set; }
 
         public bool HasWorkInProgress { get { return Work != null; } }
+
+        /// <summary>The main LoW's outline is down but its bind points aren't drawn yet, so nothing else can be drawn.</summary>
+        public bool NeedsBindPoints { get { return MainWard != null && MainWard.IsActive && MainWard.BindPointsDrawn == 0; } }
 
         internal PlayerState(Player player)
         {

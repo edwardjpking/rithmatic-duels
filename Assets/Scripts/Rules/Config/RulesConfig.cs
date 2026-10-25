@@ -38,10 +38,20 @@ namespace RithmaticDuels.Rules
         public bool StartActionCountsAsProgress = true;
 
         /// <summary>
-        /// Until a player's main LoW is drawn or being drawn, the only thing they can do is start it
-        /// (DESIGN.md section 2). On timeout they start a default one (TimeoutMainWardBindPoints).
+        /// The pre-game setup (DESIGN.md section 2). A player's first action must set up their main LoW
+        /// (shape, position and bind point count). Its outline is drawn at once, with no modifier, and its
+        /// bind points start drawing (BindPointsPerDrawTurn), with no rush, steady or modifier. Until they
+        /// are done, the player can only continue, cancel (then restart them or pass) or pass. On timeout
+        /// a default main LoW is set up (TimeoutMainWardBindPoints). Off: the main LoW is an ordinary
+        /// drawing that brings its bind points when it completes.
         /// </summary>
         public bool MainWardFirst = true;
+
+        /// <summary>
+        /// Tick order (DESIGN.md section 3): dismissals, then rushed drawings, then animated lines act, then
+        /// every other finished line. True swaps the last two, so all lines finish before anything moves.
+        /// </summary>
+        public bool LinesFinishBeforeMovement = false;
 
         /// <summary>Rushing a 1-turn drawing makes it complete in the same tick it is started.</summary>
         public bool RushedOneTurnDrawingsCompleteImmediately = true;
@@ -127,13 +137,26 @@ namespace RithmaticDuels.Rules
         /// <summary>A main LoW with 2 bind points is an ellipse with these semi-axes, long axis toward the opponent.</summary>
         public float EllipseSemiMajor = 3.5f;
         public float EllipseSemiMinor = 2.5f;
-        /// <summary>Radius of a LoW (other than a Mark's Cross) attached at a bind point of the main LoW.</summary>
+        /// <summary>
+        /// A LoW (other than a Mark's Cross) attached at a bind point of the main LoW is a circle with this
+        /// starting radius. The scroll wheel changes it within the range below.
+        /// </summary>
         public float AttachedWardRadius = 1.5f;
+        public float AttachedWardMinRadius = 1f;
+        public float AttachedWardMaxRadius = 2.5f;
+        /// <summary>
+        /// An attached LoW with 2 bind points is an ellipse sticking straight out from the bind point, with
+        /// this semi-major axis. The player sets its semi-minor axis (how round it is) within the range below.
+        /// </summary>
+        public float AttachedEllipseSemiMajor = 2f;
+        public float AttachedEllipseSemiMinor = 1.25f;
+        public float AttachedEllipseMinSemiMinor = 0.75f;
+        public float AttachedEllipseMaxSemiMinor = 1.75f;
         /// <summary>Starting length of a LoF that is not bound at two points (tangent or free). The scroll wheel changes it within the range below.</summary>
         public float TangentForbiddanceLength = 3f;
         public float MinForbiddanceLength = 1f;
         public float MaxForbiddanceLength = 8f;
-        /// <summary>The scroll wheel changes ellipse flatness and LoF length by this much per notch.</summary>
+        /// <summary>The scroll wheel changes ellipse flatness, attached LoW radius and LoF length by this much per notch.</summary>
         public float ScrollStep = 0.25f;
         /// <summary>A main LoW ellipse keeps its semi-major axis; the player sets its semi-minor axis within this range.</summary>
         public float EllipseMinSemiMinor = 1.5f;
@@ -144,6 +167,8 @@ namespace RithmaticDuels.Rules
         /// inside the main LoW cost nothing extra.
         /// </summary>
         public float[] TravelTurnThresholds = { 2f, 4f, 7f };
+        /// <summary>While placing the main LoW, the mouse snaps to a preset spot or the midline of the board when this close.</summary>
+        public float MainWardSnapDistance = 0.6f;
         /// <summary>Two LoV collide when they come this close.</summary>
         public float VigorContactDistance = 0.3f;
         /// <summary>Free placements (LoF, LoV, unbound chalklings) must be on the player's own half of the board (DESIGN.md section 1.1).</summary>
@@ -170,7 +195,8 @@ namespace RithmaticDuels.Rules
         public int DurabilityPerModifierStep = 2;
         /// <summary>Main LoW draw time is (bind points) div this.</summary>
         public int BindPointsPerDrawTurn = 2;
-        public int MarksCrossDrawTurns = 1;
+        /// <summary>A Mark's Cross is drawn whole: its small circle and the crossed LoF inside it.</summary>
+        public int MarksCrossDrawTurns = 2;
         public int MarksCrossBindPoints = 4;
         public int MaxBindPoints = 12;
         /// <summary>PROVISIONAL: the main LoW a player starts if their decision timer runs out before they have one.</summary>
@@ -193,10 +219,13 @@ namespace RithmaticDuels.Rules
         public int BaseDurability = 3;
         public int DurabilityPerBindPoint = 3;
         public int DurabilityPerModifierStep = 2;
-        /// <summary>Draw time is this minus (bind points × DrawTurnsSavedPerBindPoint), floored at the minimum.</summary>
-        public int BaseDrawTurns = 4;
+        /// <summary>
+        /// Draw time is ceil(length / LengthPerDrawTurn) minus (bind points × DrawTurnsSavedPerBindPoint),
+        /// floored at the minimum (DESIGN.md section 4.2). A spec with no length uses Geometry.TangentForbiddanceLength.
+        /// </summary>
+        public float LengthPerDrawTurn = 2f;
         public int DrawTurnsSavedPerBindPoint = 1;
-        public int DismissTurns = 2;
+        public int DismissTurns = 1;
         /// <summary>A LoV hitting a LoF reflects and deals this share of its damage to it, rounded up (DESIGN.md section 4.2).</summary>
         public float VigorDamageMultiplier = 0.5f;
     }
@@ -251,7 +280,8 @@ namespace RithmaticDuels.Rules
         public int AttacksPerTick = 1;
         /// <summary>"+1 to a stat of choice / -1 to the highest stat", per modifier step.</summary>
         public int StatPerModifierStep = 1;
-        public int DrawTurnsPerStatBuff = 1;
+        /// <summary>Draw time is ceil(stat buffs / StatBuffsPerDrawTurn) plus DrawTurnsPerGlyph for each glyph beyond the free ones.</summary>
+        public int StatBuffsPerDrawTurn = 4;
         public int DrawTurnsPerGlyph = 1;
         /// <summary>A chalkling carries this many glyphs for free, plus one more per StatBuffsPerExtraGlyph buffs.</summary>
         public int FreeGlyphs = 1;

@@ -53,18 +53,25 @@ namespace RithmaticDuels.Rules
     }
 
     /// <summary>
-    /// Step 2 of tick resolution (movement and attacks) needs geometry: where LoV travel, reflections
-    /// off LoF, chalkling pathing. The rules core is geometry-free, so it hands that step to this
-    /// interface and applies the collisions it reports in step 3. Rules that need no geometry, such as
+    /// Stage 3 of tick resolution (animated lines take actions) needs geometry: where LoV travel,
+    /// reflections off LoF, chalkling pathing. The rules core is geometry-free, so it hands that stage to
+    /// this interface and applies the collisions it reports. Rules that need no geometry, such as
     /// LoV-on-LoV collisions and how far a chalkling is pushed, live in <see cref="VigorRules"/>.
     /// </summary>
     public interface IMovementResolver
     {
         void ResolveMovementAndAttacks(Duel duel, MovementResult result);
+
+        /// <summary>
+        /// Called once lines that finish after movement (stage 4) are on the ground, so the geometry layer
+        /// can place them. Only <see cref="MovementResult.DurabilityOverrides"/> is read from the result.
+        /// </summary>
+        void PlaceNewLines(Duel duel, MovementResult result);
     }
 
     public sealed class NoMovementResolver : IMovementResolver
     {
         public void ResolveMovementAndAttacks(Duel duel, MovementResult result) { }
+        public void PlaceNewLines(Duel duel, MovementResult result) { }
     }
 }

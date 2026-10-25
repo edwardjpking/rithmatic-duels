@@ -94,6 +94,12 @@ namespace RithmaticDuels.Rules
                 actions.Add(ActionKind.StartDrawing);
                 return actions;
             }
+            if (state.NeedsBindPoints && !state.HasWorkInProgress)
+            {
+                actions.Add(ActionKind.DrawBindPoints);
+                actions.Add(ActionKind.Pass);
+                return actions;
+            }
             if (state.HasWorkInProgress)
             {
                 actions.Add(ActionKind.ContinueDrawing);
@@ -112,9 +118,12 @@ namespace RithmaticDuels.Rules
         /// <summary>What a player does when the decision timer runs out: continue a drawing in progress, otherwise pass.</summary>
         public PlayerAction TimeoutAction(Player player)
         {
-            if (MustStartMainWard(GetPlayer(player)))
+            var state = GetPlayer(player);
+            if (MustStartMainWard(state))
                 return PlayerAction.Start(DrawingSpec.Warding(Config.Warding.TimeoutMainWardBindPoints));
-            return GetPlayer(player).HasWorkInProgress ? PlayerAction.Continue() : PlayerAction.Pass();
+            if (state.NeedsBindPoints && !state.HasWorkInProgress)
+                return PlayerAction.DrawBindPoints(state.MainWard.Spec.BindPoints);
+            return state.HasWorkInProgress ? PlayerAction.Continue() : PlayerAction.Pass();
         }
 
         /// <summary>Returns null if the action is legal for this player now, otherwise why not.</summary>
@@ -124,17 +133,32 @@ namespace RithmaticDuels.Rules
             if (action == null) return "No action chosen.";
 
             var state = GetPlayer(player);
-            if (MustStartMainWard(state))
+            if (action.CancelsCurrentWork)
+            {
+                if (!state.HasWorkInProgress) return "There is no drawing in progress to cancel.";
+                if (action.Kind == ActionKind.ContinueDrawing || action.Kind == ActionKind.CancelDrawing)
+                    return "Cancelling first only goes with starting something new or passing.";
+            }
+            // What the player is still working on once any cancel in this action has happened.
+            bool busy = state.HasWorkInProgress && !action.CancelsCurrentWork;
+
+            if (MustStartMainWard(state, busy))
             {
                 if (action.Kind != ActionKind.StartDrawing || action.Spec == null
                     || action.Spec.Type != LineType.Warding || action.Spec.IsMarksCross)
                     return "Start by drawing your main Line of Warding.";
+                if (action.Pace != DrawingPace.Normal) return "Your main Line of Warding can't be rushed or steadied.";
+            }
+            else if (state.NeedsBindPoints && !busy)
+            {
+                if (action.Kind != ActionKind.DrawBindPoints && action.Kind != ActionKind.Pass)
+                    return "Nothing can be drawn until your main Line of Warding has its bind points.";
             }
 
             switch (action.Kind)
             {
                 case ActionKind.StartDrawing:
-                    if (state.HasWorkInProgress) return "Only one drawing can be in progress at a time.";
+                    if (busy) return "Only one drawing can be in progress at a time.";
                     return DrawTimes.Validate(action.Spec, Config);
 
                 case ActionKind.ContinueDrawing:
@@ -142,14 +166,20 @@ namespace RithmaticDuels.Rules
                     return state.HasWorkInProgress ? null : "There is no drawing in progress.";
 
                 case ActionKind.AddToDrawing:
-                    if (state.HasWorkInProgress) return "Only one drawing can be in progress at a time.";
+                    if (busy) return "Only one drawing can be in progress at a time.";
                     return ValidateAddTo(player, action);
 
                 case ActionKind.DismissForbiddance:
-                    if (state.HasWorkInProgress) return "Only one drawing can be in progress at a time.";
+                    if (busy) return "Only one drawing can be in progress at a time.";
                     var target = FindLine(action.TargetLineId);
                     if (target == null || target.Owner != player || !target.IsActive || target.Type != LineType.Forbiddance)
                         return "Only one of your own Lines of Forbiddance can be dismissed.";
+                    return null;
+
+                case ActionKind.DrawBindPoints:
+                    if (busy || !state.NeedsBindPoints) return "Bind points are drawn on a main Line of Warding that has none yet.";
+                    if (action.Amount < 1 || action.Amount > Config.Warding.MaxBindPoints)
+                        return "A Line of Warding has 1 to " + Config.Warding.MaxBindPoints + " bind points.";
                     return null;
 
                 case ActionKind.Pass:
@@ -163,7 +193,12 @@ namespace RithmaticDuels.Rules
         /// <summary>True while this player has no main LoW, drawn or in progress, and the rules make them start one first.</summary>
         private bool MustStartMainWard(PlayerState state)
         {
-            return Config.MainWardFirst && state.MainWard == null && !state.HasWorkInProgress;
+            return MustStartMainWard(state, state.HasWorkInProgress);
+        }
+
+        private bool MustStartMainWard(PlayerState state, bool busy)
+        {
+            return Config.MainWardFirst && state.MainWard == null && !busy;
         }
 
         /// <summary>Lock in both players' actions and resolve one tick.</summary>
@@ -185,21 +220,30 @@ namespace RithmaticDuels.Rules
             ApplyChoice(Player.A, actionA, report);
             ApplyChoice(Player.B, actionB, report);
 
-            // 1. Completion and dismissal. Player A first, so random rolls happen in a fixed order.
-            foreach (var state in _players)
-            {
-                if (state.Work != null && state.Work.IsComplete) Complete(state, report, fatigueTurn > 0);
-            }
+            // Tick resolution (DESIGN.md section 3). Within each stage player A goes first, so random
+            // rolls happen in a fixed order.
+            bool fatigued = fatigueTurn > 0;
+            // 1. LoF are dismissed.
+            CompleteWhere(w => w.Kind == WorkKind.Dismiss, report, fatigued);
+            // 2. Rushed drawings that finish this tick go down.
+            CompleteWhere(w => w.Kind == WorkKind.Drawing && w.Pace == DrawingPace.Rush, report, fatigued);
+            // Optionally (LinesFinishBeforeMovement) everything else finishes before movement too.
+            if (Config.LinesFinishBeforeMovement) CompleteWhere(w => true, report, fatigued);
 
-            // 2. Movement and attacks (geometry layer).
-            var movement = new MovementResult();
-            _movement.ResolveMovementAndAttacks(this, movement);
-
-            // 3. Damage.
+            // 3. Animated lines take actions (geometry layer), and their hits do damage.
             // Earliest breach time within the tick for each player. The earlier breach loses;
             // only breaches at exactly the same moment are a draw (DESIGN.md section 1).
+            var movement = new MovementResult();
+            _movement.ResolveMovementAndAttacks(this, movement);
             var breachTime = new[] { NoBreach, NoBreach };
             ApplyMovementResult(movement, report, breachTime);
+
+            // 4. Every other line that finishes this tick goes down, and the geometry layer places it.
+            CompleteWhere(w => true, report, fatigued);
+            var placed = new MovementResult();
+            _movement.PlaceNewLines(this, placed);
+            ApplyMovementResult(placed, report, breachTime);
+
             if (fatigueTurn > 0 && fatigueTurn % Config.ChalkFatigue.IntervalTurns == 0)
                 ApplyChalkFatigue(report, breachTime);
 
@@ -226,8 +270,27 @@ namespace RithmaticDuels.Rules
             var state = GetPlayer(player);
             int startProgress = Config.StartActionCountsAsProgress ? 1 : 0;
 
+            if (action.CancelsCurrentWork)
+            {
+                report.Events.Add(new TurnEvent(TurnEventType.WorkCancelled, player, state.Work.TargetLineId, state.Work.Progress));
+                state.Work = null;
+            }
+
             switch (action.Kind)
             {
+                case ActionKind.StartDrawing when Config.MainWardFirst && state.MainWard == null:
+                    // Setup: the outline goes down at once with no modifier, and its bind points start.
+                    var outline = new Line(_nextLineId++, player, action.Spec, 0, Config) { IsMainWard = true, BindPointsDrawn = 0 };
+                    _lines.Add(outline);
+                    state.MainWard = outline;
+                    report.Events.Add(new TurnEvent(TurnEventType.DrawingCompleted, player, outline.Id, 0));
+                    StartBindPoints(state, action.Spec.BindPoints, startProgress, report);
+                    break;
+
+                case ActionKind.DrawBindPoints:
+                    StartBindPoints(state, action.Amount, startProgress, report);
+                    break;
+
                 case ActionKind.StartDrawing:
                     state.Work = WorkInProgress.NewDrawing(action.Spec, action.Pace, DrawTimes.Turns(action.Spec, action.Pace, Config));
                     bool instant = action.Pace == DrawingPace.Rush && Config.RushedOneTurnDrawingsCompleteImmediately
@@ -263,6 +326,23 @@ namespace RithmaticDuels.Rules
                     report.Events.Add(new TurnEvent(TurnEventType.WorkStarted, player, action.TargetLineId, dismissTurns));
                     break;
             }
+        }
+
+        private void CompleteWhere(Func<WorkInProgress, bool> stage, TurnReport report, bool fatigued)
+        {
+            foreach (var state in _players)
+            {
+                if (Outcome != DuelOutcome.InProgress) return;
+                if (state.Work != null && state.Work.IsComplete && stage(state.Work)) Complete(state, report, fatigued);
+            }
+        }
+
+        private void StartBindPoints(PlayerState state, int count, int startProgress, TurnReport report)
+        {
+            int turns = DrawTimes.BindPointTurns(count, Config);
+            state.Work = WorkInProgress.NewJob(WorkKind.BindPoints, state.MainWard.Id, count, turns);
+            state.Work.Progress = startProgress;
+            report.Events.Add(new TurnEvent(TurnEventType.WorkStarted, state.Player, state.MainWard.Id, turns));
         }
 
         private void Complete(PlayerState state, TurnReport report, bool fatigued)
@@ -316,6 +396,10 @@ namespace RithmaticDuels.Rules
                 case WorkKind.Dismiss:
                     target.Status = LineStatus.Dismissed;
                     report.Events.Add(new TurnEvent(TurnEventType.DismissCompleted, player, target.Id));
+                    break;
+                case WorkKind.BindPoints:
+                    target.BindPointsDrawn = work.Amount;
+                    report.Events.Add(new TurnEvent(TurnEventType.BindPointsCompleted, player, target.Id, work.Amount));
                     break;
             }
         }

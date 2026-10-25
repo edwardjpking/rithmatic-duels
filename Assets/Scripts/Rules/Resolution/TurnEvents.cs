@@ -11,6 +11,8 @@ namespace RithmaticDuels.Rules
         RepairCompleted,
         BuffCompleted,
         DismissCompleted,
+        /// <summary>A main LoW's bind points are drawn. Value is how many.</summary>
+        BindPointsCompleted,
         /// <summary>A repair, buff or dismissal finished but its target was gone.</summary>
         WorkFizzled,
         LineDamaged,

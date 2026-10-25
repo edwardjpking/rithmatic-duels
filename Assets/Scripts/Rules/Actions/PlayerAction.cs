@@ -7,6 +7,8 @@ namespace RithmaticDuels.Rules
         CancelDrawing,
         AddToDrawing,
         DismissForbiddance,
+        /// <summary>Draw the bind points of the main LoW (DESIGN.md section 2). Amount is how many.</summary>
+        DrawBindPoints,
         Pass,
     }
 
@@ -21,6 +23,11 @@ namespace RithmaticDuels.Rules
         public int Amount { get; private set; }
         /// <summary>Add to drawing on a LoM: which chalkling stat the buffs go to.</summary>
         public ChalklingStat Stat { get; private set; }
+        /// <summary>
+        /// Cancel the drawing in progress first, then do this action in the same turn (DESIGN.md section 5.1).
+        /// Cancelling on its own is <see cref="Cancel"/>, which is the same as cancelling and passing.
+        /// </summary>
+        public bool CancelsCurrentWork { get; private set; }
 
         private PlayerAction(ActionKind kind)
         {
@@ -52,6 +59,19 @@ namespace RithmaticDuels.Rules
         public static PlayerAction Dismiss(int forbiddanceLineId)
         {
             return new PlayerAction(ActionKind.DismissForbiddance) { TargetLineId = forbiddanceLineId };
+        }
+
+        public static PlayerAction DrawBindPoints(int count)
+        {
+            return new PlayerAction(ActionKind.DrawBindPoints) { Amount = count };
+        }
+
+        /// <summary>This action, done straight after cancelling the drawing in progress.</summary>
+        public PlayerAction AfterCancelling()
+        {
+            var copy = (PlayerAction)MemberwiseClone();
+            copy.CancelsCurrentWork = true;
+            return copy;
         }
     }
 }

@@ -147,7 +147,7 @@ namespace RithmaticDuels.Presentation
                 picker.SetHover(boardPoint);
                 bool changed = false;
                 if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 0)
-                    changed = picker.HandleBoardClick(_board, _chooser, boardPoint.Value);
+                    changed = picker.HandleBoardClick(_board, _chooser, _rules, boardPoint.Value);
                 else if (boardPoint.HasValue && current.type == EventType.ScrollWheel)
                     changed = picker.HandleScroll(_board, _chooser, _rules, current.delta.y);
                 if (changed)
@@ -195,6 +195,24 @@ namespace RithmaticDuels.Presentation
             GUILayout.BeginArea(new Rect(10, logTop + 4, width - 20, height - logTop - 10));
             DrawLog();
             GUILayout.EndArea();
+
+            if (boardPoint.HasValue) DrawLineStats(boardPoint.Value, current.mousePosition / scale);
+        }
+
+        /// <summary>Hovering over a line on the board shows its stats next to the mouse.</summary>
+        private void DrawLineStats(Vec2 boardPoint, Vector2 mouse)
+        {
+            var body = _board.BodyAt(boardPoint, 0.3f);
+            if (body == null) return;
+            var line = body.Line;
+            string text = TurnNarrator.LineName(line);
+            if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability + (line.Type == LineType.Warding ? " (weakest point)" : "");
+            if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, damage " + line.Damage + ", speed " + line.Speed;
+            if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", glyphs " + line.Spec.Glyphs;
+            if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
+            var ward = body as WardBody;
+            if (ward != null && ward.BindPoints.Count > 0) text += "\n" + ward.BindPoints.Count + " bind points";
+            GUI.Box(new Rect(mouse.x + 16f, mouse.y + 8f, 230f, 18f + 18f * text.Split('\n').Length), text);
         }
 
         /// <summary>The board point under a position in GUI pixels (y down), or null if it is off the board view.</summary>
@@ -331,11 +349,13 @@ namespace RithmaticDuels.Presentation
                 switch (view.Kind)
                 {
                     case WorkKind.Drawing: return "Drawing: a " + TurnNarrator.LineTypeName(view.LineType);
+                    case WorkKind.BindPoints: return "Drawing bind points";
                     default: return view.Kind + ": " + TurnNarrator.LineName(_duel.FindLine(view.TargetLineId));
                 }
             }
 
-            string what = work.Kind == WorkKind.Drawing
+            string what = work.Kind == WorkKind.BindPoints ? work.Amount + " bind points"
+                : work.Kind == WorkKind.Drawing
                 ? TurnNarrator.LineTypeName(work.Spec.Type) + " (" + SpecSummary(work.Spec) + ", " + work.Pace + ")"
                 : work.Kind + " " + TurnNarrator.LineName(_duel.FindLine(work.TargetLineId)) + " by " + work.Amount;
             return "Working on: " + what + ", " + work.Progress + " of " + work.TotalTurns + " turns done";
