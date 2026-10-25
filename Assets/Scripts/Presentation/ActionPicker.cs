@@ -394,7 +394,7 @@ namespace RithmaticDuels.Presentation
                 preview.Ward = board.PreviewWard(player, bindPoints > 0 ? DrawingSpec.Warding(bindPoints) : shapeSpec, Placement.MainWard(_pointA.Value, semiMinor), out points);
                 preview.WardChosen = true;
                 if (bindPoints > 0) preview.WardBindPoints = points;
-                GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability.");
+                GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward, true) + " durability (the main LoW has double).");
             }
             Preview = preview;
 
@@ -505,8 +505,13 @@ namespace RithmaticDuels.Presentation
                             if (_pointA.HasValue && toward.HasValue && Vec2.Distance(_pointA.Value, toward.Value) > 1e-3f)
                             {
                                 Vec2 end = _pointA.Value + (toward.Value - _pointA.Value).Normalized * FittedLength(config, board, player);
-                                preview.Segment = new Segment(_pointA.Value, end);
-                                if (_pointB.HasValue) placement = Placement.Segment(_pointA.Value, end);
+                                // Where even the shortest line wouldn't fit (it would overlap the centre line or a LoW), show none.
+                                if (ForbiddanceFits(board, player, spec, Placement.Segment(_pointA.Value, end)))
+                                {
+                                    preview.Segment = new Segment(_pointA.Value, end);
+                                    if (_pointB.HasValue) placement = Placement.Segment(_pointA.Value, end);
+                                }
+                                else hint = "No Line of Forbiddance fits here. Start it somewhere else.";
                             }
                             preview.From = _pointA;
                             break;
@@ -653,8 +658,8 @@ namespace RithmaticDuels.Presentation
             int normal = DrawTimes.Turns(spec, DrawingPace.Normal, config);
             if (normal <= config.RushedEarlyMaxNormalTurns)
                 return text + " Rushing saves no time, but it goes down before lines move"
-                    + (spec.Type == LineType.Vigor ? " and flies straight away" : "") + ". Worse modifier odds.";
-            return text + " Rushing saves " + (normal - total) + " turn(s). Worse modifier odds.";
+                    + (spec.Type == LineType.Vigor ? " and flies straight away" : "") + ".";
+            return text + " Rushing saves " + (normal - total) + " turn(s).";
         }
 
         private PlayerAction DrawDismiss(Duel duel, ChalkBoard board, Player player, out string hint)

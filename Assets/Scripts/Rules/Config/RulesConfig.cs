@@ -66,6 +66,12 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public int RushedEarlyMaxNormalTurns = 1;
 
+        /// <summary>
+        /// While a drawing is in progress the only choices are Continue and Cancel; Pass comes back once it is
+        /// cancelled (decided 2026-10-25). True allows passing without cancelling, which leaves the drawing paused.
+        /// </summary>
+        public bool PassAllowedWhileDrawing = false;
+
         /// <summary>PROVISIONAL: a negative modifier can never take a fresh line below this durability.</summary>
         public int MinimumDurabilityAfterModifier = 1;
 
@@ -219,6 +225,8 @@ namespace RithmaticDuels.Rules
     public sealed class WardingConfig
     {
         public int Durability = 12;
+        /// <summary>The main LoW has this many times the durability any other LoW of its shape would (decided 2026-10-25).</summary>
+        public float MainWardDurabilityMultiplier = 2f;
         public int DurabilityPerModifierStep = 2;
         /// <summary>
         /// Main LoW draw time is (bind points) div this. Another LoW's is that, scaled by its outline length

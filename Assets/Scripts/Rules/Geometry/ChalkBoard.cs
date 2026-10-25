@@ -426,7 +426,7 @@ namespace RithmaticDuels.Rules.Geometry
         {
             var geometry = _config.Geometry;
             return HealthSteps(geometry.EllipseMinSemiMinor, geometry.EllipseMaxSemiMinor,
-                size => WardShape.Ellipse(Home(player), geometry.EllipseSemiMajor, size, 0f));
+                size => WardShape.Ellipse(Home(player), geometry.EllipseSemiMajor, size, 0f), true);
         }
 
         /// <summary>
@@ -447,26 +447,26 @@ namespace RithmaticDuels.Rules.Geometry
         }
 
         /// <summary>The durability the weakest point of a LoW with this shape would have, before any modifier.</summary>
-        public int WeakestDurability(WardShape shape)
+        public int WeakestDurability(WardShape shape, bool mainWard = false)
         {
-            return shape == null ? 0 : WardBody.WeakestDurability(shape, _config);
+            return shape == null ? 0 : WardBody.WeakestDurability(shape, _config, mainWard);
         }
 
         /// <summary>
         /// Walks sizes from min to max and keeps one for each run with the same weakest-point durability:
         /// the middle of the run, or the end of the range for the runs at either end.
         /// </summary>
-        private List<float> HealthSteps(float min, float max, Func<float, WardShape> shapeFor)
+        private List<float> HealthSteps(float min, float max, Func<float, WardShape> shapeFor, bool mainWard = false)
         {
             var steps = new List<float>();
             if (max <= min) { steps.Add(min); return steps; }
             const int samples = 200;
             float runStart = min;
-            int runValue = WeakestDurability(shapeFor(min));
+            int runValue = WeakestDurability(shapeFor(min), mainWard);
             for (int i = 1; i <= samples; i++)
             {
                 float size = min + (max - min) * i / samples;
-                int value = WeakestDurability(shapeFor(size));
+                int value = WeakestDurability(shapeFor(size), mainWard);
                 if (value == runValue && i < samples) continue;
                 float runEnd = value == runValue ? size : min + (max - min) * (i - 1) / samples;
                 steps.Add(runStart <= min ? min : runEnd >= max ? max : (runStart + runEnd) / 2f);
@@ -1374,19 +1374,20 @@ namespace RithmaticDuels.Rules.Geometry
 
         /// <summary>
         /// A LoF is a rectangle as wide as <see cref="GeometryConfig.ForbiddanceWidth"/>: all four corners
-        /// must be on the board (and the player's half).
+        /// must be on the board (and the player's half, clear of the centre line, which is drawn as wide as a LoF).
         /// </summary>
         private string CheckRectangle(Player player, Segment segment, bool halfOnly)
         {
+            float halfWidth = _config.Geometry.ForbiddanceWidth / 2f;
             Vec2 along = segment.B - segment.A;
-            Vec2 side = along.Length > 1e-6f ? along.Perp.Normalized * (_config.Geometry.ForbiddanceWidth / 2f) : Vec2.Zero;
-            return CheckPoint(player, segment.A + side, halfOnly) ?? CheckPoint(player, segment.A - side, halfOnly)
-                ?? CheckPoint(player, segment.B + side, halfOnly) ?? CheckPoint(player, segment.B - side, halfOnly)
+            Vec2 side = along.Length > 1e-6f ? along.Perp.Normalized * halfWidth : Vec2.Zero;
+            return CheckLoFCorner(player, segment.A + side, halfOnly, halfWidth) ?? CheckLoFCorner(player, segment.A - side, halfOnly, halfWidth)
+                ?? CheckLoFCorner(player, segment.B + side, halfOnly, halfWidth) ?? CheckLoFCorner(player, segment.B - side, halfOnly, halfWidth)
                 ?? (CrossesAWard(player, segment) ? "A Line of Forbiddance can't cross a Line of Warding. It can lie along one as a tangent, or join two bind points of one." : null);
         }
 
         /// <summary>Points this close to an outline (as a share of the shape's size) count as touching it, not crossing.</summary>
-        private const float TouchTolerance = 0.03f;
+        private const float TouchTolerance = 0.005f;
 
         /// <summary>Inside (-1), outside (1), or touching the outline (0).</summary>
         private static int Side(WardShape shape, Vec2 point)
@@ -1407,7 +1408,9 @@ namespace RithmaticDuels.Rules.Geometry
             foreach (var ward in WardsOf(player))
             {
                 bool inside = false, outside = false;
-                for (int i = 1; i < steps; i++)
+                // The ends count too: a tangent's end must not poke into a neighbouring LoW. A chord's ends sit on
+                // the outline, which counts as touching.
+                for (int i = 0; i <= steps; i++)
                 {
                     int side = Side(ward.Shape, segment.A + (segment.B - segment.A) * ((float)i / steps));
                     inside |= side < 0;
@@ -1441,6 +1444,13 @@ namespace RithmaticDuels.Rules.Geometry
                     if (Side(shape, forbiddance.Segment.A + (forbiddance.Segment.B - forbiddance.Segment.A) * ((float)i / steps)) < 0) return true;
             }
             return false;
+        }
+
+        private string CheckLoFCorner(Player player, Vec2 point, bool halfOnly, float halfWidth)
+        {
+            string error = CheckPoint(player, point, halfOnly);
+            if (error != null || !halfOnly) return error;
+            return Math.Abs(point.X - Width / 2f) < halfWidth - 1e-4f ? "A Line of Forbiddance can't touch the centre line." : null;
         }
 
         private string CheckPoint(Player player, Vec2 point, bool halfOnly)
