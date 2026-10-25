@@ -94,7 +94,7 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(WorkKind.BindPoints, duel.GetPlayer(Player.A).Work.Kind);
             Assert.AreEqual(2, duel.GetPlayer(Player.B).MainWard.BindPointsDrawn, "2 bind points take 1 turn");
             Assert.IsTrue(report.Events.Any(e => e.Type == TurnEventType.BindPointsCompleted && e.Player == Player.B));
-            Assert.AreEqual(0, duel.CountedTurns, "the setup turn itself doesn't count");
+            Assert.AreEqual(1, duel.CountedTurns, "every turn counts, the setup turn included");
         }
 
         [Test]
@@ -479,8 +479,18 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void TurnCountStartsAfterBothMainWards()
+        public void EveryTurnCountsByDefault()
         {
+            var duel = NewDuel();
+            for (int i = 0; i < 5; i++) duel.ResolveTurn(Pass, Pass);
+            Assert.AreEqual(5, duel.CountedTurns);
+            Assert.AreEqual(duel.Turn, duel.CountedTurns);
+        }
+
+        [Test]
+        public void TurnCountCanStartAfterBothMainWards()
+        {
+            _config.TurnLimitStartsAfterBothMainWards = true;
             var duel = NewDuel();
             for (int i = 0; i < 5; i++) duel.ResolveTurn(Pass, Pass);
             Assert.AreEqual(0, duel.CountedTurns);
@@ -494,6 +504,7 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void EqualWardsAtTheTurnLimitIsADraw()
         {
+            _config.TurnLimitStartsAfterBothMainWards = true; // count from here, so the main LoW turns don't
             _config.TurnLimit = 30;
             var duel = NewDuel();
             DrawMainWards(duel);
@@ -536,6 +547,7 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void ChalkFatigueWearsMainWardsEveryThirdTurnOfTheLastFifteen()
         {
+            _config.TurnLimitStartsAfterBothMainWards = true; // count from here, so the main LoW turns don't
             _config.TurnLimit = 30;
             var duel = NewDuel();
             DrawMainWards(duel);

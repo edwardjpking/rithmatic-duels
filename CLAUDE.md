@@ -12,7 +12,7 @@ Notion is no longer used for design notes; do not sync to it.
 
 - Four line types only: Warding (LoW), Forbiddance (LoF), Vigor (LoV), Making (LoM, creates chalklings). Silencing and Revocation are out of scope.
 - One drawing in progress per player. Each turn both players secretly pick one action, then one tick resolves.
-- Tick resolution order (DESIGN.md section 3): completion/dismissal → movement/attacks → damage.
+- Tick resolution order (DESIGN.md section 3): dismissal → rushed lines finish → animated lines act (and deal damage) → other lines finish.
 - Lose when your main LoW is breached. Turn limit → draw.
 - Completed drawings roll a random modifier; rush/steady change draw time and odds (section 5.2).
 - **All numbers are placeholders.** Keep them in data (e.g. ScriptableObjects or config), never hard-coded in logic, so balancing doesn't require code changes.
@@ -27,4 +27,5 @@ Notion is no longer used for design notes; do not sync to it.
 
 - Keep the core rules engine (turn resolution, lines, actions, modifiers) in plain C# with no `UnityEngine` dependency where practical, so it can be unit-tested with the Unity Test Framework (EditMode tests) and reused by UI and AI.
 - MonoBehaviours handle presentation and input, and call into the rules engine.
+- Bump `GameVersion` (Assets/Scripts/Presentation/GameVersion.cs) in every PR that changes the game: number, date and a few-word summary. It is shown in the game's top bar so the user can tell whether Unity has picked up the latest changes.
 - Use a seedable random source for modifier rolls so duels and tests are reproducible.

@@ -40,8 +40,9 @@ namespace RithmaticDuels.Rules
         public int TravelTurns;
 
         /// <summary>
-        /// LoF only: its length, which sets its draw time (DESIGN.md section 4.2). The geometry layer works
-        /// this out from the placement and checks it matches. 0 means the default length.
+        /// The length of a LoF, or the outline length of a LoW added during the duel, which sets its draw
+        /// time (DESIGN.md sections 4.1 and 4.2). The geometry layer works this out from the placement and
+        /// checks it matches. 0 means the default (a LoF's default length, or a LoW's time by bind points alone).
         /// </summary>
         public float Length;
 

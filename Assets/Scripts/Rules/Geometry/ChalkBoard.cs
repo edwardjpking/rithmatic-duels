@@ -40,6 +40,21 @@ namespace RithmaticDuels.Rules.Geometry
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
             _config = config;
+            CentreWallUp = CentreWallStandsOn(1);
+        }
+
+        /// <summary>
+        /// Whether the centre LoF is up (DESIGN.md section 1.1): during a tick, for that tick; between ticks,
+        /// for the turn being chosen. It belongs to neither player, reflects LoV and can't be damaged.
+        /// </summary>
+        public bool CentreWallUp { get; private set; }
+
+        /// <summary>The centre LoF, along the line between the two halves.</summary>
+        public Segment CentreWall { get { return new Segment(new Vec2(Width / 2f, 0f), new Vec2(Width / 2f, Height)); } }
+
+        private bool CentreWallStandsOn(int turn)
+        {
+            return _config.CentreWall.Enabled && turn <= _config.CentreWall.Turns;
         }
 
         public float Width { get { return _config.Board.Width; } }
@@ -124,7 +139,8 @@ namespace RithmaticDuels.Rules.Geometry
             if (problem != null) return problem;
             if (spec.TravelTurns != TravelTurns(player, placement))
                 return "The travel time doesn't match how far this is from your main Line of Warding.";
-            if (spec.Type == LineType.Forbiddance && Math.Abs(spec.Length - Measure(player, spec, placement).Length) > 1e-3f)
+            if ((spec.Type == LineType.Forbiddance || spec.Type == LineType.Warding)
+                && Math.Abs(spec.Length - Measure(player, spec, placement).Length) > 1e-3f)
                 return "The length doesn't match where the line goes.";
             return null;
         }
@@ -151,7 +167,12 @@ namespace RithmaticDuels.Rules.Geometry
                         if (placement.Size < min - 1e-4f || placement.Size > max + 1e-4f)
                             return spec.BindPoints == 2 ? "That ellipse is too flat or too round." : "That circle is too small or too big.";
                     }
-                    return ValidBindPoint(placement.BindPointA, bindPoints);
+                    string bindPoint = ValidBindPoint(placement.BindPointA, bindPoints);
+                    if (bindPoint != null) return bindPoint;
+                    if (WardsAt(player, placement.BindPointA) + 1 >= _config.Warding.MaxWardsPerBindPoint)
+                        return "That bind point already has a Line of Warding bound to it.";
+                    IReadOnlyList<Vec2> unused;
+                    return CheckOutline(player, WardGeometry(player, spec, placement, out unused), halfOnly);
 
                 case LineType.Forbiddance:
                     switch (placement.Kind)
@@ -163,7 +184,10 @@ namespace RithmaticDuels.Rules.Geometry
                         case PlacementKind.TangentAtBindPoint:
                             if (spec.BindPoints != 1) return "A tangent at one bind point has 1 bind point.";
                             if (placement.Length != 0f) { string length = CheckLength(placement.Length); if (length != null) return length; }
-                            return ValidBindPoint(placement.BindPointA, bindPoints);
+                            string tangentAt = ValidBindPoint(placement.BindPointA, bindPoints);
+                            if (tangentAt != null) return tangentAt;
+                            var tangent = ForbiddanceGeometry(player, placement).Value;
+                            return CheckPoint(player, tangent.A, halfOnly) ?? CheckPoint(player, tangent.B, halfOnly);
                         case PlacementKind.FreeSegment:
                             if (spec.BindPoints != 0) return "A free-standing line has no bind points.";
                             return CheckLength(Vec2.Distance(placement.PointA, placement.PointB))
@@ -244,17 +268,99 @@ namespace RithmaticDuels.Rules.Geometry
                 var segment = ForbiddanceGeometry(player, placement);
                 if (segment.HasValue) measured.Length = segment.Value.Length;
             }
+            if (spec.Type == LineType.Warding && !spec.IsMarksCross && MainWardOf(player) != null && placement != null)
+            {
+                IReadOnlyList<Vec2> unused;
+                var shape = WardGeometry(player, spec, placement, out unused);
+                if (shape != null) measured.Length = shape.Perimeter();
+            }
             return measured;
         }
 
-        /// <summary>A Mark's Cross's two crossed LoF: the diagonals of its circle (DESIGN.md section 4.1).</summary>
-        public static Segment[] MarksCrossBraces(WardShape shape)
+        /// <summary>
+        /// A Mark's Cross's two crossed LoF: each joins a bind point to the one opposite it, through the
+        /// centre of the circle (DESIGN.md section 4.1).
+        /// </summary>
+        public static Segment[] MarksCrossBraces(WardShape shape, IReadOnlyList<Vec2> bindPoints)
         {
-            float r = shape.A;
-            Vec2 c = shape.Centre;
-            Vec2 d1 = new Vec2(1f, 1f).Normalized * r;
-            Vec2 d2 = new Vec2(1f, -1f).Normalized * r;
-            return new[] { new Segment(c - d1, c + d1), new Segment(c - d2, c + d2) };
+            var braces = new List<Segment>();
+            var used = new bool[bindPoints.Count];
+            for (int i = 0; i < bindPoints.Count; i++)
+            {
+                if (used[i]) continue;
+                Vec2 opposite = shape.Centre * 2f - bindPoints[i];
+                int best = -1;
+                for (int j = 0; j < bindPoints.Count; j++)
+                    if (j != i && !used[j] && (best < 0 || Vec2.Distance(bindPoints[j], opposite) < Vec2.Distance(bindPoints[best], opposite))) best = j;
+                if (best < 0) break;
+                used[i] = used[best] = true;
+                braces.Add(new Segment(bindPoints[i], bindPoints[best]));
+            }
+            return braces.ToArray();
+        }
+
+        /// <summary>
+        /// The biggest size (radius, or an ellipse's semi-minor axis) an attached LoW at this bind point can
+        /// have and still fit on the board and the player's half, within its configured range.
+        /// </summary>
+        public float MaxAttachedSize(Player player, DrawingSpec spec, int bindPoint)
+        {
+            float min, max, start;
+            AttachedSizeRange(spec, out min, out max, out start);
+            return LargestThatFits(min, max, size =>
+            {
+                IReadOnlyList<Vec2> unused;
+                var shape = WardGeometry(player, spec, Placement.AtBindPoint(bindPoint, size), out unused);
+                return shape != null && CheckOutline(player, shape, _config.Geometry.DrawOnOwnHalfOnly) == null;
+            });
+        }
+
+        /// <summary>
+        /// The longest a tangent or free LoF with this placement (its length or end ignored) can be and still
+        /// fit on the board and the player's half, within the configured range.
+        /// </summary>
+        public float MaxForbiddanceLength(Player player, Placement placement, Vec2 direction)
+        {
+            var geometry = _config.Geometry;
+            bool halfOnly = geometry.DrawOnOwnHalfOnly;
+            return LargestThatFits(geometry.MinForbiddanceLength, geometry.MaxForbiddanceLength, length =>
+            {
+                Segment segment;
+                if (placement.Kind == PlacementKind.TangentAtBindPoint)
+                {
+                    var tangent = ForbiddanceGeometry(player, Placement.TangentAt(placement.BindPointA, length));
+                    if (!tangent.HasValue) return false;
+                    segment = tangent.Value;
+                }
+                else segment = new Segment(placement.PointA, placement.PointA + direction.Normalized * length);
+                return CheckPoint(player, segment.A, halfOnly) == null && CheckPoint(player, segment.B, halfOnly) == null;
+            });
+        }
+
+        /// <summary>The largest value in [min, max] that fits, assuming bigger never fits better; min if none does.</summary>
+        private static float LargestThatFits(float min, float max, Func<float, bool> fits)
+        {
+            if (fits(max)) return max;
+            if (!fits(min)) return min;
+            float low = min, high = max;
+            for (int i = 0; i < 24; i++)
+            {
+                float mid = (low + high) / 2f;
+                if (fits(mid)) low = mid; else high = mid;
+            }
+            return low;
+        }
+
+        /// <summary>How many LoW other than the main one this player has bound at a bind point of their main LoW.</summary>
+        public int WardsAt(Player player, int bindPoint)
+        {
+            int count = 0;
+            foreach (var body in _bodies.Values)
+            {
+                var ward = body as WardBody;
+                if (ward != null && ward.Owner == player && ward.Line.IsActive && ward.AttachedAt == bindPoint && !ward.Line.IsMainWard) count++;
+            }
+            return count;
         }
 
         /// <summary>Spots offered for the main LoW, all on the midline of the player's half: back (the default spot), centre and front.</summary>
@@ -422,6 +528,9 @@ namespace RithmaticDuels.Rules.Geometry
         {
             _notes.Clear();
             _trails.Clear();
+            bool wasUp = CentreWallUp;
+            CentreWallUp = CentreWallStandsOn(duel.Turn);
+            if (wasUp && !CentreWallUp) _notes.Add("The centre Line of Forbiddance is gone.");
             Sync(duel, result);
             FlyVigor(result);
         }
@@ -429,6 +538,7 @@ namespace RithmaticDuels.Rules.Geometry
         public void PlaceNewLines(Duel duel, MovementResult result)
         {
             Sync(duel, result);
+            CentreWallUp = CentreWallStandsOn(duel.Turn + 1);
         }
 
         // ---- Keeping bodies in step with the duel's lines ----
@@ -483,7 +593,8 @@ namespace RithmaticDuels.Rules.Geometry
                     IReadOnlyList<Vec2> bindPoints;
                     var shape = WardGeometry(owner, line.Spec, placement, out bindPoints, line.IsMainWard);
                     var wardBody = new WardBody(line, shape, bindPoints, _config);
-                    if (line.Spec.IsMarksCross) wardBody.Braces = MarksCrossBraces(shape);
+                    if (line.Spec.IsMarksCross) wardBody.Braces = MarksCrossBraces(shape, bindPoints);
+                    if (!line.IsMainWard) wardBody.AttachedAt = placement.Kind == PlacementKind.AtBindPoint ? placement.BindPointA : 0;
                     if (line.IsMainWard) wardBody.BindPoints = MainBindPoints(owner, shape, line.BindPointsDrawn);
                     return wardBody;
 
@@ -520,7 +631,7 @@ namespace RithmaticDuels.Rules.Geometry
             if (becomesMain)
             {
                 bool placed = placement != null && placement.Kind == PlacementKind.MainWard;
-                Vec2 home = placed ? placement.PointA : Home(owner);
+                Vec2 home = placed && !_config.Geometry.MainWardAtHome ? placement.PointA : Home(owner);
                 if (spec.BindPoints == 2)
                 {
                     float semiMinor = placed ? EllipseSemiMinor(placement) : _config.Geometry.EllipseSemiMinor;
@@ -639,7 +750,7 @@ namespace RithmaticDuels.Rules.Geometry
 
         // ---- Lines of Vigor in flight ----
 
-        private enum HitKind { None, Ward, Forbiddance, Chalkling, Edge, Vigor }
+        private enum HitKind { None, Ward, Forbiddance, CentreWall, Chalkling, Edge, Vigor }
 
         private struct Hit
         {
@@ -686,6 +797,12 @@ namespace RithmaticDuels.Rules.Geometry
                         ReflectOffForbiddance(hit.Vigor, (ForbiddanceBody)hit.Other, hit.Normal, now, chalklingDamage, result);
                         break;
 
+                    case HitKind.CentreWall:
+                        hit.Vigor.Direction = Vec2.Reflect(hit.Vigor.Direction, hit.Normal).Normalized;
+                        hit.Vigor.Position += hit.Vigor.Direction * Intersect.Epsilon;
+                        _notes.Add(Name(hit.Vigor) + " was reflected by the centre Line of Forbiddance.");
+                        break;
+
                     case HitKind.Ward:
                         var ward = (WardBody)hit.Other;
                         var shield = ShieldingChord(ward, hit.Vigor.Position, chalklingDamage);
@@ -729,6 +846,13 @@ namespace RithmaticDuels.Rules.Geometry
 
                 if (!OnBoard(from)) { Consider(ref best, HitKind.Edge, now, vigor, null, Vec2.Zero); continue; }
                 Consider(ref best, HitKind.Edge, now + EdgeDistance(from, direction) / speed, vigor, null, Vec2.Zero);
+                if (CentreWallUp)
+                {
+                    float wallDistance;
+                    Vec2 wallNormal;
+                    if (Intersect.RaySegment(from, direction, CentreWall, out wallDistance, out wallNormal) && wallDistance <= reach)
+                        Consider(ref best, HitKind.CentreWall, now + wallDistance / speed, vigor, null, wallNormal);
+                }
 
                 foreach (var body in _bodies.Values)
                 {
@@ -963,6 +1087,20 @@ namespace RithmaticDuels.Rules.Geometry
                 Vec2 point = shape.PointAt(2f * (float)Math.PI * i / steps);
                 if (!OnBoard(point)) return "Your main Line of Warding must fit on the board.";
                 if (halfOnly && !OnOwnHalf(player, point)) return "Your main Line of Warding must fit on your own half.";
+            }
+            return null;
+        }
+
+        /// <summary>Null if the whole outline is on the board (and the player's half), otherwise why not.</summary>
+        private string CheckOutline(Player player, WardShape shape, bool halfOnly)
+        {
+            if (shape == null) return "Pick a bind point on your main Line of Warding.";
+            const int steps = 64;
+            for (int i = 0; i < steps; i++)
+            {
+                Vec2 point = shape.PointAt(2f * (float)Math.PI * i / steps);
+                if (!OnBoard(point)) return "It must fit on the board.";
+                if (halfOnly && !OnOwnHalf(player, point)) return "It must fit on your own half of the board.";
             }
             return null;
         }

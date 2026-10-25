@@ -19,8 +19,11 @@ namespace RithmaticDuels.Rules
         public int MinTurnLimit = 30;
         public int MaxTurnLimit = 120;
 
-        /// <summary>The turn count starts on the first turn after both main LoW are complete.</summary>
-        public bool TurnLimitStartsAfterBothMainWards = true;
+        /// <summary>
+        /// On: the turn count starts on the first turn after both main LoW are complete. Off (decided
+        /// 2026-10-25): every turn counts, from the setup turn, so the turn number is the count.
+        /// </summary>
+        public bool TurnLimitStartsAfterBothMainWards = false;
 
         /// <summary>Per-turn decision time, enforced by the presentation layer. 0 means off (hotseat and AI practice only).</summary>
         public float DecisionTimerSeconds = 30f;
@@ -63,6 +66,7 @@ namespace RithmaticDuels.Rules
         public bool RepairCappedAtMaxDurability = true;
 
         public ChalkFatigueConfig ChalkFatigue = new ChalkFatigueConfig();
+        public CentreWallConfig CentreWall = new CentreWallConfig();
         public BoardConfig Board = new BoardConfig();
         public GeometryConfig Geometry = new GeometryConfig();
 
@@ -167,6 +171,11 @@ namespace RithmaticDuels.Rules
         /// inside the main LoW cost nothing extra.
         /// </summary>
         public float[] TravelTurnThresholds = { 2f, 4f, 7f };
+        /// <summary>
+        /// On (decided 2026-10-25): the main LoW always goes at its home spot (<see cref="BoardConfig.MainWardInset"/>
+        /// from the player's own edge, centred). Off: the player places it, snapping to presets and the midline.
+        /// </summary>
+        public bool MainWardAtHome = true;
         /// <summary>While placing the main LoW, the mouse snaps to a preset spot or the midline of the board when this close.</summary>
         public float MainWardSnapDistance = 0.6f;
         /// <summary>Two LoV collide when they come this close.</summary>
@@ -175,6 +184,18 @@ namespace RithmaticDuels.Rules
         public bool DrawOnOwnHalfOnly = true;
         /// <summary>Per-point durability is tracked at this many points around each LoW.</summary>
         public int WardSamples = 120;
+    }
+
+    /// <summary>
+    /// A LoF across the centre of the board for the first turns of the duel, so neither player can
+    /// rush the other (DESIGN.md section 1.1). It belongs to neither player and can't be damaged.
+    /// </summary>
+    [Serializable]
+    public sealed class CentreWallConfig
+    {
+        public bool Enabled = true;
+        /// <summary>It stands for turns 1 to this, counting the setup turn as turn 1. A placeholder, to be set in testing.</summary>
+        public int Turns = 10;
     }
 
     /// <summary>End-game pressure over the last turns of the duel (DESIGN.md section 2.1).</summary>
@@ -193,7 +214,10 @@ namespace RithmaticDuels.Rules
     {
         public int Durability = 12;
         public int DurabilityPerModifierStep = 2;
-        /// <summary>Main LoW draw time is (bind points) div this.</summary>
+        /// <summary>
+        /// Main LoW draw time is (bind points) div this. Another LoW's is that, scaled by its outline length
+        /// over the outline length of a circle of <see cref="GeometryConfig.AttachedWardRadius"/>, rounded to the nearest turn.
+        /// </summary>
         public int BindPointsPerDrawTurn = 2;
         /// <summary>A Mark's Cross is drawn whole: its small circle and the crossed LoF inside it.</summary>
         public int MarksCrossDrawTurns = 2;
@@ -211,6 +235,11 @@ namespace RithmaticDuels.Rules
         public float HitHalfWidth = 0.5f;
         public float DefaultMainRadius = 3f;
         public float MarksCrossRadius = 1f;
+        /// <summary>
+        /// Most LoW bound at any one bind point of the main LoW, counting the main LoW itself: so 2 means
+        /// one more LoW (or Mark's Cross) per bind point (decided 2026-10-25).
+        /// </summary>
+        public int MaxWardsPerBindPoint = 2;
     }
 
     [Serializable]

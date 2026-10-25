@@ -16,6 +16,7 @@ namespace RithmaticDuels.Presentation
         private static readonly Color ChalkB = new Color(1f, 0.82f, 0.4f);
         private static readonly Color Damaged = new Color(0.95f, 0.3f, 0.25f);
         private static readonly Color Faint = new Color(1f, 1f, 1f, 0.15f);
+        private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
 
         private const float WardWidth = 0.08f;
@@ -59,6 +60,8 @@ namespace RithmaticDuels.Presentation
             Line(new Vec2(0f, h), new Vec2(0f, 0f), 0.05f, Faint);
             // Dashed centre line: each player draws on their own half.
             for (float y = 0f; y < h; y += 1f) Line(new Vec2(w / 2f, y), new Vec2(w / 2f, y + 0.5f), 0.03f, Faint);
+            // The centre LoF that stands for the first turns of the duel belongs to neither player.
+            if (Board.CentreWallUp) Line(Board.CentreWall.A, Board.CentreWall.B, ForbiddanceWidth, CentreWallColour);
         }
 
         private void DrawBody(LineBody body)

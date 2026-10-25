@@ -15,6 +15,12 @@ namespace RithmaticDuels.Rules
                     turns = spec.IsMarksCross
                         ? config.Warding.MarksCrossDrawTurns
                         : spec.BindPoints / config.Warding.BindPointsPerDrawTurn;
+                    // A LoW added during the duel (the board fills in its outline length) takes longer the bigger it is.
+                    if (!spec.IsMarksCross && spec.Length > 0f)
+                    {
+                        double reference = 2.0 * Math.PI * config.Geometry.AttachedWardRadius;
+                        turns = Round(turns * spec.Length / reference, RoundingMode.Nearest);
+                    }
                     break;
                 case LineType.Forbiddance:
                     float length = spec.Length > 0f ? spec.Length : config.Geometry.TangentForbiddanceLength;

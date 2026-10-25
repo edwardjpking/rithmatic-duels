@@ -120,6 +120,21 @@ namespace RithmaticDuels.Rules.Geometry
             return Centre + local.Rotated(Rotation);
         }
 
+        /// <summary>Length of the outline, measured along 128 straight pieces.</summary>
+        public float Perimeter()
+        {
+            const int steps = 128;
+            float length = 0f;
+            Vec2 previous = PointAt(0f);
+            for (int i = 1; i <= steps; i++)
+            {
+                Vec2 point = PointAt(2f * (float)Math.PI * i / steps);
+                length += Vec2.Distance(previous, point);
+                previous = point;
+            }
+            return length;
+        }
+
         public Vec2 OutwardNormalAt(float t)
         {
             var local = new Vec2((float)Math.Cos(t) / A, (float)Math.Sin(t) / B);
