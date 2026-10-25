@@ -41,6 +41,7 @@ namespace RithmaticDuels.Presentation
         private ChalkBoard _board;
         private Camera _camera;
         private BoardRenderer _renderer;
+        private GUIStyle _statsStyle;
         private ulong _currentSeed;
         private Phase _phase;
         private Player _chooser;
@@ -140,7 +141,9 @@ namespace RithmaticDuels.Presentation
             // Read the click in screen pixels before scaling the GUI.
             GUI.matrix = Matrix4x4.identity;
             var current = Event.current;
-            Vec2? boardPoint = BoardPoint(current.mousePosition);
+            // Unity reports mousePosition in the current GUI.matrix space, so save it now, in real pixels.
+            Vector2 mousePixels = current.mousePosition;
+            Vec2? boardPoint = BoardPoint(mousePixels);
             if (_duel != null && _phase == Phase.Choosing)
             {
                 var picker = _pickers[(int)_chooser];
@@ -196,11 +199,14 @@ namespace RithmaticDuels.Presentation
             DrawLog();
             GUILayout.EndArea();
 
-            if (boardPoint.HasValue) DrawLineStats(boardPoint.Value, current.mousePosition / scale);
+            if (boardPoint.HasValue) DrawLineStats(boardPoint.Value, mousePixels / scale, width, height);
         }
 
-        /// <summary>Hovering over a line on the board shows its stats next to the mouse.</summary>
-        private void DrawLineStats(Vec2 boardPoint, Vector2 mouse)
+        /// <summary>
+        /// Hovering over a line on the board shows its stats next to the mouse, on an opaque panel. It is drawn last
+        /// in OnGUI so it sits on top of the menus. Near the edge of the screen it flips to the other side of the pointer.
+        /// </summary>
+        private void DrawLineStats(Vec2 boardPoint, Vector2 mouse, float screenWidth, float screenHeight)
         {
             var body = _board.BodyAt(boardPoint, 0.3f);
             if (body == null) return;
@@ -212,7 +218,37 @@ namespace RithmaticDuels.Presentation
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
             var ward = body as WardBody;
             if (ward != null && ward.BindPoints.Count > 0) text += "\n" + ward.BindPoints.Count + " bind points";
-            GUI.Box(new Rect(mouse.x + 16f, mouse.y + 8f, 230f, 18f + 18f * text.Split('\n').Length), text);
+
+            if (_statsStyle == null)
+            {
+                _statsStyle = new GUIStyle(GUI.skin.label) { wordWrap = false, padding = new RectOffset(8, 8, 6, 6) };
+                _statsStyle.normal.textColor = Color.white;
+            }
+            var content = new GUIContent(text);
+            Vector2 size = _statsStyle.CalcSize(content);
+
+            // Just below and right of the pointer, flipped left or up if it would leave the screen.
+            float x = mouse.x + 14f;
+            float y = mouse.y + 14f;
+            if (x + size.x > screenWidth - 4f) x = mouse.x - 10f - size.x;
+            if (y + size.y > screenHeight - 4f) y = mouse.y - 10f - size.y;
+            var rect = new Rect(Mathf.Max(4f, x), Mathf.Max(4f, y), size.x, size.y);
+
+            Color oldColour = GUI.color;
+            GUI.color = new Color(0.05f, 0.07f, 0.06f, 1f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = new Color(1f, 1f, 1f, 0.6f);
+            DrawOutline(rect);
+            GUI.color = oldColour;
+            GUI.Label(rect, content, _statsStyle);
+        }
+
+        private static void DrawOutline(Rect rect)
+        {
+            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 1f), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(rect.x, rect.y, 1f, rect.height), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(rect.xMax - 1f, rect.y, 1f, rect.height), Texture2D.whiteTexture);
         }
 
         /// <summary>The board point under a position in GUI pixels (y down), or null if it is off the board view.</summary>
