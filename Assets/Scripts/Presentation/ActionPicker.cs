@@ -274,6 +274,18 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>
+        /// A right-click on the board lets go of what has been picked there so far: the positions or bind points
+        /// clicked for the line being placed, and the LoF chosen for dismissal. Returns true if anything was let go.
+        /// Sizes set with the scroll wheel are kept.
+        /// </summary>
+        public bool HandleRightClick()
+        {
+            bool picked = _bindA >= 0 || _bindB >= 0 || _pointA.HasValue || _pointB.HasValue || _targetLineId >= 0;
+            ClearPicks();
+            return picked;
+        }
+
+        /// <summary>
         /// The scroll wheel over the board: makes a LoW ellipse flatter or rounder, an attached LoW circle
         /// bigger or smaller, or a LoF not bound at two points shorter or longer. Returns true if it changed the choice.
         /// </summary>
@@ -642,14 +654,25 @@ namespace RithmaticDuels.Presentation
             if (targets.Count == 0) return null;
             int index = targets.FindIndex(line => line.Id == _targetLineId);
 
-            var labels = new string[targets.Count];
+            // One button per line, laid out by hand so a right-click can be caught before the button sees it.
+            var current = Event.current;
             for (int i = 0; i < targets.Count; i++)
-                labels[i] = TurnNarrator.LineName(targets[i]) + "  " + targets[i].Durability + "/" + targets[i].MaxDurability;
-            int chosen = GUILayout.SelectionGrid(index, labels, 1);
-            if (chosen != index && chosen >= 0)
             {
-                _targetLineId = targets[chosen].Id;
-                GUIUtility.ExitGUI();
+                var label = new GUIContent(TurnNarrator.LineName(targets[i]) + "  " + targets[i].Durability + "/" + targets[i].MaxDurability);
+                Rect rect = GUILayoutUtility.GetRect(label, GUI.skin.button);
+                if (current.type == EventType.MouseDown && current.button == 1 && rect.Contains(current.mousePosition))
+                {
+                    // Right-clicking a box lets go of the chosen line, whichever box it is.
+                    _targetLineId = -1;
+                    current.Use();
+                    GUIUtility.ExitGUI();
+                }
+                bool selected = i == index;
+                if (GUI.Toggle(rect, selected, label, GUI.skin.button) != selected && !selected)
+                {
+                    _targetLineId = targets[i].Id;
+                    GUIUtility.ExitGUI();
+                }
             }
             return index >= 0 ? targets[index] : null;
         }
@@ -843,11 +866,22 @@ namespace RithmaticDuels.Presentation
         private void ResetClicksIfChanged(string clickKey)
         {
             if (clickKey == _clickKey) return;
+            ClearClicks();
+            _clickKey = clickKey;
+        }
+
+        private void ClearClicks()
+        {
             _bindA = -1;
             _bindB = -1;
             _pointA = null;
             _pointB = null;
-            _clickKey = clickKey;
+        }
+
+        private void ClearPicks()
+        {
+            ClearClicks();
+            _targetLineId = -1;
         }
 
         /// <summary>A label with - and + buttons. A button that would go past the limits is greyed out.</summary>
