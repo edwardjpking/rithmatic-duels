@@ -615,8 +615,8 @@ namespace RithmaticDuels.Presentation
             int normal = DrawTimes.Turns(spec, DrawingPace.Normal, config);
             if (normal <= config.RushedEarlyMaxNormalTurns)
                 return text + " Rushing saves no time here. Its only benefit is that the line goes down before lines move this turn"
-                    + (spec.Type == LineType.Vigor ? ", so it flies straight away" : "") + ". The modifier odds are worse.";
-            return text + " Rushing saves " + (normal - total) + " turn(s). The modifier odds are worse.";
+                    + (spec.Type == LineType.Vigor ? ", so it flies straight away" : "") + ".";
+            return text + " Rushing saves " + (normal - total) + " turn(s).";
         }
 
         private PlayerAction DrawDismiss(Duel duel, ChalkBoard board, Player player, out string hint)
