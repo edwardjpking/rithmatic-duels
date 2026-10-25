@@ -27,4 +27,5 @@ Notion is no longer used for design notes; do not sync to it.
 
 - Keep the core rules engine (turn resolution, lines, actions, modifiers) in plain C# with no `UnityEngine` dependency where practical, so it can be unit-tested with the Unity Test Framework (EditMode tests) and reused by UI and AI.
 - MonoBehaviours handle presentation and input, and call into the rules engine.
+- Bump `GameVersion` (Assets/Scripts/Presentation/GameVersion.cs) in every PR that changes the game: number, date and a few-word summary. It is shown in the game's top bar so the user can tell whether Unity has picked up the latest changes.
 - Use a seedable random source for modifier rolls so duels and tests are reproducible.

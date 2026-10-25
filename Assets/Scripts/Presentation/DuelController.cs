@@ -236,6 +236,7 @@ namespace RithmaticDuels.Presentation
                     + (_duel.ChalkFatigueActive ? "   ·   CHALK FATIGUE" : "") + "   ·   seed " + _currentSeed);
             }
             GUILayout.FlexibleSpace();
+            GUILayout.Label(GameVersion.Label);
             if (GUILayout.Button("New duel", GUILayout.Width(100))) Then(NewDuel);
             GUILayout.EndHorizontal();
         }
