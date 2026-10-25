@@ -22,6 +22,10 @@ namespace RithmaticDuels.Presentation
         private const float WardWidth = 0.08f;
         private const float MainWardWidth = 0.12f;
         private const float BindPointSize = 0.4f;
+        /// <summary>How strongly a drawing in progress shows, compared with a finished line.</summary>
+        private const float SketchAlpha = 0.6f;
+        private const float DashLength = 0.35f;
+        private const float GapLength = 0.25f;
 
         private Material _material;
 
@@ -46,6 +50,9 @@ namespace RithmaticDuels.Presentation
             foreach (var trail in Board.LastTickTrails)
                 for (int i = 1; i < trail.Points.Count; i++)
                     Line(trail.Points[i - 1], trail.Points[i], 0.03f, WithAlpha(Owner(trail.Owner), 0.3f));
+            // Drawings in progress go underneath finished lines: they are only a picture until complete.
+            DrawSketch(Board.WorkInProgressOf(Player.A));
+            DrawSketch(Board.WorkInProgressOf(Player.B));
             foreach (var body in Board.Bodies) DrawBody(body);
             if (Preview != null) DrawPreview(Preview);
             GL.End();
@@ -105,6 +112,72 @@ namespace RithmaticDuels.Presentation
             {
                 if (chalkling.Tether.HasValue) Line(chalkling.Tether.Value, chalkling.Position, 0.02f, WithAlpha(colour, 0.4f));
                 Diamond(chalkling.Position, 0.25f, colour);
+            }
+        }
+
+        /// <summary>
+        /// A player's work in progress, which both players can see: the line it will make, dashed and faint
+        /// in the owner's colour. Work on a line already down marks that line instead.
+        /// </summary>
+        private void DrawSketch(WorkSketch sketch)
+        {
+            if (sketch == null) return;
+            Color colour = WithAlpha(Owner(sketch.Owner), SketchAlpha);
+
+            switch (sketch.Kind)
+            {
+                case WorkKind.BindPoints:
+                    // Bind points still being drawn on the main LoW: faint markers where they will appear.
+                    var main = Board.MainWardOf(sketch.Owner);
+                    if (main != null && sketch.BindPoints != null)
+                        foreach (var point in sketch.BindPoints) BindPoint(point, TangentAt(main.Shape, point), colour);
+                    return;
+
+                case WorkKind.Dismiss:
+                    // A LoF being dismissed is crossed out along its length.
+                    var forbiddance = Board.BodyOf(sketch.TargetLineId) as ForbiddanceBody;
+                    if (forbiddance == null) return;
+                    Vec2 a = forbiddance.Segment.A;
+                    Vec2 b = forbiddance.Segment.B;
+                    int marks = Math.Max(1, (int)(Vec2.Distance(a, b) / 0.8f));
+                    for (int i = 0; i < marks; i++)
+                        Cross(a + (b - a) * ((i + 0.5f) / marks), 0.2f, WithAlpha(Damaged, SketchAlpha));
+                    return;
+
+                case WorkKind.Drawing:
+                    break;
+
+                default:
+                    // Buffing a chalkling (or repairing a line): a dashed ring around a chalkling.
+                    var chalkling = Board.BodyOf(sketch.TargetLineId) as ChalklingBody;
+                    if (chalkling != null) DashedRing(chalkling.Position, 0.45f, 0.04f, colour);
+                    return;
+            }
+
+            switch (sketch.Type)
+            {
+                case LineType.Warding:
+                    if (sketch.Ward == null) return;
+                    Outline(sketch.Ward, true, colour);
+                    if (sketch.Braces != null)
+                        foreach (var brace in sketch.Braces) DashedLine(brace.A, brace.B, ForbiddanceWidth * 0.7f, colour);
+                    if (sketch.BindPoints != null)
+                        foreach (var point in sketch.BindPoints) BindPoint(point, TangentAt(sketch.Ward, point), colour);
+                    return;
+
+                case LineType.Forbiddance:
+                    if (sketch.Segment.HasValue) DashedLine(sketch.Segment.Value.A, sketch.Segment.Value.B, ForbiddanceWidth, colour);
+                    return;
+
+                case LineType.Vigor:
+                    if (sketch.Point.HasValue && sketch.Direction.HasValue) Wave(sketch.Point.Value, sketch.Direction.Value.Normalized, colour, true);
+                    return;
+
+                default:
+                    if (!sketch.Point.HasValue) return;
+                    if (sketch.Tether.HasValue) DashedLine(sketch.Tether.Value, sketch.Point.Value, 0.02f, colour);
+                    DiamondOutline(sketch.Point.Value, 0.25f, colour);
+                    return;
             }
         }
 
@@ -172,8 +245,8 @@ namespace RithmaticDuels.Presentation
             }
         }
 
-        /// <summary>A LoV is drawn as a short sine wave along its direction of travel.</summary>
-        private static void Wave(Vec2 centre, Vec2 direction, Color colour)
+        /// <summary>A LoV is drawn as a short sine wave along its direction of travel; dotted while in progress.</summary>
+        private static void Wave(Vec2 centre, Vec2 direction, Color colour, bool dotted = false)
         {
             const float length = 1.2f;
             const float amplitude = 0.18f;
@@ -184,7 +257,7 @@ namespace RithmaticDuels.Presentation
             {
                 float s = (float)i / steps;
                 Vec2 point = centre + direction * ((s - 1f) * length) + side * (amplitude * Mathf.Sin(s * 4f * Mathf.PI));
-                if (i > 0) Line(previous, point, 0.06f, colour);
+                if (i > 0 && !(dotted && i % 2 == 0)) Line(previous, point, 0.06f, colour);
                 previous = point;
             }
         }
@@ -197,6 +270,39 @@ namespace RithmaticDuels.Presentation
             Vertex(a - offset);
             Vertex(b - offset);
             Vertex(b + offset);
+        }
+
+        /// <summary>A line broken into dashes, for drawings in progress.</summary>
+        private static void DashedLine(Vec2 a, Vec2 b, float width, Color colour)
+        {
+            float length = Vec2.Distance(a, b);
+            if (length <= 0f) return;
+            Vec2 along = (b - a) / length;
+            for (float d = 0f; d < length; d += DashLength + GapLength)
+                Line(a + along * d, a + along * Math.Min(length, d + DashLength), width, colour);
+        }
+
+        private static void DashedRing(Vec2 centre, float radius, float width, Color colour)
+        {
+            const int steps = 16;
+            for (int i = 0; i < steps; i += 2)
+            {
+                float t0 = 2f * Mathf.PI * i / steps;
+                float t1 = 2f * Mathf.PI * (i + 1) / steps;
+                Line(centre + new Vec2(Mathf.Cos(t0), Mathf.Sin(t0)) * radius, centre + new Vec2(Mathf.Cos(t1), Mathf.Sin(t1)) * radius, width, colour);
+            }
+        }
+
+        /// <summary>The outline of a chalkling's diamond, for one still being drawn.</summary>
+        private static void DiamondOutline(Vec2 centre, float radius, Color colour)
+        {
+            const float width = 0.05f;
+            Vec2 up = new Vec2(0f, radius);
+            Vec2 right = new Vec2(radius, 0f);
+            Line(centre - up, centre + right, width, colour);
+            Line(centre + right, centre + up, width, colour);
+            Line(centre + up, centre - right, width, colour);
+            Line(centre - right, centre - up, width, colour);
         }
 
         /// <summary>Unit direction along a LoW's outline at a point on it.</summary>
