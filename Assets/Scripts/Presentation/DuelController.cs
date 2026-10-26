@@ -22,6 +22,9 @@ namespace RithmaticDuels.Presentation
         [Tooltip("Seed for modifier rolls, so a duel can be replayed. 0 picks a new seed each duel.")]
         [SerializeField] private int _seed = 0;
 
+        [Tooltip("Frames per second to aim for. Without a cap Unity redraws the game as fast as it can, which slows the editor down.")]
+        [SerializeField] private int _targetFrameRate = 60;
+
         private enum Phase
         {
             /// <summary>Waiting for the next player to take the screen, so nobody sees the other's choice.</summary>
@@ -51,6 +54,9 @@ namespace RithmaticDuels.Presentation
         private readonly ActionPicker[] _pickers = { new ActionPicker(), new ActionPicker() };
         private readonly List<string> _log = new List<string>();
         private Vector2 _logScroll;
+        // Each log line's height, measured once for the width they were measured at (see DrawLog).
+        private readonly List<float> _logHeights = new List<float>();
+        private float _logHeightsWidth = -1f;
         private Vector2 _menuScroll;
         private string _error;
 
@@ -67,6 +73,10 @@ namespace RithmaticDuels.Presentation
 
         private void Start()
         {
+            // The editor ignores vSync in the Game view, so cap the frame rate directly.
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = _targetFrameRate;
+
             _camera = Camera.main;
             if (_camera == null) _camera = new GameObject("Main Camera").AddComponent<Camera>();
             _camera.orthographic = true;
@@ -213,7 +223,7 @@ namespace RithmaticDuels.Presentation
             GUILayout.EndArea();
 
             GUILayout.BeginArea(new Rect(menuWidth, logTop + 4, width - menuWidth - 10, height - logTop - 10));
-            DrawLog();
+            DrawLog(width - menuWidth - 10, height - logTop - 10);
             GUILayout.EndArea();
 
             if (boardPoint.HasValue) DrawLineStats(boardPoint.Value, mousePixels / scale, width, height);
@@ -438,11 +448,43 @@ namespace RithmaticDuels.Presentation
             GUIUtility.ExitGUI();
         }
 
-        private void DrawLog()
+        /// <summary>
+        /// The log of every turn so far. It grows all duel, and laying out every line on every GUI event got slow,
+        /// so each line is measured once and only the lines in view are drawn.
+        /// </summary>
+        private void DrawLog(float width, float height)
         {
+            var style = GUI.skin.label;
+            // Room for the box's padding and the scroll bar.
+            float textWidth = Mathf.Max(50f, width - 40f);
+            if (Mathf.Abs(textWidth - _logHeightsWidth) > 0.5f)
+            {
+                _logHeights.Clear();
+                _logHeightsWidth = textWidth;
+            }
+            if (_logHeights.Count > _log.Count) _logHeights.Clear(); // a new duel cleared the log
+            for (int i = _logHeights.Count; i < _log.Count; i++) _logHeights.Add(style.CalcHeight(new GUIContent(_log[i]), textWidth));
+
+            float total = 0f;
+            foreach (float lineHeight in _logHeights) total += lineHeight + LogLineGap;
+
             _logScroll = GUILayout.BeginScrollView(_logScroll, "box");
-            foreach (var entry in _log) GUILayout.Label(entry);
+            Rect content = GUILayoutUtility.GetRect(0f, total, GUILayout.ExpandWidth(true));
+            // Scrolling to the end sets the position past it, so clamp it here to find the lines in view.
+            float viewHeight = height - 8f;
+            float top = Mathf.Min(_logScroll.y, Mathf.Max(0f, total - viewHeight));
+            float y = 0f;
+            for (int i = 0; i < _log.Count && y < top + viewHeight; i++)
+            {
+                float lineHeight = _logHeights[i];
+                if (y + lineHeight >= top)
+                    GUI.Label(new Rect(content.x, content.y + y, content.width, lineHeight), _log[i], style);
+                y += lineHeight + LogLineGap;
+            }
             GUILayout.EndScrollView();
         }
+
+        /// <summary>Space between log lines, in GUI pixels.</summary>
+        private const float LogLineGap = 4f;
     }
 }
