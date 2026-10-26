@@ -16,6 +16,7 @@ namespace RithmaticDuels.Rules.Tests
             // Most tests here exercise one rule at a time, so they don't have to draw main LoW first.
             // The main-LoW-first rule has its own tests below.
             _config = new RulesConfig { MainWardFirst = false };
+            _config.Warding.MainWardDurabilityMultiplier = 1f; // most tests use plain 12-durability LoW; the doubling has its own test
             _movement = new ScriptedMovement();
         }
 
@@ -104,7 +105,7 @@ namespace RithmaticDuels.Rules.Tests
             var duel = NewDuel();
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), PlayerAction.Start(DrawingSpec.Warding(2)));
             CollectionAssert.AreEqual(
-                new[] { ActionKind.ContinueDrawing, ActionKind.CancelDrawing, ActionKind.Pass },
+                new[] { ActionKind.ContinueDrawing, ActionKind.CancelDrawing },
                 duel.AvailableActions(Player.A));
             Assert.IsNotNull(duel.Validate(Player.A, PlayerAction.Start(DrawingSpec.Vigor(VigorTier.Low)).AfterCancelling()));
             CollectionAssert.AreEqual(new[] { ActionKind.StartDrawing, ActionKind.Pass }, duel.AvailableActions(Player.B));
@@ -170,13 +171,16 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void MenuWhileDrawingIsContinueCancelOrPass()
+        public void MenuWhileDrawingIsContinueOrCancel()
         {
+            // No Pass mid-drawing (decided 2026-10-25): cancelling first (Cancel is cancel-and-pass) brings it back.
             var duel = NewDuel();
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), Pass);
             CollectionAssert.AreEqual(
-                new[] { ActionKind.ContinueDrawing, ActionKind.CancelDrawing, ActionKind.Pass },
+                new[] { ActionKind.ContinueDrawing, ActionKind.CancelDrawing },
                 duel.AvailableActions(Player.A));
+            Assert.IsNotNull(duel.Validate(Player.A, Pass));
+            Assert.IsNull(duel.Validate(Player.A, PlayerAction.Cancel()));
             CollectionAssert.AreEqual(new[] { ActionKind.StartDrawing, ActionKind.Pass }, duel.AvailableActions(Player.B));
         }
 
@@ -270,8 +274,9 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void PassingKeepsProgress()
+        public void PassingKeepsProgressWhenAllowed()
         {
+            _config.PassAllowedWhileDrawing = true;
             var duel = NewDuel();
             duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(6)), Pass);
             duel.ResolveTurn(Continue, Pass);

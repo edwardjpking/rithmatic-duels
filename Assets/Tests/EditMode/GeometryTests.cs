@@ -154,6 +154,7 @@ namespace RithmaticDuels.Rules.Tests
         {
             _config = new RulesConfig();
             _config.CentreWall.Enabled = false; // the centre LoF has its own tests
+            _config.Warding.MainWardDurabilityMultiplier = 1f; // so is the main LoW's double durability
             _board = new ChalkBoard(_config);
             _duel = new Duel(_config, new ScriptedRandom(Rolls.NoModifier), _board);
 
@@ -415,8 +416,9 @@ namespace RithmaticDuels.Rules.Tests
             // A free LoF from x=14 toward B, 3 long, would end at x=17.
             var free = Placement.Segment(V(14f, 4f), V(17f, 4f));
             Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), free), free));
-            // The longest it can be is up to the centre line.
-            Assert.AreEqual(2f, _board.MaxForbiddanceLength(Player.A, Placement.Segment(V(14f, 4f), V(14f, 4f)), V(1f, 0f)), 1e-3);
+            // The longest it can be stops short of the centre line, which is drawn as wide as a LoF.
+            float half = _config.Geometry.ForbiddanceWidth / 2f;
+            Assert.AreEqual(2f - half, _board.MaxForbiddanceLength(Player.A, Placement.Segment(V(14f, 4f), V(14f, 4f)), V(1f, 0f)), 1e-3);
         }
 
         [Test]
@@ -528,18 +530,38 @@ namespace RithmaticDuels.Rules.Tests
         public void AForbiddanceIsARectangleThatMustStayOnItsHalf()
         {
             float half = _config.Geometry.ForbiddanceWidth / 2f;
-            // Upright at x=16 - half: its edge just touches the centre line.
-            var touching = Placement.Segment(V(16f - half, 4f), V(16f - half, 7f));
+            // Upright at x=16 - 2 half: its edge just touches the edge of the centre line (drawn as wide as a LoF).
+            var touching = Placement.Segment(V(16f - 2f * half, 4f), V(16f - 2f * half, 7f));
             Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), touching), touching));
-            var over = Placement.Segment(V(16f - half / 2f, 4f), V(16f - half / 2f, 7f));
+            var over = Placement.Segment(V(16f - 1.5f * half, 4f), V(16f - 1.5f * half, 7f));
             Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), over), over));
 
-            // Slanting toward the line from x=14: capped where its corner first reaches it.
+            // Slanting toward the line from x=14: capped where its corner first reaches the line's edge.
             Vec2 direction = new Vec2(1f, 1f).Normalized;
             float max = _board.MaxForbiddanceLength(Player.A, Placement.Segment(V(14f, 4f), V(14f, 4f)), direction);
             Vec2 end = V(14f, 4f) + direction * max;
             float cornerX = end.X + Math.Abs(direction.Perp.X) * half;
-            Assert.AreEqual(16f, cornerX, 1e-3);
+            Assert.AreEqual(16f - half, cornerX, 1e-3);
+        }
+
+        [Test]
+        public void ATangentLoFStopsShortOfANeighbouringWard()
+        {
+            // A radius 1.5 circle at A's front bind point (9, 10): centre (10.5, 10), top at (10.5, 11.5).
+            Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
+            var points = _board.BindPointsOf(Player.A);
+            int top = 0;
+            for (int i = 1; i < points.Count; i++) if (Vec2.Distance(points[i], V(10.5f, 11.5f)) < Vec2.Distance(points[top], V(10.5f, 11.5f))) top = i;
+            Assert.AreEqual(0f, Vec2.Distance(points[top], V(10.5f, 11.5f)), 1e-2, "the small circle has a bind point at its top");
+
+            // Along y = 11.5 the main LoW (centre (6, 10), radius 3) reaches x = 6 + sqrt(6.75), about 8.6,
+            // so a tangent centred at x = 10.5 must be shorter than about 3.8.
+            float max = _board.MaxForbiddanceLength(Player.A, Placement.TangentAt(top), Vec2.Zero);
+            Assert.Less(max, 3.85f);
+            var tooLong = Placement.TangentAt(top, 4.5f);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(1), tooLong), tooLong));
+            var capped = Placement.TangentAt(top, max);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(1), capped), capped));
         }
 
         [Test]
@@ -629,6 +651,21 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void HoveringNearSeveralLinesPicksByType()
+        {
+            // Order: LoM, LoV, LoW, LoF, whichever is nearest.
+            var chalkling = Draw(Player.A, DrawingSpec.Making(glyph: Glyph.Defend, boundBindPoints: 1), Placement.AtBindPoint(0));
+            var body = (ChalklingBody)_board.BodyOf(chalkling.Id);
+            Vec2 onOutline = body.Tether.Value;
+            Assert.AreSame(body, _board.BodyAt(onOutline, 2f), "the chalkling beats the nearer LoW");
+
+            var lof = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(1));
+            var segment = ((ForbiddanceBody)_board.BodyOf(lof.Id)).Segment;
+            Vec2 touching = (segment.A + segment.B) / 2f;
+            Assert.AreEqual(MainWard(Player.A).Id, _board.BodyAt(touching, 0.3f).LineId, "the LoW beats a LoF touching it");
+        }
+
+        [Test]
         public void AnEllipticalMainWardIsWeakestAlongItsSides()
         {
             var config = new RulesConfig();
@@ -639,8 +676,24 @@ namespace RithmaticDuels.Rules.Tests
 
             var ellipse = duel.GetPlayer(Player.A).MainWard;
             Assert.IsNotNull(ellipse);
-            Assert.Less(ellipse.Durability, 12);
+            Assert.Less(ellipse.Durability, duel.GetPlayer(Player.B).MainWard.Durability, "weaker than B's circle");
             Assert.AreEqual(2, board.BindPointsOf(Player.A).Count);
+        }
+
+        [Test]
+        public void TheMainWardHasDoubleDurability()
+        {
+            // With the real config: a default circle (radius 3) is 12 at every point, 24 as the main LoW.
+            var config = new RulesConfig();
+            var board = new ChalkBoard(config);
+            var duel = new Duel(config, new ScriptedRandom(Rolls.NoModifier), board);
+            duel.ResolveTurn(PlayerAction.Start(DrawingSpec.Warding(4)), PlayerAction.Start(DrawingSpec.Warding(4)));
+            var main = duel.GetPlayer(Player.A).MainWard;
+            var shape = board.MainWardOf(Player.A).Shape;
+            Assert.AreEqual(12, board.WeakestDurability(shape), "any other LoW this shape");
+            Assert.AreEqual(24, board.WeakestDurability(shape, true));
+            Assert.AreEqual(24, main.Durability);
+            Assert.AreEqual(24, main.MaxDurability);
         }
 
         [Test]
