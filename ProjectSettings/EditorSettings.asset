@@ -7,3 +7,5 @@ EditorSettings:
   m_SerializationMode: 2
   m_DefaultBehaviorMode: 1
   m_SpritePackerMode: 5
+  m_EnterPlayModeOptionsEnabled: 1
+  m_EnterPlayModeOptions: 1
