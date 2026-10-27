@@ -330,7 +330,7 @@ namespace RithmaticDuels.Presentation
                 if (_renderer != null) _renderer.HoverWardPoint = ward.SamplePoint(nearest);
                 text += "\nDurability here " + ward.SampleDurability(nearest) + "/" + ward.SampleMax(nearest);
             }
-            else if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability;
+            else if (line.HasDurability) text += (ward != null ? "\nLowest durability " : "\nDurability ") + line.Durability + "/" + line.MaxDurability;
             if (_renderer != null && boardPoint.HasValue) _renderer.HoverVigor = body as VigorBody;
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
