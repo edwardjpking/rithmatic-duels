@@ -84,6 +84,17 @@ namespace RithmaticDuels.Presentation
         /// <summary>The width left for buttons after a row's label.</summary>
         private static float RowWidth { get { return Mathf.Max(60f, _width - RowLabelWidth - 4f); } }
 
+        /// <summary>True between BeginRow and the next button row, which then shares its line with the label.</summary>
+        private static bool _afterRowLabel;
+
+        /// <summary>The width the next button row has: the whole menu, or what is left beside a row label.</summary>
+        private static float NextRowWidth()
+        {
+            float width = _afterRowLabel ? RowWidth : _width;
+            _afterRowLabel = false;
+            return width;
+        }
+
         /// <summary>How close a click must be to a bind point, or a LoF to dismiss, to pick it.</summary>
         private const float PickRadius = 0.75f;
 
@@ -153,6 +164,7 @@ namespace RithmaticDuels.Presentation
             Preview = null;
             // Leave room for the vertical scroll bar; button rows wrap to fit, so nothing scrolls sideways.
             _width = Mathf.Max(100f, width - ScrollBarAllowance);
+            _afterRowLabel = false;
             var available = duel.AvailableActions(player);
             if (available.Count == 0) return null;
             // The scroll view fills the panel down to the footer, so Lock in sits at the bottom.
@@ -479,6 +491,7 @@ namespace RithmaticDuels.Presentation
             if (ellipse)
             {
                 GUILayout.Label("2, at the ends of its long axis.");
+                _afterRowLabel = false;
                 if (_pointA.HasValue) bindPoints = 2;
             }
             else
@@ -1216,6 +1229,7 @@ namespace RithmaticDuels.Presentation
         {
             GUILayout.BeginHorizontal();
             GUILayout.Label(label, GUILayout.Width(RowLabelWidth));
+            _afterRowLabel = true;
         }
 
         private static void Stepper(string label, ref int value, int min, int max)
@@ -1240,7 +1254,7 @@ namespace RithmaticDuels.Presentation
         private static void Choose<T>(ref T value, string[] labels) where T : struct, System.Enum
         {
             int index = System.Convert.ToInt32(value);
-            int chosen = Buttons(index, labels, RowWidth);
+            int chosen = Buttons(index, labels, NextRowWidth());
             if (chosen == index) return;
             value = (T)System.Enum.ToObject(typeof(T), chosen);
             GUIUtility.ExitGUI();
@@ -1250,7 +1264,7 @@ namespace RithmaticDuels.Presentation
         private static void Choose<T>(ref T? value, string[] labels) where T : struct, System.Enum
         {
             int index = value.HasValue ? System.Convert.ToInt32(value.Value) : -1;
-            int chosen = Buttons(index, labels, RowWidth);
+            int chosen = Buttons(index, labels, NextRowWidth());
             if (chosen == index || chosen < 0) return;
             value = (T)System.Enum.ToObject(typeof(T), chosen);
             GUIUtility.ExitGUI();
@@ -1258,7 +1272,7 @@ namespace RithmaticDuels.Presentation
 
         private static void Choose(ref int value, string[] labels)
         {
-            int chosen = Buttons(value, labels, RowWidth);
+            int chosen = Buttons(value, labels, NextRowWidth());
             if (chosen == value || chosen < 0) return;
             value = chosen;
             GUIUtility.ExitGUI();
