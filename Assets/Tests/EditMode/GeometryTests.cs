@@ -983,6 +983,26 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void BoundForbiddanceGoesWhenItsWardBreaks()
+        {
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var braces = _duel.Lines.Where(l => l.BraceOf == cross.Id).ToList();
+            // A tangent at the main LoW's top bind point, and a free LoF, are not bound to the Mark's Cross.
+            var points = _board.BindPointsOf(Player.A);
+            int top = Enumerable.Range(0, points.Count).Single(i => points[i].Y > 12.9f && points[i].X < 6.1f);
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(top, 2f));
+            var free = Draw(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(2f, 2f), V(5f, 2f)));
+
+            cross.Status = LineStatus.Broken;
+            var report = PassTurn();
+            Assert.IsTrue(braces.All(l => l.Status == LineStatus.Destroyed), "its crossed LoF go with it");
+            Assert.IsTrue(braces.All(l => _board.BodyOf(l.Id) == null));
+            Assert.IsTrue(report.Events.Count(e => e.Type == TurnEventType.LineDestroyed) >= 2);
+            Assert.IsTrue(tangent.IsActive);
+            Assert.IsTrue(free.IsActive);
+        }
+
+        [Test]
         public void AMarksCrossHasItsCrossedForbiddanceInside()
         {
             var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));

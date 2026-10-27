@@ -820,6 +820,33 @@ namespace RithmaticDuels.Rules.Geometry
                 if (ward.Weakest != line.Durability || ward.WeakestMax != line.MaxDurability)
                     result.DurabilityOverrides.Add(new DurabilityOverride(line.Id, ward.Weakest, ward.WeakestMax));
             }
+            DestroyUnboundForbiddance(result);
+        }
+
+        /// <summary>
+        /// A LoF bound at a bind point is destroyed once no LoW passes through that point any more: when the LoW it
+        /// is bound to breaks, unless another LoW still shares the point (DESIGN.md section 4.2).
+        /// </summary>
+        private void DestroyUnboundForbiddance(MovementResult result)
+        {
+            var lost = new List<LineBody>();
+            foreach (var body in _bodies.Values)
+            {
+                var forbiddance = body as ForbiddanceBody;
+                if (forbiddance == null) continue;
+                foreach (var anchor in forbiddance.Anchors)
+                {
+                    bool held = false;
+                    foreach (var ward in WardsOf(forbiddance.Owner)) held |= OnOutline(ward, anchor);
+                    if (!held) { lost.Add(forbiddance); break; }
+                }
+            }
+            foreach (var body in lost)
+            {
+                _bodies.Remove(body.LineId);
+                result.DestroyedLineIds.Add(body.LineId);
+                _notes.Add(Name(body) + " is destroyed: the Line of Warding it was bound to is gone.");
+            }
         }
 
         private Placement TakePending(Line line)
@@ -868,15 +895,28 @@ namespace RithmaticDuels.Rules.Geometry
                         if (cross != null)
                         {
                             var braces = MarksCrossBraces(cross.Shape, cross.BindPoints);
-                            if (line.BraceIndex < braces.Length) return new ForbiddanceBody(line, braces[line.BraceIndex], cross.LineId);
+                            if (line.BraceIndex < braces.Length)
+                            {
+                                var brace = braces[line.BraceIndex];
+                                return new ForbiddanceBody(line, brace, cross.LineId, new[] { brace.A, brace.B });
+                            }
                         }
                     }
                     var segment = ForbiddanceGeometry(owner, placement) ?? ForbiddanceGeometry(owner, Placement.Default()).Value;
                     int chordOf = -1;
+                    Vec2[] anchors = null;
                     if (placement.Kind == PlacementKind.BetweenBindPoints)
+                    {
+                        anchors = new[] { segment.A, segment.B };
                         foreach (var ward in WardsOf(owner))
                             if (chordOf < 0 && OnOutline(ward, segment.A) && OnOutline(ward, segment.B)) chordOf = ward.LineId;
-                    return new ForbiddanceBody(line, segment, chordOf);
+                    }
+                    else if (placement.Kind == PlacementKind.TangentAtBindPoint)
+                    {
+                        var points = BindPointsOf(owner);
+                        if (InRange(placement.BindPointA, points)) anchors = new[] { points[placement.BindPointA] };
+                    }
+                    return new ForbiddanceBody(line, segment, chordOf, anchors);
 
                 case LineType.Vigor:
                     Vec2 direction;
