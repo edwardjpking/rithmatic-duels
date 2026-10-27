@@ -315,8 +315,8 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// The scroll wheel over the board: makes a LoW ellipse flatter or rounder, an attached LoW circle
-        /// bigger or smaller, or a LoF not bound at two points shorter or longer. With <paramref name="overall"/>
-        /// (Shift held), it scales an attached LoW ellipse's overall size instead. Returns true if it changed the choice.
+        /// bigger or smaller, or a LoF not bound at two points shorter or longer. For an attached LoW ellipse, plain
+        /// scroll scales its overall size and <paramref name="overall"/> (Shift held) makes it rounder or flatter. Returns true if it changed the choice.
         /// </summary>
         public bool HandleScroll(ChalkBoard board, Player player, RulesConfig config, float delta, bool overall = false)
         {
@@ -343,13 +343,14 @@ namespace RithmaticDuels.Presentation
                     _join = ((_join + (delta < 0f ? 1 : -1)) % choices + choices) % choices;
                     return true;
                 }
-                if (overall)
+                if (spec.BindPoints == 2 && !overall)
                 {
-                    if (spec.BindPoints != 2) return false;
+                    // Plain scroll sizes an ellipse overall, like other sizes; Shift + scroll changes how round it is.
                     // Each notch moves to the next whole-number durability, never bigger than fits on the player's half.
                     _attachedScale = StepAlong(AttachedScaleSteps(board, player, spec), AttachedScale(board, player, spec), delta < 0f ? 1 : -1);
                     return true;
                 }
+                if (overall && spec.BindPoints != 2) return false;
                 // Each notch moves to the next whole-number durability, never bigger than fits on the player's half.
                 _attachedSize = StepAlong(AttachedSteps(board, player, spec), AttachedSize(board, player, spec), delta < 0f ? 1 : -1);
                 return true;
@@ -498,7 +499,7 @@ namespace RithmaticDuels.Presentation
                     {
                         spec = DrawingSpec.Warding(count);
                         GUILayout.Label(count == 2
-                            ? "An ellipse sticking out from the bind point. Scroll to make it rounder or flatter, Shift + scroll to make it bigger or smaller."
+                            ? "An ellipse sticking out from the bind point. Scroll to make it bigger or smaller, Shift + scroll to make it rounder or flatter."
                             : board.JoinChoices(spec) > 1
                                 ? "A circle outside the bind point. Scroll to make it bigger or smaller, Shift + scroll to turn it so a different one of its bind points joins."
                                 : "A circle outside the bind point. Scroll to make it bigger or smaller.");
@@ -929,7 +930,7 @@ namespace RithmaticDuels.Presentation
                     var ward = bindPoints == 0 ? DrawingSpec.MarksCross(board.Config) : DrawingSpec.Warding(bindPoints);
                     float min = 0f, max, start;
                     if (bindPoints > 0) board.AttachedSizeRange(ward, out min, out max, out start);
-                    // An ellipse is smallest at its smallest overall scale (Shift + scroll) too.
+                    // An ellipse is smallest at its smallest overall scale (scroll) too.
                     float scale = bindPoints == 2 ? board.Config.Geometry.AttachedEllipseMinScale : 0f;
                     return !Fits(board, player, ward, Placement.AtBindPoint(index, min, scale));
                 case LineType.Forbiddance:
