@@ -678,6 +678,10 @@ namespace RithmaticDuels.Rules.Tests
             public void PlaceNewLines(Duel duel, MovementResult result)
             {
             }
+
+            public void FindUnboundLines(Duel duel, System.Collections.Generic.List<int> lost)
+            {
+            }
         }
     }
 }

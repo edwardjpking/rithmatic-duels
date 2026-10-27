@@ -421,9 +421,10 @@ namespace RithmaticDuels.Presentation
                 var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
                 if (overall && board.JoinChoices(spec) > 1)
                 {
-                    // Turn the circle so the next of its bind points joins.
+                    // Turn the circle so the next of its bind points joins. Scrolling up turns it anticlockwise
+                    // (changed 2026-10-27; to become a player setting, docs/FUTURE_IDEAS.md).
                     int choices = board.JoinChoices(spec);
-                    _join = ((_join + (delta < 0f ? 1 : -1)) % choices + choices) % choices;
+                    _join = ((_join + (delta < 0f ? -1 : 1)) % choices + choices) % choices;
                     return true;
                 }
                 if (spec.BindPoints == 2 && !overall)
