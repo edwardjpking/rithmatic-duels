@@ -275,11 +275,17 @@ namespace RithmaticDuels.Presentation
             if (body == null) return;
             var line = body.Line;
             string text = TurnNarrator.LineName(line);
-            if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability + (line.Type == LineType.Warding ? " (weakest point)" : "");
+            var ward = body as WardBody;
+            if (ward != null)
+            {
+                // A LoW's durability varies around its outline, so show the point nearest the mouse.
+                int nearest = NearestSample(ward, boardPoint);
+                text += "\nDurability here " + ward.SampleDurability(nearest) + "/" + ward.SampleMax(nearest);
+            }
+            else if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability;
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
-            var ward = body as WardBody;
             if (ward != null && ward.BindPoints.Count > 0) text += "\n" + ward.BindPoints.Count + " bind points";
 
             if (_statsStyle == null)
@@ -304,6 +310,18 @@ namespace RithmaticDuels.Presentation
             DrawOutline(rect);
             GUI.color = oldColour;
             GUI.Label(rect, content, _statsStyle);
+        }
+
+        private static int NearestSample(WardBody ward, Vec2 point)
+        {
+            int nearest = 0;
+            float best = float.MaxValue;
+            for (int i = 0; i < ward.SampleCount; i++)
+            {
+                float distance = Vec2.Distance(ward.SamplePoint(i), point);
+                if (distance < best) { best = distance; nearest = i; }
+            }
+            return nearest;
         }
 
         private static void DrawOutline(Rect rect)
