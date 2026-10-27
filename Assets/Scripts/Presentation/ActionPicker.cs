@@ -411,6 +411,7 @@ namespace RithmaticDuels.Presentation
             if (board.MainWardOf(player) == null && config.MainWardFirst)
             {
                 if (_mainShape != MainShape.Ellipse) return false;
+                // Plain scroll and Shift + scroll both change its roundness (it has no overall size).
                 // Each notch moves to the next whole-number durability of the ellipse's weakest point.
                 _semiMinor = StepAlong(MainSteps(board, player), SemiMinor(board, player), delta < 0f ? 1 : -1);
                 return true;
@@ -469,7 +470,7 @@ namespace RithmaticDuels.Presentation
                 return null;
             }
             bool ellipse = _mainShape == MainShape.Ellipse;
-            if (ellipse) GUILayout.Label("Scroll over the board to make it flatter or rounder. Flatter ellipses are weaker along their sides.");
+            if (ellipse) GUILayout.Label("Scroll (or Shift + scroll) over the board to make it flatter or rounder. Flatter ellipses are weaker along their sides.");
             bool atHome = config.Geometry.MainWardAtHome;
             if (atHome) _pointA = board.Home(player);
             else GUILayout.Label("2. Click on your half of the board to place it.");

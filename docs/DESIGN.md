@@ -56,7 +56,7 @@ Each turn:
 
 **Pre-game setup (decided 2026-10-25).** Each player secretly sets up their main LoW before anything else; no other line and no passing is available. They choose, on one screen:
 
-1. **Shape:** a circle, or an ellipse. The ellipse's flatness is variable (adjusted with the mouse scroll wheel); flatter ellipses are weaker along their sides (section 4.1).
+1. **Shape:** a circle, or an ellipse. The ellipse's flatness is variable (adjusted with the mouse scroll wheel, with or without Shift; decided 2026-10-27); flatter ellipses are weaker along their sides (section 4.1).
 2. **Position:** fixed, at the back preset spot (centred, 6 units from the player's own edge; decided 2026-10-25). Choosing a position was removed because a main LoW built against the centre line let players draw into the opponent's half.
 3. **Bind points:** 4, 6 or 9 for a circle. An ellipse always has 2, at the ends of its long axis. (More flexible bind point counts and positions are planned.)
 
