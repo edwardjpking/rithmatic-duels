@@ -15,6 +15,7 @@ Notion is no longer used for design notes; do not sync to it.
 - Tick resolution order (DESIGN.md section 3): dismissal → rushed lines finish → animated lines act (and deal damage) → other lines finish.
 - Lose when your main LoW is breached. Turn limit → draw.
 - Completed drawings roll a random modifier; rush/steady change draw time and odds (section 5.2).
+- **Invalid choices can't be selected** (DESIGN.md section 1.1, applies to every feature): never let the player pick an option, spot or size the rules would refuse and only reject it at Lock in. Block it in the interface and show why visually (greyed out, red fill, a red cross under the mouse, sizes capped to what fits).
 - **All numbers are placeholders.** Keep them in data (e.g. ScriptableObjects or config), never hard-coded in logic, so balancing doesn't require code changes.
 
 ## Scope
