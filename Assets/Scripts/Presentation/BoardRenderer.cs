@@ -129,10 +129,10 @@ namespace RithmaticDuels.Presentation
             switch (sketch.Kind)
             {
                 case WorkKind.BindPoints:
-                    // Bind points still being drawn on the main LoW: faint markers where they will appear.
+                    // Bind points still being drawn on the main LoW: faint dashed rings where they will appear.
                     var main = Board.MainWardOf(sketch.Owner);
                     if (main != null && sketch.BindPoints != null)
-                        foreach (var point in sketch.BindPoints) BindPoint(point, colour);
+                        foreach (var point in sketch.BindPoints) UnfinishedBindPoint(point, colour);
                     return;
 
                 case WorkKind.Drawing:
@@ -150,7 +150,7 @@ namespace RithmaticDuels.Presentation
                     if (sketch.Braces != null)
                         foreach (var brace in sketch.Braces) DashedLine(brace.A, brace.B, ForbiddanceWidth * 0.7f, colour);
                     if (sketch.BindPoints != null)
-                        foreach (var point in sketch.BindPoints) BindPoint(point, colour);
+                        foreach (var point in sketch.BindPoints) UnfinishedBindPoint(point, colour);
                     return;
 
                 case LineType.Forbiddance:
@@ -283,6 +283,15 @@ namespace RithmaticDuels.Presentation
             Disc(centre, 0.05f, colour);
         }
 
+        /// <summary>
+        /// A bind point that isn't finished yet: a dashed ring with no dot, so it can't be mistaken for a
+        /// finished one (solid ring and dot).
+        /// </summary>
+        private static void UnfinishedBindPoint(Vec2 centre, Color colour)
+        {
+            Ring(centre, BindPointSize / 2f, BindPointRingWidth, colour, true);
+        }
+
         private const int CircleSteps = 32;
 
         private static Vec2 OnCircle(Vec2 centre, float radius, int step)
@@ -292,13 +301,15 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A circle outline <paramref name="width"/> thick, centred on <paramref name="radius"/>.</summary>
-        private static void Ring(Vec2 centre, float radius, float width, Color colour)
+        private static void Ring(Vec2 centre, float radius, float width, Color colour, bool dashed = false)
         {
             float inner = radius - width / 2f;
             float outer = radius + width / 2f;
             GL.Color(colour);
             for (int i = 0; i < CircleSteps; i++)
             {
+                // Dashes of four steps on, four off.
+                if (dashed && (i / 4) % 2 == 1) continue;
                 Vertex(OnCircle(centre, inner, i));
                 Vertex(OnCircle(centre, outer, i));
                 Vertex(OnCircle(centre, outer, i + 1));
