@@ -18,6 +18,9 @@ namespace RithmaticDuels.Presentation
         private static readonly Color Faint = new Color(1f, 1f, 1f, 0.15f);
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
+        private static readonly Color HighlightColour = new Color(1f, 0.4f, 0.85f, 0.5f);
+        private static readonly Color HoverColour = new Color(0.6f, 0.9f, 1f, 1f);
+        private const float HoverMarkSize = 0.22f;
         private static readonly Color BlockedFill = new Color(0.95f, 0.3f, 0.25f, 0.75f);
 
         private const float WardWidth = 0.08f;
@@ -38,6 +41,12 @@ namespace RithmaticDuels.Presentation
         public ChalkBoard Board { get; set; }
         public Camera BoardCamera { get; set; }
         public PlacementPreview Preview { get; set; }
+        /// <summary>A line to pick out with a glow, such as one hovered in a lines list. -1 for none.</summary>
+        public int HighlightLineId { get; set; } = -1;
+        /// <summary>Set from OnGUI: the LoW outline point whose durability the hover readout shows.</summary>
+        public Vec2? HoverWardPoint { get; set; }
+        /// <summary>Set from OnGUI: the LoV under the mouse, whose direction of travel gets an arrow.</summary>
+        public VigorBody HoverVigor { get; set; }
 
         private void OnRenderObject()
         {
@@ -55,8 +64,11 @@ namespace RithmaticDuels.Presentation
             // Drawings in progress go underneath finished lines: they are only a picture until complete.
             DrawSketch(Board.WorkInProgressOf(Player.A));
             DrawSketch(Board.WorkInProgressOf(Player.B));
+            var highlighted = HighlightLineId >= 0 ? Board.BodyOf(HighlightLineId) : null;
+            if (highlighted != null) DrawHighlight(highlighted);
             foreach (var body in Board.Bodies) DrawBody(body);
             if (Preview != null) DrawPreview(Preview);
+            DrawHover();
             GL.End();
             GL.PopMatrix();
         }
@@ -73,6 +85,35 @@ namespace RithmaticDuels.Presentation
             for (float y = 0f; y < h; y += 1f) Line(new Vec2(w / 2f, y), new Vec2(w / 2f, y + 0.5f), 0.03f, Faint);
             // The centre LoF that stands for the first turns of the duel belongs to neither player.
             if (Board.CentreWallUp) Line(Board.CentreWall.A, Board.CentreWall.B, ForbiddanceWidth, CentreWallColour);
+        }
+
+        /// <summary>A wide pink glow under a line (not blue, so it can't be mistaken for a placement preview), drawn before the lines so the line itself stays readable on top.</summary>
+        private void DrawHighlight(LineBody body)
+        {
+            const float glow = 0.18f;
+            var ward = body as WardBody;
+            if (ward != null)
+            {
+                float width = (ward.Line.IsMainWard ? Board.Config.Geometry.MainWardLineWidth : Board.Config.Geometry.WardLineWidth) + glow;
+                for (int i = 0; i < ward.SampleCount; i++)
+                    Line(ward.SamplePoint(i), ward.SamplePoint((i + 1) % ward.SampleCount), width, HighlightColour);
+                foreach (var brace in ward.Braces) Line(brace.A, brace.B, ForbiddanceWidth + glow, HighlightColour);
+                return;
+            }
+            var forbiddance = body as ForbiddanceBody;
+            if (forbiddance != null)
+            {
+                Line(forbiddance.Segment.A, forbiddance.Segment.B, ForbiddanceWidth + glow, HighlightColour);
+                return;
+            }
+            var vigor = body as VigorBody;
+            if (vigor != null)
+            {
+                Disc(vigor.Position, Board.Config.Geometry.VigorDrawnLength / 2f + glow, HighlightColour);
+                return;
+            }
+            var chalkling = body as ChalklingBody;
+            if (chalkling != null) Disc(chalkling.Position, 0.25f + glow, HighlightColour);
         }
 
         private void DrawBody(LineBody body)
@@ -170,6 +211,29 @@ namespace RithmaticDuels.Presentation
             }
         }
 
+        /// <summary>Marks for the line under the mouse, matching the hover readout.</summary>
+        private void DrawHover()
+        {
+            if (HoverWardPoint.HasValue)
+            {
+                Disc(HoverWardPoint.Value, HoverMarkSize / 2f + 0.03f, Color.black);
+                Disc(HoverWardPoint.Value, HoverMarkSize / 2f, HoverColour);
+            }
+            if (HoverVigor != null && HoverVigor.Line.IsActive) Arrowhead(HoverVigor.Position, HoverVigor.Direction, HoverColour);
+        }
+
+        /// <summary>An arrowhead whose tip is just ahead of <paramref name="tip"/>, pointing along <paramref name="direction"/>.</summary>
+        private static void Arrowhead(Vec2 tip, Vec2 direction, Color colour)
+        {
+            const float length = 0.45f;
+            const float halfWidth = 0.25f;
+            Vec2 point = tip + direction * 0.3f;
+            Vec2 back = point - direction * length;
+            Vec2 side = direction.Perp * halfWidth;
+            Line(point, back + side, 0.07f, colour);
+            Line(point, back - side, 0.07f, colour);
+        }
+
         private void DrawPreview(PlacementPreview preview)
         {
             var bindPoints = Board.BindPointsOf(preview.Player);
@@ -206,12 +270,19 @@ namespace RithmaticDuels.Presentation
                 {
                     Vec2 direction = (preview.To.Value - preview.From.Value).Normalized;
                     Wave(preview.From.Value, direction, Board.Config.Geometry.VigorDrawnLength, PreviewColour);
-                    // Aim line, dashed out to the edge of the board.
-                    for (float d = 1f; d < 40f; d += 1f)
+                    // Aim line, dashed, reflecting off LoF as the LoV would until it reaches a LoW, chalkling or the edge.
+                    var path = Board.AimPath(preview.From.Value, direction);
+                    float skip = 1f;
+                    for (int i = 1; i < path.Count; i++)
                     {
-                        Vec2 a = preview.From.Value + direction * d;
-                        if (!Board.OnBoard(a)) break;
-                        Line(a, a + direction * 0.5f, 0.03f, PreviewColour);
+                        Vec2 start = path[i - 1];
+                        Vec2 along = path[i] - start;
+                        float length = along.Length;
+                        if (length <= 0f) continue;
+                        Vec2 step = along / length;
+                        float d = skip;
+                        for (; d < length; d += 1f) Line(start + step * d, start + step * Math.Min(d + 0.5f, length), 0.03f, PreviewColour);
+                        skip = d - length;
                     }
                 }
             }

@@ -605,10 +605,13 @@ namespace RithmaticDuels.Rules.Geometry
             return (int)Math.Ceiling(vigorDamage * _config.Forbiddance.VigorDamageMultiplier - 1e-6);
         }
 
-        /// <summary>What a LoV with this damage deals to a LoW arc toughened by a LoF, and to that LoF (DESIGN.md section 4.2).</summary>
-        public int ToughenedArcDamage(int vigorDamage)
+        /// <summary>
+        /// What a LoV with this damage deals to a LoW where this many LoF toughen it, and to each of those LoF: the
+        /// share once per LoF, rounded up at the end (DESIGN.md section 4.2). Two crossed LoF take it to a quarter.
+        /// </summary>
+        public int ToughenedArcDamage(int vigorDamage, int toughening = 1)
         {
-            return (int)Math.Ceiling(vigorDamage * _config.Forbiddance.ChordArcDamageMultiplier - 1e-6);
+            return (int)Math.Ceiling(vigorDamage * Math.Pow(_config.Forbiddance.ChordArcDamageMultiplier, toughening) - 1e-6);
         }
 
         /// <summary>
@@ -1183,8 +1186,8 @@ namespace RithmaticDuels.Rules.Geometry
 
                     case HitKind.Ward:
                         var ward = (WardBody)hit.Other;
-                        var shield = ShieldingChord(ward, hit.Vigor.Position, chalklingDamage);
-                        if (shield != null) HitShieldedArc(hit.Vigor, shield, ward, now, chalklingDamage, result);
+                        var shields = ShieldingChords(ward, hit.Vigor.Position, chalklingDamage);
+                        if (shields.Count > 0) HitShieldedArc(hit.Vigor, shields, ward, now, chalklingDamage, result);
                         else HitWard(hit.Vigor, ward, now, result);
                         Absorb(hit.Vigor, flying, result);
                         break;
@@ -1208,6 +1211,60 @@ namespace RithmaticDuels.Rules.Geometry
             }
             Advance(flying, 1f - now);
             foreach (var vigor in flying) trails[vigor.LineId].Points.Add(vigor.Position);
+        }
+
+        /// <summary>
+        /// Where a LoV starting here in this direction would go if nothing moved, for the aim preview: it reflects
+        /// off LoF (and the centre LoF while it stands) by the same rules as in flight, and stops at the first LoW,
+        /// chalkling or board edge it reaches. Other LoV are ignored. The first point is the start; at most
+        /// <paramref name="maxBounces"/> reflections are followed.
+        /// </summary>
+        public List<Vec2> AimPath(Vec2 from, Vec2 direction, int maxBounces = 8)
+        {
+            var path = new List<Vec2> { from };
+            direction = direction.Normalized;
+            for (int bounce = 0; bounce <= maxBounces && OnBoard(from); bounce++)
+            {
+                float best = EdgeDistance(from, direction);
+                Vec2 normal = Vec2.Zero;
+                bool reflects = false;
+                float distance;
+                Vec2 hitNormal;
+                if (CentreWallUp && Intersect.RaySegment(from, direction, CentreWall, out distance, out hitNormal) && distance < best)
+                {
+                    best = distance; normal = hitNormal; reflects = true;
+                }
+                foreach (var body in _bodies.Values)
+                {
+                    if (!body.Line.IsActive) continue;
+                    var ward = body as WardBody;
+                    if (ward != null)
+                    {
+                        if (!ward.IsBroken && ward.Shape.Raycast(from, direction, out distance) && distance < best) { best = distance; reflects = false; }
+                        continue;
+                    }
+                    var forbiddance = body as ForbiddanceBody;
+                    if (forbiddance != null)
+                    {
+                        if (forbiddance.Line.Durability > 0 && Intersect.RaySegment(from, direction, forbiddance.Segment, out distance, out hitNormal) && distance < best)
+                        {
+                            best = distance; normal = hitNormal; reflects = true;
+                        }
+                        continue;
+                    }
+                    var chalkling = body as ChalklingBody;
+                    if (chalkling != null && Intersect.RayCircle(from, direction, chalkling.Position, _config.Making.Radius, out distance) && distance < best)
+                    {
+                        best = distance; reflects = false;
+                    }
+                }
+                from = from + direction * best;
+                path.Add(from);
+                if (!reflects) break;
+                direction = Vec2.Reflect(direction, normal).Normalized;
+                from += direction * Intersect.Epsilon;
+            }
+            return path;
         }
 
         private Hit EarliestHit(List<VigorBody> flying, Dictionary<int, int> chalklingDamage, float now)
@@ -1397,45 +1454,51 @@ namespace RithmaticDuels.Rules.Geometry
         }
 
         /// <summary>
-        /// A LoF joining two bind points of one LoW toughens the smaller arc of that LoW between them
-        /// (DESIGN.md section 4.2). Returns the first such LoF that is still standing, or null.
+        /// Every LoF joining two bind points of this LoW that toughens it where the LoV hits, and is still standing
+        /// (DESIGN.md section 4.2): one through the centre toughens the whole LoW, any other the smaller arc it cuts off.
         /// </summary>
-        private ForbiddanceBody ShieldingChord(WardBody ward, Vec2 impact, Dictionary<int, int> used)
+        private List<ForbiddanceBody> ShieldingChords(WardBody ward, Vec2 impact, Dictionary<int, int> used)
         {
+            var shields = new List<ForbiddanceBody>();
             foreach (var body in _bodies.Values)
             {
                 var forbiddance = body as ForbiddanceBody;
                 if (forbiddance == null || forbiddance.ChordOf != ward.LineId) continue;
                 if (!forbiddance.Line.IsActive || RemainingDurability(forbiddance, used) <= 0) continue;
-                if (ChordShields(forbiddance.Segment, ward, impact)) return forbiddance;
+                if (ChordShields(forbiddance.Segment, ward, impact)) shields.Add(forbiddance);
             }
-            return null;
+            shields.Sort((x, y) => x.LineId.CompareTo(y.LineId));
+            return shields;
         }
 
         /// <summary>
-        /// True if the impact is on the arc cut off by the chord, on the far side from the centre. A chord
-        /// through the centre shields the half facing the opponent (PROVISIONAL).
+        /// True if the chord toughens the LoW at the impact: always for a chord through the centre (decided
+        /// 2026-10-27), otherwise if the impact is on the smaller arc it cuts off, on the far side from the centre.
         /// </summary>
         private bool ChordShields(Segment chord, WardBody ward, Vec2 impact)
         {
             Vec2 along = chord.B - chord.A;
             float centreSide = Vec2.Cross(along, ward.Shape.Centre - chord.A);
-            if (Math.Abs(centreSide) < 1e-3f * along.Length)
-                return Vec2.Cross(along, impact - chord.A) * Vec2.Cross(along, ward.Shape.Centre + Facing(ward.Owner) - chord.A) > 0f;
+            if (Math.Abs(centreSide) < 1e-3f * along.Length) return true;
             return Vec2.Cross(along, impact - chord.A) * centreSide < 0f;
         }
 
         /// <summary>
-        /// A LoF joining two bind points of a LoW toughens the smaller arc it cuts off: a LoV hitting that arc
-        /// deals only Forbiddance.ChordArcDamageMultiplier of its damage, rounded up, and the LoF takes the same
-        /// (DESIGN.md section 4.2). Once the LoF is broken, the arc is no longer toughened.
+        /// A hit where LoF toughen a LoW: the damage is cut once per toughening LoF (Forbiddance.ChordArcDamageMultiplier
+        /// each, rounded up at the end), and the LoW and every one of those LoF take that same reduced damage (DESIGN.md
+        /// section 4.2). A broken LoF no longer toughens anything.
         /// </summary>
-        private void HitShieldedArc(VigorBody vigor, ForbiddanceBody forbiddance, WardBody ward, float time, Dictionary<int, int> used, MovementResult result)
+        private void HitShieldedArc(VigorBody vigor, List<ForbiddanceBody> shields, WardBody ward, float time, Dictionary<int, int> used, MovementResult result)
         {
-            int damage = ToughenedArcDamage(vigor.Line.Damage);
-            HitWard(vigor, ward, damage, time, result, " (reduced by " + Name(forbiddance) + ")");
-            DamageForbiddance(forbiddance, damage, vigor, time, used, result);
-            _notes.Add(Name(forbiddance) + " took " + damage + " for toughening the arc.");
+            int damage = ToughenedArcDamage(vigor.Line.Damage, shields.Count);
+            var names = new List<string>();
+            foreach (var shield in shields) names.Add(Name(shield));
+            HitWard(vigor, ward, damage, time, result, " (reduced by " + string.Join(" and ", names) + ")");
+            foreach (var shield in shields)
+            {
+                DamageForbiddance(shield, damage, vigor, time, used, result);
+                _notes.Add(Name(shield) + " took " + damage + " for toughening " + Name(ward) + ".");
+            }
         }
 
         private static void DamageForbiddance(ForbiddanceBody forbiddance, int damage, VigorBody vigor, float time, Dictionary<int, int> used, MovementResult result)
