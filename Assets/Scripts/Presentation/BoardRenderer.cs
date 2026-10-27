@@ -18,7 +18,7 @@ namespace RithmaticDuels.Presentation
         private static readonly Color Faint = new Color(1f, 1f, 1f, 0.15f);
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
-        // Colour trial (v0.22): grey glow for player A's lines, golden-yellow for player B's.
+        // Highlight glow: grey for player A's lines, golden-yellow for player B's, to match their chalk.
         private static readonly Color HighlightA = new Color(0.75f, 0.75f, 0.75f, 0.55f);
         private static readonly Color HighlightB = new Color(1f, 0.72f, 0.1f, 0.55f);
         // Lime is used for the durability dot and nothing else: one colour, one meaning (DESIGN.md section 1.1).
