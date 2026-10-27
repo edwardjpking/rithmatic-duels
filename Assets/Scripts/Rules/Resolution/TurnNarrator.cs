@@ -55,6 +55,12 @@ namespace RithmaticDuels.Rules
             return line.Owner + "'s " + kind + " #" + line.Id;
         }
 
+        private static string JoinNames(List<string> names)
+        {
+            if (names.Count <= 1) return names.Count == 1 ? names[0] : "";
+            return string.Join(", ", names.GetRange(0, names.Count - 1)) + " and " + names[names.Count - 1];
+        }
+
         public static string ModifierName(int steps)
         {
             switch (steps)
@@ -108,6 +114,13 @@ namespace RithmaticDuels.Rules
                 case TurnEventType.WorkCancelled:
                     return who + " cancelled their work and lost its progress.";
                 case TurnEventType.DrawingCompleted:
+                    if (line != null && line.Spec.IsMarksCross)
+                    {
+                        // Named as a Mark's Cross once, when drawn; from then on its parts are an ordinary LoW and LoF.
+                        var parts = new List<string> { LineName(line) };
+                        foreach (var part in duel.Lines) if (part.BraceOf == line.Id) parts.Add(LineName(part));
+                        return who + " completed a Mark's Cross with " + ModifierName(e.Value) + ": " + JoinNames(parts) + ".";
+                    }
                     return who + " completed " + LineName(line) + " with " + ModifierName(e.Value) + ".";
                 case TurnEventType.DismissCompleted:
                     return who + " dismissed " + LineName(line) + ".";

@@ -282,35 +282,51 @@ namespace RithmaticDuels.Presentation
                 var listed = _board.BodyOf(_listHoverLineId);
                 if (listed != null) DrawLineStats(listed, null, mousePixels / scale, width, height);
             }
-            if (current.type == EventType.Repaint) DrawInvalidCross(mousePixels / scale, scale);
+            if (current.type == EventType.Repaint) UpdateInvalidCursor();
         }
 
+        private Texture2D _crossCursor;
+        private bool _crossShown;
+
         /// <summary>
-        /// A red cross under the mouse where nothing can be placed (DESIGN.md section 1.1). It is drawn here, in OnGUI,
-        /// rather than with the board, because OnGUI sees this frame's mouse position while the board is rendered
-        /// before it and would show the cross a frame behind the pointer.
+        /// Where nothing can be placed (DESIGN.md section 1.1), the mouse pointer itself turns into a red cross. Using
+        /// the system cursor means it moves exactly with the mouse, with no lag or jitter at any frame rate.
         /// </summary>
-        private void DrawInvalidCross(Vector2 mouse, float scale)
+        private void UpdateInvalidCursor()
         {
-            if (_phase != Phase.Choosing || _duel == null) return;
-            var preview = _pickers[(int)_chooser].Preview;
-            if (preview == null || !preview.InvalidHover.HasValue) return;
-            // 0.25 board units each way from the centre, as the board would draw it.
-            float unit = _camera.pixelHeight / (2f * _camera.orthographicSize) / scale;
-            float length = 0.7f * unit;
-            float thickness = Mathf.Max(2f, 0.07f * unit);
-            Color oldColour = GUI.color;
-            GUI.color = new Color(0.95f, 0.3f, 0.25f, 0.9f);
-            // Two diagonals made of small squares. GUI rotation misplaces things under the scaled GUI.matrix, so none is used.
-            const int steps = 12;
-            for (int i = 0; i <= steps; i++)
-            {
-                float offset = (i / (float)steps - 0.5f) * length / 1.41421f;
-                foreach (float sign in new[] { 1f, -1f })
-                    GUI.DrawTexture(new Rect(mouse.x + offset - thickness / 2f, mouse.y + sign * offset - thickness / 2f,
-                        thickness, thickness), Texture2D.whiteTexture);
-            }
-            GUI.color = oldColour;
+            var preview = _phase == Phase.Choosing && _duel != null ? _pickers[(int)_chooser].Preview : null;
+            bool show = preview != null && preview.InvalidHover.HasValue;
+            if (show == _crossShown) return;
+            _crossShown = show;
+            if (show && _crossCursor == null) _crossCursor = MakeCrossCursor(32);
+            Cursor.SetCursor(show ? _crossCursor : null, new Vector2(16f, 16f), CursorMode.Auto);
+        }
+
+        private void OnDisable()
+        {
+            Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
+            _crossShown = false;
+        }
+
+        /// <summary>A red cross with a dark outline, so it shows on both the board and the menus.</summary>
+        private static Texture2D MakeCrossCursor(int size)
+        {
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
+            var red = new Color(0.95f, 0.3f, 0.25f, 1f);
+            var outline = new Color(0f, 0f, 0f, 0.8f);
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    // Distance from either diagonal, in pixels.
+                    float d = Mathf.Min(Mathf.Abs(x - y), Mathf.Abs(x + y - (size - 1))) / 1.41421f;
+                    bool inside = x >= 4 && x < size - 4 && y >= 4 && y < size - 4;
+                    Color c = Color.clear;
+                    if (inside && d <= 1.6f) c = red;
+                    else if (x >= 3 && x < size - 3 && y >= 3 && y < size - 3 && d <= 2.8f) c = outline;
+                    texture.SetPixel(x, y, c);
+                }
+            texture.Apply();
+            return texture;
         }
 
         /// <summary>
