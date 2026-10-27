@@ -111,7 +111,9 @@ namespace RithmaticDuels.Presentation
             var vigor = body as VigorBody;
             if (vigor != null)
             {
-                Disc(vigor.Position, 0.2f + glow, HighlightColour);
+                // A glow along the wave itself, plus its aim line in the usual aim line colour.
+                Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, HighlightColour, false, 0.06f + glow);
+                AimLine(vigor.Position, vigor.Direction, HoverColour);
                 return;
             }
             var chalkling = body as ChalklingBody;
@@ -313,7 +315,7 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A LoV is drawn as a short sine wave along its direction of travel; dotted while in progress.</summary>
-        private static void Wave(Vec2 centre, Vec2 direction, float length, Color colour, bool dotted = false)
+        private static void Wave(Vec2 centre, Vec2 direction, float length, Color colour, bool dotted = false, float width = 0.06f)
         {
             const float amplitude = 0.18f;
             const int steps = 16;
@@ -323,7 +325,7 @@ namespace RithmaticDuels.Presentation
             {
                 float s = (float)i / steps;
                 Vec2 point = centre + direction * ((s - 1f) * length) + side * (amplitude * Mathf.Sin(s * 4f * Mathf.PI));
-                if (i > 0 && !(dotted && i % 2 == 0)) Line(previous, point, 0.06f, colour);
+                if (i > 0 && !(dotted && i % 2 == 0)) Line(previous, point, width, colour);
                 previous = point;
             }
         }
