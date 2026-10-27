@@ -54,6 +54,14 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public int BindPointsDrawn { get; internal set; }
 
+        /// <summary>
+        /// For one of a Mark's Cross's crossed LoF, the Mark's Cross's line id; -1 for any other line. The crossed LoF
+        /// are lines of their own (DESIGN.md section 4.1): they come with the Mark's Cross but are hit and dismissed separately.
+        /// </summary>
+        public int BraceOf { get; internal set; } = -1;
+        /// <summary>Which of its Mark's Cross's crossed LoF this is: 0 for the first, 1 for the second.</summary>
+        public int BraceIndex { get; internal set; }
+
         internal Line(int id, Player owner, DrawingSpec spec, int modifierSteps, RulesConfig config)
         {
             Id = id;

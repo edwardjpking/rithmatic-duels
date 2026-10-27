@@ -42,7 +42,7 @@ namespace RithmaticDuels.Rules.Tests
             duel.ResolveTurn(PlayerAction.Start(spec), Pass);
             while (duel.GetPlayer(Player.A).HasWorkInProgress)
                 duel.ResolveTurn(Continue, Pass);
-            return duel.Lines.Last();
+            return duel.Lines.Last(l => l.BraceOf < 0);
         }
 
         private static Line DrawForB(Duel duel, DrawingSpec spec)
@@ -50,7 +50,7 @@ namespace RithmaticDuels.Rules.Tests
             duel.ResolveTurn(Pass, PlayerAction.Start(spec));
             while (duel.GetPlayer(Player.B).HasWorkInProgress)
                 duel.ResolveTurn(Pass, Continue);
-            return duel.Lines.Last();
+            return duel.Lines.Last(l => l.BraceOf < 0);
         }
 
         private static void FinishWorkForA(Duel duel)

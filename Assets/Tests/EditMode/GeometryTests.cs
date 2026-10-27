@@ -181,7 +181,8 @@ namespace RithmaticDuels.Rules.Tests
             {
                 if (player == Player.A) _duel.ResolveTurn(Continue, Pass); else _duel.ResolveTurn(Pass, Continue);
             }
-            return _duel.Lines.Last(l => l.Owner == player);
+            // A Mark's Cross's crossed LoF come after it; return the drawing itself.
+            return _duel.Lines.Last(l => l.Owner == player && l.BraceOf < 0);
         }
 
         private TurnReport PassTurn() { return _duel.ResolveTurn(Pass, Pass); }
@@ -475,13 +476,28 @@ namespace RithmaticDuels.Rules.Tests
         {
             var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
             var body = (WardBody)_board.BodyOf(cross.Id);
-            Assert.AreEqual(2, body.Braces.Count);
-            foreach (var brace in body.Braces)
+            // The crossed LoF are lines of their own, each a chord of the Mark's Cross's circle.
+            var braces = _duel.Lines.Where(l => l.BraceOf == cross.Id).ToList();
+            Assert.AreEqual(2, braces.Count);
+            foreach (var line in braces)
             {
-                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.A) < 1e-4f));
-                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.B) < 1e-4f));
-                Assert.AreEqual(2f * _config.Warding.MarksCrossRadius, brace.Length, 1e-3);
+                Assert.AreEqual(LineType.Forbiddance, line.Type);
+                Assert.AreEqual(cross.ModifierSteps, line.ModifierSteps);
+                Assert.AreEqual(_config.Forbiddance.BaseDurability + 2 * _config.Forbiddance.DurabilityPerBindPoint, line.Durability);
+                var brace = (ForbiddanceBody)_board.BodyOf(line.Id);
+                Assert.AreEqual(cross.Id, brace.ChordOf);
+                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.Segment.A) < 1e-4f));
+                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.Segment.B) < 1e-4f));
+                Assert.AreEqual(2f * _config.Warding.MarksCrossRadius, brace.Segment.Length, 1e-3);
             }
+            Assert.AreEqual(0, body.Braces.Count, "the circle no longer carries them itself");
+
+            // Each can be dismissed on its own, leaving the circle and the other one.
+            _duel.ResolveTurn(PlayerAction.Dismiss(braces[0].Id), Pass);
+            Assert.IsFalse(braces[0].IsActive);
+            Assert.IsTrue(braces[1].IsActive);
+            Assert.IsTrue(cross.IsActive);
+            Assert.IsNull(_board.BodyOf(braces[0].Id));
         }
 
         [Test]
@@ -971,13 +987,14 @@ namespace RithmaticDuels.Rules.Tests
         {
             var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
             var body = (WardBody)_board.BodyOf(cross.Id);
-            Assert.AreEqual(2, body.Braces.Count);
-            foreach (var brace in body.Braces)
+            var braces = _duel.Lines.Where(l => l.BraceOf == cross.Id).Select(l => ((ForbiddanceBody)_board.BodyOf(l.Id)).Segment).ToList();
+            Assert.AreEqual(2, braces.Count);
+            foreach (var brace in braces)
             {
                 Assert.AreEqual(2f * _config.Warding.MarksCrossRadius, brace.Length, 1e-3);
                 Assert.AreEqual(0f, Vec2.Distance((brace.A + brace.B) / 2f, body.Shape.Centre), 1e-4);
             }
-            Assert.AreEqual(0, ((WardBody)_board.BodyOf(MainWard(Player.A).Id)).Braces.Count);
+            Assert.AreEqual(0, _duel.Lines.Count(l => l.BraceOf == MainWard(Player.A).Id));
         }
 
         [Test]

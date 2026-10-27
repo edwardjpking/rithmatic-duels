@@ -801,7 +801,8 @@ namespace RithmaticDuels.Rules.Geometry
                 LineBody body;
                 if (!_bodies.TryGetValue(line.Id, out body))
                 {
-                    body = CreateBody(line, TakePending(line));
+                    // A Mark's Cross's crossed LoF go where its bind points are, so they have no placement of their own.
+                    body = CreateBody(line, line.BraceOf >= 0 ? Placement.Default() : TakePending(line));
                     _bodies[line.Id] = body;
                     var newWard = body as WardBody;
                     if (newWard != null)
@@ -855,11 +856,21 @@ namespace RithmaticDuels.Rules.Geometry
                     IReadOnlyList<Vec2> bindPoints;
                     var shape = WardGeometry(owner, line.Spec, placement, out bindPoints, line.IsMainWard);
                     var wardBody = new WardBody(line, shape, bindPoints, _config);
-                    if (line.Spec.IsMarksCross) wardBody.Braces = MarksCrossBraces(shape, bindPoints);
                     if (line.IsMainWard) wardBody.BindPoints = MainBindPoints(owner, shape, line.BindPointsDrawn);
                     return wardBody;
 
                 case LineType.Forbiddance:
+                    if (line.BraceOf >= 0)
+                    {
+                        // One of a Mark's Cross's crossed LoF: a chord of its circle like any LoF joining two bind points
+                        // (decided 2026-10-27, on the balancing watchlist).
+                        var cross = BodyOf(line.BraceOf) as WardBody;
+                        if (cross != null)
+                        {
+                            var braces = MarksCrossBraces(cross.Shape, cross.BindPoints);
+                            if (line.BraceIndex < braces.Length) return new ForbiddanceBody(line, braces[line.BraceIndex], cross.LineId);
+                        }
+                    }
                     var segment = ForbiddanceGeometry(owner, placement) ?? ForbiddanceGeometry(owner, Placement.Default()).Value;
                     int chordOf = -1;
                     if (placement.Kind == PlacementKind.BetweenBindPoints)
