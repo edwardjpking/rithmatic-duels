@@ -1024,6 +1024,70 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void EverythingBoundToABrokenWardGoesWithItDownTheTree()
+        {
+            // A circle on the main LoW's front bind point (9, 10), centre (10.5, 10). On its far point (12, 10): a
+            // smaller circle, centre (13, 10), with a tangent LoF at its far point (14, 10). On its top point: a
+            // bound chalkling. A tangent at the main LoW's top point is bound to the main LoW only.
+            var circle = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
+            var points = _board.BindPointsOf(Player.A);
+            int far = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(12f, 10f)) < 1e-3f);
+            int top = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(10.5f, 11.5f)) < 1e-3f);
+            int mainTop = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(6f, 13f)) < 1e-3f);
+            var tertiary = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(far, 1f));
+            points = _board.BindPointsOf(Player.A);
+            int tertiaryFar = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(14f, 10f)) < 1e-3f);
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(tertiaryFar, 1f));
+            var chalkling = Draw(Player.A, DrawingSpec.Making(glyph: Glyph.Defend, boundBindPoints: 1), Placement.AtBindPoint(top));
+            var mainTangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(mainTop, 1f));
+
+            circle.Status = LineStatus.Broken;
+            var report = PassTurn();
+            foreach (var child in new[] { tertiary, tangent, chalkling })
+            {
+                Assert.AreEqual(LineStatus.Destroyed, child.Status);
+                Assert.IsNull(_board.BodyOf(child.Id));
+            }
+            Assert.IsTrue(mainTangent.IsActive);
+            // Parents are destroyed before their children, each saying why.
+            var destroyed = report.Events.Where(e => e.Type == TurnEventType.LineDestroyed).ToList();
+            Assert.IsTrue(destroyed.All(e => e.Value == TurnEvent.BindPointGone));
+            Assert.Less(destroyed.FindIndex(e => e.LineId == tertiary.Id), destroyed.FindIndex(e => e.LineId == tangent.Id));
+        }
+
+        [Test]
+        public void ABreachedMainWardTakesEverythingBoundWithIt()
+        {
+            var circle = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(1, 1f));
+            var free = Draw(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(2f, 2f), V(5f, 2f)));
+            MainWard(Player.A).Status = LineStatus.Broken;
+            PassTurn();
+            Assert.AreEqual(LineStatus.Destroyed, circle.Status);
+            Assert.AreEqual(LineStatus.Destroyed, tangent.Status);
+            Assert.IsTrue(free.IsActive, "a free LoF is bound to nothing");
+        }
+
+        [Test]
+        public void TheLogSaysTheWardBrokeBeforeItsLoFWent()
+        {
+            var circle = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1f));
+            var points = _board.BindPointsOf(Player.A);
+            int top = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(10f, 11f)) < 1e-3f);
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(top, 1f));
+            circle.Durability = 1;
+            Draw(Player.B, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(17f, 10f), V(0f, 10f)));
+            var log = new System.Collections.Generic.List<string>();
+            for (int turn = 0; turn < 4 && tangent.IsActive; turn++)
+                log.AddRange(TurnNarrator.Describe(_duel, PassTurn(), _board.LastTickNotes));
+            int broke = log.FindIndex(l => l.Contains("#" + circle.Id + " broke"));
+            int gone = log.FindIndex(l => l.Contains("#" + tangent.Id + " was destroyed: the Line of Warding it was bound to is gone."));
+            Assert.GreaterOrEqual(broke, 0, string.Join("\n", log));
+            Assert.Greater(gone, broke, string.Join("\n", log));
+            Assert.AreEqual(1, log.Count(l => l.Contains("#" + tangent.Id)), "said once");
+        }
+
+        [Test]
         public void ASharedBindPointHoldsATangentButNotAChordToTheBrokenWard()
         {
             // A circle on the main LoW's front bind point (9, 10) shares that point with it.

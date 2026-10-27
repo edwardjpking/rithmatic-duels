@@ -235,6 +235,7 @@ namespace RithmaticDuels.Rules
             _movement.ResolveMovementAndAttacks(this, movement);
             var breachTime = new[] { NoBreach, NoBreach };
             ApplyMovementResult(movement, report, breachTime);
+            DestroyUnboundLines(report, breachTime);
 
             // 4. Every other line that finishes this tick goes down, and the geometry layer places it.
             CompleteWhere(w => true, report);
@@ -243,7 +244,10 @@ namespace RithmaticDuels.Rules
             ApplyMovementResult(placed, report, breachTime);
 
             if (fatigueTurn > 0 && fatigueTurn % Config.ChalkFatigue.IntervalTurns == 0)
+            {
                 ApplyChalkFatigue(report, breachTime);
+                DestroyUnboundLines(report, breachTime);
+            }
 
             if (breachTime[0] != NoBreach || breachTime[1] != NoBreach)
             {
@@ -429,6 +433,24 @@ namespace RithmaticDuels.Rules
                     report.Events.Add(new TurnEvent(TurnEventType.LineBroken, line.Owner, line.Id));
                     if (line.IsMainWard) MarkBreached(line, report, breachTime, hit.TimeOfImpact);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Once lines have broken, everything bound to them goes too, and what was bound to that, and so on
+        /// (DESIGN.md section 4.1). Each is logged after the break that took it.
+        /// </summary>
+        private void DestroyUnboundLines(TurnReport report, float[] breachTime)
+        {
+            var lost = new List<int>();
+            _movement.FindUnboundLines(this, lost);
+            foreach (int lineId in lost)
+            {
+                var line = FindLine(lineId);
+                if (line == null || !line.IsActive) continue;
+                line.Status = LineStatus.Destroyed;
+                report.Events.Add(new TurnEvent(TurnEventType.LineDestroyed, line.Owner, line.Id, TurnEvent.BindPointGone));
+                if (line.IsMainWard) MarkBreached(line, report, breachTime, EndOfTick);
             }
         }
 

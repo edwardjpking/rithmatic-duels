@@ -822,33 +822,45 @@ namespace RithmaticDuels.Rules.Geometry
                 if (ward.Weakest != line.Durability || ward.WeakestMax != line.MaxDurability)
                     result.DurabilityOverrides.Add(new DurabilityOverride(line.Id, ward.Weakest, ward.WeakestMax));
             }
-            DestroyUnboundForbiddance(result);
         }
 
         /// <summary>
-        /// A LoF bound at a bind point is destroyed once no LoW passes through that point any more: when the LoW it
-        /// is bound to breaks, unless another LoW still shares the point (DESIGN.md section 4.2).
+        /// The lines to destroy because a bind point they are bound at is gone: no standing LoW other than
+        /// themselves passes through it any more. When a LoW breaks (or the main LoW is breached) this takes all
+        /// its children with it, and their children in turn: LoF, chalklings and other LoW bound to it. A bind
+        /// point shared by two LoW holds while either stands (DESIGN.md section 4.1). Parents come before children.
         /// </summary>
-        private void DestroyUnboundForbiddance(MovementResult result)
+        public void FindUnboundLines(Duel duel, List<int> lost)
         {
-            var lost = new List<LineBody>();
-            foreach (var body in _bodies.Values)
+            var gone = new HashSet<int>();
+            foreach (var line in duel.Lines) if (!line.IsActive) gone.Add(line.Id);
+            var bodies = new List<LineBody>(_bodies.Values);
+            bodies.Sort((x, y) => x.LineId.CompareTo(y.LineId));
+            bool found = true;
+            while (found)
             {
-                var forbiddance = body as ForbiddanceBody;
-                if (forbiddance == null) continue;
-                foreach (var anchor in forbiddance.Anchors)
+                found = false;
+                var round = new List<int>();
+                foreach (var body in bodies)
+                    if (!gone.Contains(body.LineId) && !Held(body, gone)) round.Add(body.LineId);
+                foreach (int id in round) { gone.Add(id); lost.Add(id); found = true; }
+            }
+        }
+
+        private bool Held(LineBody body, HashSet<int> gone)
+        {
+            foreach (var anchor in body.Anchors)
+            {
+                bool held = false;
+                foreach (var other in _bodies.Values)
                 {
-                    bool held = false;
-                    foreach (var ward in WardsOf(forbiddance.Owner)) held |= OnOutline(ward, anchor);
-                    if (!held) { lost.Add(forbiddance); break; }
+                    var ward = other as WardBody;
+                    if (ward == null || ward == body || ward.Owner != body.Owner || gone.Contains(ward.LineId)) continue;
+                    if (OnOutline(ward, anchor)) { held = true; break; }
                 }
+                if (!held) return false;
             }
-            foreach (var body in lost)
-            {
-                _bodies.Remove(body.LineId);
-                result.DestroyedLineIds.Add(body.LineId);
-                _notes.Add(Name(body) + " is destroyed: the Line of Warding it was bound to is gone.");
-            }
+            return true;
         }
 
         private Placement TakePending(Line line)
@@ -886,6 +898,13 @@ namespace RithmaticDuels.Rules.Geometry
                     var shape = WardGeometry(owner, line.Spec, placement, out bindPoints, line.IsMainWard);
                     var wardBody = new WardBody(line, shape, bindPoints, _config);
                     if (line.IsMainWard) wardBody.BindPoints = MainBindPoints(owner, shape, line.BindPointsDrawn);
+                    else
+                    {
+                        // Bound where it touches the LoW it is attached to.
+                        var existing = BindPointsOf(owner);
+                        if (placement != null && placement.Kind == PlacementKind.AtBindPoint && InRange(placement.BindPointA, existing))
+                            wardBody.Anchors = new[] { existing[placement.BindPointA] };
+                    }
                     return wardBody;
 
                 case LineType.Forbiddance:
@@ -1628,12 +1647,32 @@ namespace RithmaticDuels.Rules.Geometry
             int count = ward.SampleCount;
             var outline = new Vec2[count];
             for (int j = 0; j < count; j++) outline[j] = ward.SamplePoint(j);
+            // Each piece of the other outline as its middle and half its length, so pieces too far apart to come
+            // within the clearance are skipped without working out their exact distance. Without this, a LoW
+            // placed close to two others compared every pair of pieces and was slow to place (2026-10-27).
+            var middles = new Vec2[count];
+            var halves = new float[count];
+            for (int j = 0; j < count; j++)
+            {
+                Vec2 next = outline[(j + 1) % count];
+                middles[j] = (outline[j] + next) * 0.5f;
+                halves[j] = Vec2.Distance(outline[j], next) * 0.5f;
+            }
+            float reach = Extent(ward.Shape) + clearance;
             Vec2 a = shape.PointAt(0f);
             for (int i = 1; i <= steps; i++)
             {
                 Vec2 b = shape.PointAt(2f * (float)Math.PI * i / steps);
-                for (int j = 0; j < count; j++)
-                    if (SegmentDistance(a, b, outline[j], outline[(j + 1) % count]) < clearance - 1e-4f) return true;
+                Vec2 middle = (a + b) * 0.5f;
+                float half = Vec2.Distance(a, b) * 0.5f;
+                if (Vec2.Distance(middle, ward.Shape.Centre) - half <= reach)
+                {
+                    for (int j = 0; j < count; j++)
+                    {
+                        if (Vec2.Distance(middle, middles[j]) > half + halves[j] + clearance) continue;
+                        if (SegmentDistance(a, b, outline[j], outline[(j + 1) % count]) < clearance - 1e-4f) return true;
+                    }
+                }
                 a = b;
             }
             return false;

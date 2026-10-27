@@ -145,3 +145,7 @@ Separate from the tutorial, and the lowest priority. It shares the tutorial's se
 ### Line of Vigor
 
 - **Excess damage carry-through.** Today a LoV is absorbed by the first non-LoF line it hits and any damage beyond what that line had left is ignored. Try letting the excess carry on (for example, a LoV that destroys a chalkling continues with the leftover damage).
+
+### Settings
+
+- **Scroll direction for turning a circle (Amelia, 2026-10-27).** Which way the scroll wheel turns a nine-point circle (Shift + scroll, DESIGN.md 4.1) should be a player setting. The default was flipped in v0.18 because the first direction felt wrong.

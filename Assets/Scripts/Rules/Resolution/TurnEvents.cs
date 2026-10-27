@@ -17,6 +17,7 @@ namespace RithmaticDuels.Rules
         /// <summary>Chalk fatigue wore down a main LoW (DESIGN.md section 2.1).</summary>
         ChalkFatigue,
         LineBroken,
+        /// <summary>Value is <see cref="TurnEvent.BindPointGone"/> if it went with the LoW it was bound to.</summary>
         LineDestroyed,
         /// <summary>A LoV completed with 0 damage and was removed at once.</summary>
         VigorFizzled,
@@ -31,6 +32,9 @@ namespace RithmaticDuels.Rules
         public int LineId { get; private set; }
         /// <summary>Damage dealt, modifier steps rolled and so on, depending on Type.</summary>
         public int Value { get; private set; }
+
+        /// <summary>LineDestroyed value: the line went because the LoW it was bound to is gone.</summary>
+        public const int BindPointGone = 1;
 
         public TurnEvent(TurnEventType type, Player player, int lineId = -1, int value = 0)
         {

@@ -10,6 +10,14 @@ namespace RithmaticDuels.Rules.Geometry
         public int LineId { get { return Line.Id; } }
         public Player Owner { get { return Line.Owner; } }
 
+        /// <summary>
+        /// The bind points the line is bound at: both ends of a LoF joining two bind points, the touching point of a
+        /// tangent LoF, the point a LoW (other than the main one) is attached at, a bound chalkling's tether point.
+        /// None for a free line. Once no other LoW passes through one of them, the line is destroyed with its
+        /// parent (DESIGN.md section 4.1).
+        /// </summary>
+        public IReadOnlyList<Vec2> Anchors { get; internal set; } = new Vec2[0];
+
         protected LineBody(Line line)
         {
             Line = line;
@@ -151,12 +159,6 @@ namespace RithmaticDuels.Rules.Geometry
         public int ChordOf { get; private set; }
         public bool IsChord { get { return ChordOf >= 0; } }
 
-        /// <summary>
-        /// The bind points the LoF is bound at: both ends of one joining two bind points, the touching point of a
-        /// tangent, none for a free LoF. Once no LoW passes through one of them any more, the LoF is destroyed.
-        /// </summary>
-        public IReadOnlyList<Vec2> Anchors { get; private set; }
-
         public ForbiddanceBody(Line line, Segment segment, int chordOf = -1, IReadOnlyList<Vec2> anchors = null) : base(line)
         {
             Segment = segment;
@@ -193,6 +195,7 @@ namespace RithmaticDuels.Rules.Geometry
         {
             Position = position;
             Tether = tether;
+            if (tether.HasValue) Anchors = new[] { tether.Value };
         }
     }
 
