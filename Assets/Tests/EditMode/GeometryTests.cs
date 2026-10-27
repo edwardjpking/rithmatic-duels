@@ -616,9 +616,10 @@ namespace RithmaticDuels.Rules.Tests
             Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), inside), inside));
             var tangent = Placement.TangentAt(0, 4f);
             Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(1), tangent), tangent));
-            // A free line touching the circle from outside, along its top.
+            // A free line touching the circle from outside, along its top, is not: a free LoF can't touch a LoW,
+            // even at a bind point (the top of the circle is one). Only a tangent at the bind point may.
             var along = Placement.Segment(V(4f, 13f), V(8f, 13f));
-            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), along), along));
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), along), along), Does.Contain("touch"));
         }
 
         [Test]

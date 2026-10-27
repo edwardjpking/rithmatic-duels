@@ -278,7 +278,7 @@ namespace RithmaticDuels.Rules.Geometry
                         case PlacementKind.FreeSegment:
                             if (spec.BindPoints != 0) return "A free-standing line has no bind points.";
                             return CheckLength(Vec2.Distance(placement.PointA, placement.PointB))
-                                ?? CheckRectangle(player, new Segment(placement.PointA, placement.PointB), halfOnly);
+                                ?? CheckRectangle(player, new Segment(placement.PointA, placement.PointB), halfOnly, true);
                         default:
                             return "Choose how to place the Line of Forbiddance.";
                     }
@@ -448,7 +448,7 @@ namespace RithmaticDuels.Rules.Geometry
                     segment = tangent.Value;
                 }
                 else segment = new Segment(placement.PointA, placement.PointA + direction.Normalized * length);
-                return CheckRectangle(player, segment, halfOnly) == null;
+                return CheckRectangle(player, segment, halfOnly, placement.Kind != PlacementKind.TangentAtBindPoint) == null;
             });
         }
 
@@ -1419,15 +1419,16 @@ namespace RithmaticDuels.Rules.Geometry
         /// A LoF is a rectangle as wide as <see cref="GeometryConfig.ForbiddanceWidth"/>: all four corners
         /// must be on the board (and the player's half, clear of the centre line, which is drawn as wide as a LoF).
         /// </summary>
-        private string CheckRectangle(Player player, Segment segment, bool halfOnly)
+        private string CheckRectangle(Player player, Segment segment, bool halfOnly, bool free = false)
         {
             float halfWidth = _config.Geometry.ForbiddanceWidth / 2f;
             Vec2 along = segment.B - segment.A;
             Vec2 side = along.Length > 1e-6f ? along.Perp.Normalized * halfWidth : Vec2.Zero;
             return CheckLoFCorner(player, segment.A + side, halfOnly, halfWidth) ?? CheckLoFCorner(player, segment.A - side, halfOnly, halfWidth)
                 ?? CheckLoFCorner(player, segment.B + side, halfOnly, halfWidth) ?? CheckLoFCorner(player, segment.B - side, halfOnly, halfWidth)
-                ?? (CrossesAWard(player, segment) || !ClearOfWards(player, segment, halfWidth)
-                    ? "A Line of Forbiddance can't overlap a Line of Warding. It can only touch one at a bind point: as a tangent there, or joining two bind points." : null);
+                ?? (CrossesAWard(player, segment) || !ClearOfWards(player, segment, halfWidth, !free)
+                    ? (free ? "A free Line of Forbiddance can't touch or overlap a Line of Warding."
+                        : "A Line of Forbiddance can't overlap a Line of Warding. It can only touch one at a bind point: as a tangent there, or joining two bind points.") : null);
         }
 
         /// <summary>Half the thickness a LoW is drawn with.</summary>
@@ -1439,15 +1440,17 @@ namespace RithmaticDuels.Rules.Geometry
 
         /// <summary>
         /// True if no part of the LoF, drawn <paramref name="halfWidth"/> either side of the segment, overlaps a LoW
-        /// as drawn. A LoW the segment meets at one of its bind points is exempt: there the two touch, as a tangent or
-        /// a chord does, and <see cref="CrossesAWard"/> checks they only touch.
+        /// as drawn. With <paramref name="bound"/>, a LoW the segment meets at one of its bind points is exempt: there
+        /// the two touch, as a tangent or a chord does, and <see cref="CrossesAWard"/> checks they only touch. A free
+        /// LoF is never bound, so it may not touch any LoW, even at a bind point (DESIGN.md section 4.2).
         /// </summary>
-        private bool ClearOfWards(Player player, Segment segment, float halfWidth)
+        private bool ClearOfWards(Player player, Segment segment, float halfWidth, bool bound)
         {
             foreach (var ward in WardsOf(player))
             {
                 bool touches = false;
-                foreach (var point in ward.BindPoints) touches |= DistanceToSegment(point, segment) < SameBindPoint;
+                if (bound)
+                    foreach (var point in ward.BindPoints) touches |= DistanceToSegment(point, segment) < SameBindPoint;
                 if (touches) continue;
                 float clearance = halfWidth + LineHalfWidth(ward);
                 if (DistanceToSegment(ward.Shape.Centre, segment) > Extent(ward.Shape) + clearance) continue;
@@ -1530,10 +1533,12 @@ namespace RithmaticDuels.Rules.Geometry
                 if (forbiddance == null || forbiddance.Owner != player || !forbiddance.Line.IsActive) continue;
                 for (int i = 0; i <= steps; i++)
                     if (Side(shape, forbiddance.Segment.A + (forbiddance.Segment.B - forbiddance.Segment.A) * ((float)i / steps)) < 0) return true;
-                // A LoF that meets the new LoW at a bind point (a tangent there, say) touches it; any other must keep clear.
+                // A bound LoF that meets the new LoW at a bind point (a tangent there, say) touches it; any other,
+                // free LoF included, must keep clear.
                 bool touches = false;
-                foreach (var point in BindPointsOf(player))
-                    touches |= Side(shape, point) == 0 && DistanceToSegment(point, forbiddance.Segment) < SameBindPoint;
+                if (forbiddance.Line.Spec.BindPoints > 0)
+                    foreach (var point in BindPointsOf(player))
+                        touches |= Side(shape, point) == 0 && DistanceToSegment(point, forbiddance.Segment) < SameBindPoint;
                 if (touches) continue;
                 float clearance = _config.Geometry.ForbiddanceWidth / 2f + _config.Geometry.WardLineWidth / 2f;
                 for (int i = 0; i < steps; i++)
