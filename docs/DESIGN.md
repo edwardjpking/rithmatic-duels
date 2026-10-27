@@ -32,6 +32,8 @@ This document is the single source of truth for the game's design. It began as a
 
 **Consistency everywhere (universal, 2026-10-27):** the same kind of thing always works and looks the same across the whole game. This covers controls, menus, visual signs, wording and rules, not one feature at a time. Controls are one example: scroll changes a drawing's size (a circle's radius, a LoF's length, an ellipse's overall size), Shift + scroll its shape or turn (an ellipse's roundness, which of a nine-point circle's bind points joins), and right-click goes back one step. Others: one colour or sign means one thing everywhere, and the same structure follows the same rules wherever it appears (a Mark's Cross is only its parts). Anything new must follow the patterns already in use. When a feature doesn't fit them, or an existing part of the game already breaks one, the proposal should say so unprompted and suggest the consistent option, instead of quietly adding a one-off.
 
+**One colour, one meaning (universal, Amelia, 2026-10-27):** a colour is never reused for a different function. Before giving anything a colour, check every colour already in use (board marks, previews, highlights, hover marks, menus) and pick one that means nothing else. When a clash is fixed by moving one of them, its new colour must not clash with something else either, and a mark that already has a colour shared by its other forms (for example the blue aim line) keeps it. Colours live in one place so this can be checked, and so they can be made configurable (`docs/ACCESSIBILITY.md`).
+
 
 The board is **continuous 2D**, with snapping to help placement.
 
@@ -494,6 +496,8 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 **Ninth round, 2026-10-27:** invalid choices can never be selected and always show a visual sign (section 1.1, universal); no LoF or LoW overlaps another line by any of its drawn thickness, except where they meet at a bind point, and a free LoF never touches a LoW at all (section 4.2); bind points where even the smallest LoW wouldn't fit are blocked; free starting points (a free LoF, a LoV, an unbound chalkling) where nothing fits show a red cross and ignore clicks.
 
 **Twelfth round (v0.19), 2026-10-27:** a LoF through the centre of a LoW toughens all of it, and toughening from several LoF stacks (half each, so a Mark's Cross takes a quarter, dealt to the circle and both LoF) (section 4.2); the log names a Mark's Cross's parts when it is completed, and only then (section 4.1); the aim line shown while placing a LoV reflects off LoF by the same rules as the LoV, stopping at the first LoW, chalkling or edge (section 1.1).
+
+**Fourteenth round (v0.21), 2026-10-27:** a colour is never reused for a different function (section 1.1, universal).
 
 **Thirteenth round (v0.20), 2026-10-27:** a LoF can't run through the centre of the main LoW (section 4.2); a LoV placed inside a LoW is to be blocked once the game is made playable (section 4.3); accessibility is considered throughout development (`docs/ACCESSIBILITY.md`), and settings to add later are listed in `docs/FUTURE_IDEAS.md`.
 
