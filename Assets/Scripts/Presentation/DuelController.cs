@@ -230,8 +230,15 @@ namespace RithmaticDuels.Presentation
             float height = Screen.height / scale;
 
             GUILayout.BeginArea(new Rect(10, 6, width - 20, HeaderHeight - 6));
-            DrawHeader();
-            GUILayout.EndArea();
+            // Ended in finally, like the menu below, since New duel ends the pass with ExitGUI.
+            try
+            {
+                DrawHeader();
+            }
+            finally
+            {
+                GUILayout.EndArea();
+            }
 
             if (_duel == null)
             {
@@ -253,20 +260,34 @@ namespace RithmaticDuels.Presentation
             Vector2 realMouse = current.mousePosition;
             if (_showLines) current.mousePosition = new Vector2(-10000f, -10000f);
             GUILayout.BeginArea(menuRect);
-            if (_phase == Phase.Choosing)
+            // Ended in finally so a click's ExitGUI can't leave the area's clip pushed.
+            try
             {
-                // The picker scrolls its own options (only if they don't fit) and keeps Lock in at the bottom.
-                DrawChoosing();
+                if (_phase == Phase.Choosing)
+                {
+                    // The picker scrolls its own options (only if they don't fit) and keeps Lock in at the bottom.
+                    DrawChoosing();
+                }
+                else
+                {
+                    _menuScroll = GUILayout.BeginScrollView(_menuScroll);
+                    // Ended in finally: the buttons here end the pass with ExitGUI.
+                    try
+                    {
+                        if (_phase == Phase.Handover) DrawHandover();
+                        else DrawResults();
+                    }
+                    finally
+                    {
+                        GUILayout.EndScrollView();
+                    }
+                }
+                if (_error != null) GUILayout.Label(_error);
             }
-            else
+            finally
             {
-                _menuScroll = GUILayout.BeginScrollView(_menuScroll);
-                if (_phase == Phase.Handover) DrawHandover();
-                else DrawResults();
-                GUILayout.EndScrollView();
+                GUILayout.EndArea();
             }
-            if (_error != null) GUILayout.Label(_error);
-            GUILayout.EndArea();
             // Restore only what was blocked here: a menu button that used the click must leave it used.
             if (blocked) current.type = realType;
             if (_showLines) current.mousePosition = realMouse;
