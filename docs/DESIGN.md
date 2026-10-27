@@ -35,7 +35,7 @@ The board is **continuous 2D**, with snapping to help placement.
 
 - Lines are real shapes: a LoW is a circle (centre and radius) or an ellipse, a LoF is a straight segment, a LoV travels along a direction vector.
 - **Snapping (default mode):** a player's selections snap to bind points and to cardinal directions where applicable. For example, a LoF drawn on the circumference of a LoW snaps to being a tangent.
-- **LoV aim is free:** a LoV can be angled in any direction, never snapped.
+- **LoV aim is free:** a LoV can be angled in any direction, never snapped. While placing it, its aim line shows where it would go: it reflects off LoF (and the centre LoF while it stands) by the same rules as in flight, and stops at the first LoW, chalkling or board edge. It ignores other LoV and anything that moves (2026-10-27).
 - **Own half only (tightened 2026-10-25):** nothing a player draws may be on, or reach into, the opponent's half once it is complete: a LoV's starting point, every part of a LoF (free or tangent), the whole outline of any LoW or Mark's Cross, and an unbound chalkling. The scroll wheel can't make a LoF or LoW bigger than fits. Only lines that move afterwards (LoV, chalklings) can cross over. This stops point-blank attacks on the opponent's defence.
 - **Centre LoF (decided 2026-10-25):** for the first 10 turns (a placeholder, counting the setup turn as turn 1) a LoF stands along the line between the two halves, so neither player can play too aggressively early on. It belongs to neither player, can't be damaged and reflects LoV like any LoF; once chalklings move it will block them too. It can be switched off (`CentreWallConfig`), and may become a duel option later.
 - **Free hand mode:** holding a key turns snapping off, so lines can be placed wherever the player wishes. Lines that are straight (such as LoF) are still drawn straight.
@@ -490,6 +490,8 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 **Eighth round, 2026-10-25:** a LoF stops short of the centre line (which is drawn as wide as a LoF) and of any LoW it would poke into, tangents included (section 4.2); no Pass while a drawing is in progress (section 5.1); the main LoW has double durability (section 4.1).
 
 **Ninth round, 2026-10-27:** invalid choices can never be selected and always show a visual sign (section 1.1, universal); no LoF or LoW overlaps another line by any of its drawn thickness, except where they meet at a bind point, and a free LoF never touches a LoW at all (section 4.2); bind points where even the smallest LoW wouldn't fit are blocked; free starting points (a free LoF, a LoV, an unbound chalkling) where nothing fits show a red cross and ignore clicks.
+
+**Twelfth round (v0.19), 2026-10-27:** the log names a Mark's Cross's parts when it is completed, and only then (section 4.1); the aim line shown while placing a LoV reflects off LoF by the same rules as the LoV, stopping at the first LoW, chalkling or edge (section 1.1).
 
 **Eleventh round (v0.18), 2026-10-27:** when a LoW is broken, destroyed or (for the main LoW) breached, every line bound to it goes too, and so on down the tree: LoF, bound chalklings and further LoW (section 4.1); a Mark's Cross has no rules of its own beyond being one drawing (section 4.1); the same kind of thing works and looks the same everywhere, controls included (section 1.1, universal).
 

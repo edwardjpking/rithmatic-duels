@@ -1088,6 +1088,40 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void TheLogNamesEveryPartOfAMarksCross()
+        {
+            var spec = _board.Measure(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            _board.SetPendingPlacement(Player.A, spec, Placement.AtBindPoint(0));
+            var log = new System.Collections.Generic.List<string>();
+            log.AddRange(TurnNarrator.Describe(_duel, _duel.ResolveTurn(PlayerAction.Start(spec), Pass), _board.LastTickNotes));
+            while (_duel.GetPlayer(Player.A).HasWorkInProgress)
+                log.AddRange(TurnNarrator.Describe(_duel, _duel.ResolveTurn(Continue, Pass), _board.LastTickNotes));
+            var cross = _duel.Lines.Single(l => l.Spec.IsMarksCross);
+            var braces = _duel.Lines.Where(l => l.BraceOf == cross.Id).ToList();
+            Assert.AreEqual(2, braces.Count);
+            string completed = log.Single(l => l.Contains("completed a Mark's Cross"));
+            StringAssert.Contains("Line of Warding #" + cross.Id, completed);
+            foreach (var brace in braces) StringAssert.Contains("Line of Forbiddance #" + brace.Id, completed);
+        }
+
+        [Test]
+        public void TheAimPreviewReflectsOffForbiddanceLikeTheLoV()
+        {
+            // A slanted free LoF at x=12 turns a LoV heading right at y=6 up the board, where it stops at the edge.
+            Draw(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(11f, 5f), V(13f, 7f)));
+            var path = _board.AimPath(V(9f, 6f), V(1f, 0f));
+            Assert.AreEqual(3, path.Count, string.Join(" ", path));
+            Assert.AreEqual(12f, path[1].X, 0.05f);
+            Assert.AreEqual(6f, path[1].Y, 0.05f);
+            Assert.AreEqual(12f, path[2].X, 0.1f);
+            Assert.IsTrue(path[2].Y > 6f);
+            // Aimed at B's main LoW, it stops there.
+            var straight = _board.AimPath(V(9f, 10f), V(1f, 0f));
+            Assert.AreEqual(2, straight.Count);
+            Assert.AreEqual(23f, straight[1].X, 0.05f);
+        }
+
+        [Test]
         public void ASharedBindPointHoldsATangentButNotAChordToTheBrokenWard()
         {
             // A circle on the main LoW's front bind point (9, 10) shares that point with it.

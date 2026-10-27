@@ -1210,6 +1210,60 @@ namespace RithmaticDuels.Rules.Geometry
             foreach (var vigor in flying) trails[vigor.LineId].Points.Add(vigor.Position);
         }
 
+        /// <summary>
+        /// Where a LoV starting here in this direction would go if nothing moved, for the aim preview: it reflects
+        /// off LoF (and the centre LoF while it stands) by the same rules as in flight, and stops at the first LoW,
+        /// chalkling or board edge it reaches. Other LoV are ignored. The first point is the start; at most
+        /// <paramref name="maxBounces"/> reflections are followed.
+        /// </summary>
+        public List<Vec2> AimPath(Vec2 from, Vec2 direction, int maxBounces = 8)
+        {
+            var path = new List<Vec2> { from };
+            direction = direction.Normalized;
+            for (int bounce = 0; bounce <= maxBounces && OnBoard(from); bounce++)
+            {
+                float best = EdgeDistance(from, direction);
+                Vec2 normal = Vec2.Zero;
+                bool reflects = false;
+                float distance;
+                Vec2 hitNormal;
+                if (CentreWallUp && Intersect.RaySegment(from, direction, CentreWall, out distance, out hitNormal) && distance < best)
+                {
+                    best = distance; normal = hitNormal; reflects = true;
+                }
+                foreach (var body in _bodies.Values)
+                {
+                    if (!body.Line.IsActive) continue;
+                    var ward = body as WardBody;
+                    if (ward != null)
+                    {
+                        if (!ward.IsBroken && ward.Shape.Raycast(from, direction, out distance) && distance < best) { best = distance; reflects = false; }
+                        continue;
+                    }
+                    var forbiddance = body as ForbiddanceBody;
+                    if (forbiddance != null)
+                    {
+                        if (forbiddance.Line.Durability > 0 && Intersect.RaySegment(from, direction, forbiddance.Segment, out distance, out hitNormal) && distance < best)
+                        {
+                            best = distance; normal = hitNormal; reflects = true;
+                        }
+                        continue;
+                    }
+                    var chalkling = body as ChalklingBody;
+                    if (chalkling != null && Intersect.RayCircle(from, direction, chalkling.Position, _config.Making.Radius, out distance) && distance < best)
+                    {
+                        best = distance; reflects = false;
+                    }
+                }
+                from = from + direction * best;
+                path.Add(from);
+                if (!reflects) break;
+                direction = Vec2.Reflect(direction, normal).Normalized;
+                from += direction * Intersect.Epsilon;
+            }
+            return path;
+        }
+
         private Hit EarliestHit(List<VigorBody> flying, Dictionary<int, int> chalklingDamage, float now)
         {
             var best = new Hit { Kind = HitKind.None, Time = float.PositiveInfinity };

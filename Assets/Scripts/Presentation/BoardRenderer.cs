@@ -206,12 +206,19 @@ namespace RithmaticDuels.Presentation
                 {
                     Vec2 direction = (preview.To.Value - preview.From.Value).Normalized;
                     Wave(preview.From.Value, direction, Board.Config.Geometry.VigorDrawnLength, PreviewColour);
-                    // Aim line, dashed out to the edge of the board.
-                    for (float d = 1f; d < 40f; d += 1f)
+                    // Aim line, dashed, reflecting off LoF as the LoV would until it reaches a LoW, chalkling or the edge.
+                    var path = Board.AimPath(preview.From.Value, direction);
+                    float skip = 1f;
+                    for (int i = 1; i < path.Count; i++)
                     {
-                        Vec2 a = preview.From.Value + direction * d;
-                        if (!Board.OnBoard(a)) break;
-                        Line(a, a + direction * 0.5f, 0.03f, PreviewColour);
+                        Vec2 start = path[i - 1];
+                        Vec2 along = path[i] - start;
+                        float length = along.Length;
+                        if (length <= 0f) continue;
+                        Vec2 step = along / length;
+                        float d = skip;
+                        for (; d < length; d += 1f) Line(start + step * d, start + step * Math.Min(d + 0.5f, length), 0.03f, PreviewColour);
+                        skip = d - length;
                     }
                 }
             }
