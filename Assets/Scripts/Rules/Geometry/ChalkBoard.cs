@@ -247,6 +247,12 @@ namespace RithmaticDuels.Rules.Geometry
                         if (placement.Size < min - 1e-4f || placement.Size > max + 1e-4f)
                             return spec.BindPoints == 2 ? "That ellipse is too flat or too round." : "That circle is too small or too big.";
                     }
+                    if (!spec.IsMarksCross && spec.BindPoints == 2 && placement.Scale > 0f)
+                    {
+                        var geometry = _config.Geometry;
+                        if (placement.Scale < geometry.AttachedEllipseMinScale - 1e-4f || placement.Scale > geometry.AttachedEllipseMaxScale + 1e-4f)
+                            return "That ellipse is too small or too big.";
+                    }
                     string bindPoint = ValidBindPoint(placement.BindPointA, bindPoints);
                     if (bindPoint != null) return bindPoint;
                     if (BindPointFull(player, placement.BindPointA))
@@ -383,16 +389,45 @@ namespace RithmaticDuels.Rules.Geometry
         /// The biggest size (radius, or an ellipse's semi-minor axis) an attached LoW at this bind point can
         /// have and still fit on the board and the player's half, within its configured range.
         /// </summary>
-        public float MaxAttachedSize(Player player, DrawingSpec spec, int bindPoint)
+        public float MaxAttachedSize(Player player, DrawingSpec spec, int bindPoint, float scale = 0f)
         {
             float min, max, start;
             AttachedSizeRange(spec, out min, out max, out start);
-            return LargestThatFits(min, max, size =>
+            return LargestThatFits(min, max, size => AttachedFits(player, spec, Placement.AtBindPoint(bindPoint, size, scale)));
+        }
+
+        /// <summary>
+        /// The biggest overall scale an attached ellipse at this bind point, with this semi-minor axis (before
+        /// scaling), can have and still fit on the board and the player's half, within its configured range.
+        /// </summary>
+        public float MaxAttachedScale(Player player, DrawingSpec spec, int bindPoint, float size)
+        {
+            var geometry = _config.Geometry;
+            return LargestThatFits(geometry.AttachedEllipseMinScale, geometry.AttachedEllipseMaxScale,
+                scale => AttachedFits(player, spec, Placement.AtBindPoint(bindPoint, size, scale)));
+        }
+
+        /// <summary>
+        /// The overall scales an attached ellipse at this bind point can be given, one for each whole-number
+        /// durability of its weakest point, as far as it fits on the player's half.
+        /// </summary>
+        public List<float> AttachedScales(Player player, DrawingSpec spec, int bindPoint, float size)
+        {
+            var geometry = _config.Geometry;
+            float max = bindPoint >= 0 ? MaxAttachedScale(player, spec, bindPoint, size) : geometry.AttachedEllipseMaxScale;
+            int at = Math.Max(0, bindPoint);
+            return HealthSteps(geometry.AttachedEllipseMinScale, max, scale =>
             {
                 IReadOnlyList<Vec2> unused;
-                var shape = WardGeometry(player, spec, Placement.AtBindPoint(bindPoint, size), out unused);
-                return shape != null && CheckOutline(player, shape, _config.Geometry.DrawOnOwnHalfOnly) == null;
+                return WardGeometry(player, spec, Placement.AtBindPoint(at, size, scale), out unused);
             });
+        }
+
+        private bool AttachedFits(Player player, DrawingSpec spec, Placement placement)
+        {
+            IReadOnlyList<Vec2> unused;
+            var shape = WardGeometry(player, spec, placement, out unused);
+            return shape != null && CheckOutline(player, shape, _config.Geometry.DrawOnOwnHalfOnly) == null;
         }
 
         /// <summary>
@@ -432,16 +467,16 @@ namespace RithmaticDuels.Rules.Geometry
         /// The sizes an attached LoW at this bind point can be given (radius, or an ellipse's semi-minor axis),
         /// one for each whole-number durability of its weakest point, as far as it fits on the player's half.
         /// </summary>
-        public List<float> AttachedSizes(Player player, DrawingSpec spec, int bindPoint)
+        public List<float> AttachedSizes(Player player, DrawingSpec spec, int bindPoint, float scale = 0f)
         {
             float min, max, start;
             AttachedSizeRange(spec, out min, out max, out start);
-            if (bindPoint >= 0) max = MaxAttachedSize(player, spec, bindPoint);
+            if (bindPoint >= 0) max = MaxAttachedSize(player, spec, bindPoint, scale);
             int at = Math.Max(0, bindPoint);
             return HealthSteps(min, max, size =>
             {
                 IReadOnlyList<Vec2> unused;
-                return WardGeometry(player, spec, Placement.AtBindPoint(at, size), out unused);
+                return WardGeometry(player, spec, Placement.AtBindPoint(at, size, scale), out unused);
             });
         }
 
@@ -895,8 +930,9 @@ namespace RithmaticDuels.Rules.Geometry
 
             // An attached ellipse sticks straight out from the bind point, so it reaches as far as its long axis.
             bool attachedEllipse = !spec.IsMarksCross && spec.BindPoints == 2;
+            float scale = attachedEllipse ? AttachedScale(placement) : 1f;
             float reach = spec.IsMarksCross ? _config.Warding.MarksCrossRadius
-                : attachedEllipse ? _config.Geometry.AttachedEllipseSemiMajor
+                : attachedEllipse ? _config.Geometry.AttachedEllipseSemiMajor * scale
                 : AttachedSize(spec, placement);
             int count = spec.IsMarksCross ? _config.Warding.MarksCrossBindPoints : spec.BindPoints;
             Vec2 centre;
@@ -922,7 +958,7 @@ namespace RithmaticDuels.Rules.Geometry
             }
             if (attachedEllipse)
             {
-                var shape = WardShape.Ellipse(centre, reach, AttachedSize(spec, placement), outward.Angle);
+                var shape = WardShape.Ellipse(centre, reach, AttachedSize(spec, placement) * scale, outward.Angle);
                 bindPoints = BindPoints.ForEllipse(shape);
                 return shape;
             }
@@ -940,6 +976,14 @@ namespace RithmaticDuels.Rules.Geometry
             AttachedSizeRange(spec, out min, out max, out start);
             float wanted = placement != null && placement.Size > 0f ? placement.Size : start;
             return Math.Max(min, Math.Min(max, wanted));
+        }
+
+        /// <summary>The overall scale actually used for an attached ellipse with this placement, within the configured range.</summary>
+        public float AttachedScale(Placement placement)
+        {
+            var geometry = _config.Geometry;
+            float wanted = placement != null && placement.Scale > 0f ? placement.Scale : 1f;
+            return Math.Max(geometry.AttachedEllipseMinScale, Math.Min(geometry.AttachedEllipseMaxScale, wanted));
         }
 
         /// <summary>The range the scroll wheel can set an attached LoW's size in, and where it starts.</summary>
