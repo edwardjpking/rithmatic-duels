@@ -73,6 +73,14 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>How wide the label in front of a row of buttons is, in GUI pixels.</summary>
         private const float RowLabelWidth = 100f;
+        /// <summary>Room kept free for the menu's vertical scroll bar and its margins.</summary>
+        private const float ScrollBarAllowance = 24f;
+
+        /// <summary>The width the menu's contents have this frame, set at the start of Draw.</summary>
+        private static float _width = 400f;
+
+        /// <summary>The width left for buttons after a row's label.</summary>
+        private static float RowWidth { get { return Mathf.Max(60f, _width - RowLabelWidth - 4f); } }
 
         /// <summary>How close a click must be to a bind point, or a LoF to dismiss, to pick it.</summary>
         private const float PickRadius = 0.75f;
@@ -135,13 +143,15 @@ namespace RithmaticDuels.Presentation
         /// Draws the menu. Returns the choice once the player locks it in, otherwise null. The options scroll
         /// with <paramref name="scroll"/> if they don't fit; Lock in stays at the bottom either way.
         /// </summary>
-        public LockedChoice Draw(Duel duel, ChalkBoard board, Player player, ref Vector2 scroll)
+        public LockedChoice Draw(Duel duel, ChalkBoard board, Player player, ref Vector2 scroll, float width)
         {
             Preview = null;
+            // Leave room for the vertical scroll bar; button rows wrap to fit, so nothing scrolls sideways.
+            _width = Mathf.Max(100f, width - ScrollBarAllowance);
             var available = duel.AvailableActions(player);
             if (available.Count == 0) return null;
             // The scroll view fills the panel down to the footer, so Lock in sits at the bottom.
-            scroll = GUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
+            scroll = GUILayout.BeginScrollView(scroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar, GUILayout.ExpandHeight(true));
             if (_kind.HasValue && !available.Contains(_kind.Value)) _kind = null;
             // Mid-drawing, carrying on is the usual choice, so it starts selected.
             if (!_kind.HasValue && !_defaultChosen && available.Contains(ActionKind.ContinueDrawing)) _kind = ActionKind.ContinueDrawing;
@@ -157,8 +167,7 @@ namespace RithmaticDuels.Presentation
                 var labels = new string[available.Count];
                 for (int i = 0; i < available.Count; i++) labels[i] = ActionLabel(available[i]);
                 int index = _kind.HasValue ? available.IndexOf(_kind.Value) : -1;
-                // One row of up to four buttons.
-                int chosen = GUILayout.SelectionGrid(index, labels, Mathf.Min(labels.Length, 4));
+                int chosen = Buttons(index, labels, _width);
                 if (chosen != index && chosen >= 0)
                 {
                     _kind = available[chosen];
@@ -175,7 +184,7 @@ namespace RithmaticDuels.Presentation
                 var labels = new string[after.Count];
                 for (int i = 0; i < after.Count; i++) labels[i] = ActionLabel(after[i]);
                 int index = _afterCancel.HasValue ? after.IndexOf(_afterCancel.Value) : -1;
-                int chosen = GUILayout.Toolbar(index, labels);
+                int chosen = Buttons(index, labels, _width);
                 if (chosen != index && chosen >= 0)
                 {
                     _afterCancel = after[chosen];
@@ -1038,7 +1047,7 @@ namespace RithmaticDuels.Presentation
         private static void Choose<T>(ref T value, string[] labels) where T : struct, System.Enum
         {
             int index = System.Convert.ToInt32(value);
-            int chosen = GUILayout.Toolbar(index, labels);
+            int chosen = Buttons(index, labels, RowWidth);
             if (chosen == index) return;
             value = (T)System.Enum.ToObject(typeof(T), chosen);
             GUIUtility.ExitGUI();
@@ -1048,7 +1057,7 @@ namespace RithmaticDuels.Presentation
         private static void Choose<T>(ref T? value, string[] labels) where T : struct, System.Enum
         {
             int index = value.HasValue ? System.Convert.ToInt32(value.Value) : -1;
-            int chosen = GUILayout.Toolbar(index, labels);
+            int chosen = Buttons(index, labels, RowWidth);
             if (chosen == index || chosen < 0) return;
             value = (T)System.Enum.ToObject(typeof(T), chosen);
             GUIUtility.ExitGUI();
@@ -1056,10 +1065,24 @@ namespace RithmaticDuels.Presentation
 
         private static void Choose(ref int value, string[] labels)
         {
-            int chosen = GUILayout.Toolbar(value, labels);
+            int chosen = Buttons(value, labels, RowWidth);
             if (chosen == value || chosen < 0) return;
             value = chosen;
             GUIUtility.ExitGUI();
+        }
+
+        /// <summary>
+        /// A set of buttons, one selected. They share rows of equal-width buttons, as many to a row as fit in
+        /// <paramref name="width"/>, and wrap onto more rows rather than running off the side.
+        /// </summary>
+        private static int Buttons(int selected, string[] labels, float width)
+        {
+            var style = GUI.skin.button;
+            float widest = 0f;
+            foreach (var label in labels) widest = Mathf.Max(widest, style.CalcSize(new GUIContent(label)).x);
+            float spacing = Mathf.Max(style.margin.left, style.margin.right);
+            int perRow = Mathf.Clamp(Mathf.FloorToInt((width + spacing) / (widest + spacing)), 1, labels.Length);
+            return GUILayout.SelectionGrid(selected, labels, perRow, GUILayout.MaxWidth(width));
         }
 
         private static string ActionLabel(ActionKind kind)
