@@ -30,6 +30,10 @@ namespace RithmaticDuels.Presentation
         public Vec2? From;
         public Vec2? To;
         public Vec2? Point;
+        /// <summary>A chalkling being placed: its glyph and where it will stand, for its guard ring or attack path.</summary>
+        public Glyph? ChalklingGlyph;
+        public Vec2? ChalklingAnchor;
+        public float ChalklingGuardDistance;
         /// <summary>Bind points of the main LoW the player has picked.</summary>
         public readonly List<int> BindPoints = new List<int>();
     }
@@ -697,6 +701,10 @@ namespace RithmaticDuels.Presentation
                     if (bound && _bindA >= 0) placement = Placement.AtBindPoint(_bindA);
                     if (!bound && _pointA.HasValue) placement = Placement.At(_pointA.Value);
                     preview.Point = bound ? null : _pointA;
+                    preview.ChalklingGlyph = spec.Glyph;
+                    var bindSpots = board.BindPointsOf(player);
+                    preview.ChalklingAnchor = bound ? (_bindA >= 0 && _bindA < bindSpots.Count ? bindSpots[_bindA] : (Vec2?)null) : _pointA ?? _hover;
+                    preview.ChalklingGuardDistance = bound ? config.Making.TetherDistance : config.Making.GuardDistance;
                     if (!bound) preview.InvalidHover = InvalidHover(board, player);
                     break;
             }
@@ -755,7 +763,8 @@ namespace RithmaticDuels.Presentation
         private DrawingSpec DrawMakingPointBuy(RulesConfig config, out string hint)
         {
             var making = config.Making;
-            GUILayout.Label("Type each stat or use - and +. Every " + making.StatBuffsPerDrawTurn + " points take a turn.");
+            GUILayout.Label("Type each stat or use - and +. Every " + making.StatBuffsPerDrawTurn + " points take a turn, and a chalkling takes at least "
+                + making.MinimumDrawTurns + " turns unless rushed.");
             StatEntry("Durability", _durabilityEntry, ref _durabilityBuffs, making.BaseDurability, making.DurabilityPerBuff);
             StatEntry("Damage", _damageEntry, ref _damageBuffs, making.BaseDamage, making.DamagePerBuff);
             StatEntry("Speed", _speedEntry, ref _speedBuffs, making.BaseSpeed, making.SpeedPerBuff);
@@ -770,11 +779,15 @@ namespace RithmaticDuels.Presentation
             if (bound) GUILayout.Label("Glyph: Defend, since it is bound.");
             else if (_chalklingMode.HasValue)
             {
+                // Attack is greyed out while the rules would refuse it (0 speed), and a chosen Attack is dropped.
+                string attackProblem = DrawTimes.Validate(
+                    DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, Glyph.Attack, 0, _modifierStat ?? default), config);
+                if (attackProblem != null && _glyph == Glyph.Attack) _glyph = null;
                 BeginRow("Glyph:");
-                Choose(ref _glyph, GlyphLabels);
+                Choose(ref _glyph, GlyphLabels, attackProblem != null ? (int)Glyph.Attack : -1);
                 GUILayout.EndHorizontal();
+                if (attackProblem != null) GUILayout.Label("Attack: " + attackProblem);
             }
-            GUILayout.Label("Chalklings stand still until chalkling behaviour is built.");
             if (!_modifierStat.HasValue || !_chalklingMode.HasValue || (!bound && !_glyph.HasValue))
             {
                 hint = !_modifierStat.HasValue ? "Choose where a positive modifier goes."
@@ -1275,10 +1288,11 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A row of buttons with nothing selected until one is clicked.</summary>
-        private static void Choose<T>(ref T? value, string[] labels) where T : struct, System.Enum
+        private static void Choose<T>(ref T? value, string[] labels, int unusable = -1) where T : struct, System.Enum
         {
             int index = value.HasValue ? System.Convert.ToInt32(value.Value) : -1;
-            int chosen = Buttons(index, labels, NextRowWidth());
+            int chosen = Buttons(index, labels, NextRowWidth(), unusable);
+            if (chosen == unusable) return;
             if (chosen == index || chosen < 0) return;
             value = (T)System.Enum.ToObject(typeof(T), chosen);
             GUIUtility.ExitGUI();
@@ -1301,9 +1315,9 @@ namespace RithmaticDuels.Presentation
         /// A row of buttons, one selected. The row always stays on one line, at the largest font size that fits in
         /// <paramref name="width"/> (never above the skin's own size). Every button in the row
         /// has the same width, and together they fill it. Only below
-        /// MinButtonFontSize does the row wrap onto more lines.
+        /// MinButtonFontSize does the row wrap onto more lines. The <paramref name="unusable"/> button, if any, is greyed out.
         /// </summary>
-        private static int Buttons(int selected, string[] labels, float width)
+        private static int Buttons(int selected, string[] labels, float width, int unusable = -1)
         {
             var style = GUI.skin.button;
             // Copied afresh whenever the skin's button style changes (a new run builds a new skin).
@@ -1343,7 +1357,11 @@ namespace RithmaticDuels.Presentation
             for (int i = 0; i < labels.Length; i++)
             {
                 float w = each;
-                if (GUILayout.Toggle(i == selected, labels[i], _smallButton, GUILayout.Width(w)) && i != selected) chosen = i;
+                bool enabled = GUI.enabled;
+                GUI.enabled = enabled && i != unusable;
+                bool on = GUILayout.Toggle(i == selected, labels[i], _smallButton, GUILayout.Width(w));
+                GUI.enabled = enabled;
+                if (on && i != selected) chosen = i;
             }
             GUILayout.EndHorizontal();
             return chosen;

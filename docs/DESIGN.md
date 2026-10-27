@@ -224,7 +224,7 @@ A chalkling has three stats: **Durability**, **Damage** and **Speed**. When the 
 |---|---|
 | Durability when bound | +2 per bind point the chalkling is bound to (binding gives free durability) |
 | Modifier | +1 to a stat of choice / -1 to the highest stat |
-| Time to draw | 1 turn per 4 stat points (rounded up), **minimum 2** (decided 2026-10-27), so 0 to 8 stat points take 2 turns; the glyph is free (decided 2026-10-25). Rushing can't bring it below 2, so no chalkling is ever ready in the tick it is started, and a LoV already in flight can't be blocked by a chalkling drawn in answer to it. Travel turns are added on top as usual. |
+| Time to draw | 1 turn per 4 stat points (rounded up), **minimum 2 at normal pace** (decided 2026-10-27), so 0 to 8 stat points take 2 turns; the glyph is free (decided 2026-10-25). Rushing can still bring it down to 1 turn (corrected by Amelia, 2026-10-27). A rushed 2-turn chalkling finishes in stage 4 of the tick it is done, so it can't block a LoV in that tick. Travel turns are added on top as usual. |
 
 **Binding.** A chalkling can be bound to a bind point. A bound chalkling cannot move further than its tether distance from its bind point, and gains free durability as above.
 

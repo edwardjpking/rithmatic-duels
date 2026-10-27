@@ -51,6 +51,8 @@ namespace RithmaticDuels.Presentation
         /// <summary>Set from OnGUI: the start and direction of the LoV under the mouse, whose aim line is shown.</summary>
         public Vec2? HoverAimFrom { get; set; }
         public Vec2? HoverAimDirection { get; set; }
+        /// <summary>Set from OnGUI: the chalkling under the mouse or hovered in a list, whose guard ring or path is shown.</summary>
+        public ChalklingBody HoverChalkling { get; set; }
 
         private void OnRenderObject()
         {
@@ -120,7 +122,7 @@ namespace RithmaticDuels.Presentation
                 return;
             }
             var chalkling = body as ChalklingBody;
-            if (chalkling != null) Disc(chalkling.Position, 0.25f + glow, glowColour);
+            if (chalkling != null) Disc(chalkling.Position, ChalklingRadius + glow, glowColour);
         }
 
         private void DrawBody(LineBody body)
@@ -162,7 +164,7 @@ namespace RithmaticDuels.Presentation
             if (chalkling != null)
             {
                 if (chalkling.Tether.HasValue) Line(chalkling.Tether.Value, chalkling.Position, 0.02f, WithAlpha(colour, 0.4f));
-                Diamond(chalkling.Position, 0.25f, colour);
+                Chalkling(chalkling.Position, chalkling.Line.Glyph, colour);
             }
         }
 
@@ -212,8 +214,9 @@ namespace RithmaticDuels.Presentation
 
                 default:
                     if (!sketch.Point.HasValue) return;
+                    // Its glyph stays hidden until it is finished, so only a faint dashed circle shows.
                     if (sketch.Tether.HasValue) DashedLine(sketch.Tether.Value, sketch.Point.Value, 0.02f, colour);
-                    DiamondOutline(sketch.Point.Value, 0.25f, colour);
+                    Ring(sketch.Point.Value, ChalklingRadius, 0.05f, colour, true);
                     return;
             }
         }
@@ -227,6 +230,22 @@ namespace RithmaticDuels.Presentation
                 Disc(HoverWardPoint.Value, HoverMarkSize / 2f, DurabilityDotColour);
             }
             if (HoverAimFrom.HasValue && HoverAimDirection.HasValue) AimLine(HoverAimFrom.Value, HoverAimDirection.Value, PreviewColour);
+            if (HoverChalkling != null)
+                ChalklingReach(HoverChalkling.Owner, HoverChalkling.Line.Glyph, HoverChalkling.Anchor, HoverChalkling.Position, HoverChalkling.GuardDistance);
+        }
+
+        /// <summary>
+        /// What a chalkling will do, in the aim line blue: a Defend chalkling's guard ring around its anchor
+        /// (bind point or spot drawn), or an Attack chalkling's straight path, stopping at the first blocker.
+        /// </summary>
+        private void ChalklingReach(Player owner, Glyph glyph, Vec2 anchor, Vec2 position, float guardDistance)
+        {
+            if (glyph == Glyph.Defend)
+            {
+                Ring(anchor, guardDistance, 0.03f, PreviewColour, true);
+                return;
+            }
+            DashedPath(Board.ChalklingAttackPath(owner, position), PreviewColour);
         }
 
         private const float AimDash = 0.3f;
@@ -238,7 +257,13 @@ namespace RithmaticDuels.Presentation
         /// </summary>
         private void AimLine(Vec2 from, Vec2 direction, Color colour)
         {
-            var path = Board.AimPath(from, direction);
+            DashedPath(Board.AimPath(from, direction), colour);
+        }
+
+        /// <summary>A path of points drawn dashed like the aim line.</summary>
+        private void DashedPath(System.Collections.Generic.IList<Vec2> path, Color colour)
+        {
+            if (path == null) return;
             bool on = true;
             float left = AimDash;
             for (int i = 1; i < path.Count; i++)
@@ -290,7 +315,13 @@ namespace RithmaticDuels.Presentation
             if (preview.Braces != null)
                 foreach (var brace in preview.Braces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, PreviewColour);
             if (preview.Segment.HasValue) Line(preview.Segment.Value.A, preview.Segment.Value.B, ForbiddanceWidth, PreviewColour);
-            if (preview.Point.HasValue) Diamond(preview.Point.Value, 0.25f, PreviewColour);
+            if (preview.ChalklingGlyph.HasValue && preview.ChalklingAnchor.HasValue)
+            {
+                Vec2 spot = preview.ChalklingAnchor.Value;
+                Chalkling(spot, preview.ChalklingGlyph.Value, PreviewColour);
+                ChalklingReach(preview.Player, preview.ChalklingGlyph.Value, spot, spot, preview.ChalklingGuardDistance);
+            }
+            else if (preview.Point.HasValue) Diamond(preview.Point.Value, 0.25f, PreviewColour);
             // The red cross for an invalid spot is drawn by DuelController in OnGUI, at this frame's mouse position.
             if (preview.From.HasValue)
             {
@@ -353,16 +384,31 @@ namespace RithmaticDuels.Presentation
                 Line(a + along * d, a + along * Math.Min(length, d + DashLength), width, colour);
         }
 
-        /// <summary>The outline of a chalkling's diamond, for one still being drawn.</summary>
-        private static void DiamondOutline(Vec2 centre, float radius, Color colour)
+        private const float ChalklingRadius = 0.25f;
+        // The glyph is marked in the board's dark, as if scratched into the chalk, so it reads on either player's colour.
+        private static readonly Color GlyphMark = new Color(0.1f, 0.12f, 0.12f, 1f);
+
+        /// <summary>
+        /// A chalkling: a filled circle in its owner's chalk with its glyph on its back, a cross for Attack
+        /// and a diamond for Defend (DESIGN.md section 4.4), so the glyph reads by shape, not colour.
+        /// </summary>
+        private static void Chalkling(Vec2 centre, Glyph glyph, Color colour)
         {
+            Disc(centre, ChalklingRadius, colour);
+            float r = ChalklingRadius * 0.55f;
             const float width = 0.05f;
-            Vec2 up = new Vec2(0f, radius);
-            Vec2 right = new Vec2(radius, 0f);
-            Line(centre - up, centre + right, width, colour);
-            Line(centre + right, centre + up, width, colour);
-            Line(centre + up, centre - right, width, colour);
-            Line(centre - right, centre - up, width, colour);
+            if (glyph == Glyph.Attack)
+            {
+                Line(centre + new Vec2(-r, -r) * 0.75f, centre + new Vec2(r, r) * 0.75f, width, GlyphMark);
+                Line(centre + new Vec2(-r, r) * 0.75f, centre + new Vec2(r, -r) * 0.75f, width, GlyphMark);
+                return;
+            }
+            Vec2 up = new Vec2(0f, r);
+            Vec2 right = new Vec2(r, 0f);
+            Line(centre - up, centre + right, width, GlyphMark);
+            Line(centre + right, centre + up, width, GlyphMark);
+            Line(centre + up, centre - right, width, GlyphMark);
+            Line(centre - right, centre - up, width, GlyphMark);
         }
 
         /// <summary>A bind point: a hollow circle with a dot in the middle, so it stands out on top of its line.</summary>
