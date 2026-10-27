@@ -18,7 +18,7 @@ namespace RithmaticDuels.Presentation
         private static readonly Color Faint = new Color(1f, 1f, 1f, 0.15f);
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
-        private static readonly Color HighlightColour = new Color(1f, 0.4f, 0.85f, 0.5f);
+        internal static readonly Color HighlightColour = new Color(1f, 0.4f, 0.85f, 0.5f);
         private static readonly Color HoverColour = new Color(0.6f, 0.9f, 1f, 1f);
         private const float HoverMarkSize = 0.22f;
         private static readonly Color BlockedFill = new Color(0.95f, 0.3f, 0.25f, 0.75f);
@@ -109,7 +109,7 @@ namespace RithmaticDuels.Presentation
             var vigor = body as VigorBody;
             if (vigor != null)
             {
-                Disc(vigor.Position, Board.Config.Geometry.VigorDrawnLength / 2f + glow, HighlightColour);
+                Disc(vigor.Position, 0.2f + glow, HighlightColour);
                 return;
             }
             var chalkling = body as ChalklingBody;
