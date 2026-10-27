@@ -26,6 +26,17 @@ namespace RithmaticDuels.Presentation
         private static readonly Color ThumbFillHover = new Color(0.38f, 0.43f, 0.40f, 1f);
         private static readonly Color ThumbFillDragged = new Color(0.48f, 0.53f, 0.50f, 1f);
 
+        // Buttons: every state is drawn by this skin, so every button, wide or narrow, selected or not, lights up
+        // the same way under the mouse. Selected ("on") buttons are lighter than unselected ones.
+        private const int ButtonRadius = 4;
+        private static readonly Color ButtonFill = new Color(0.13f, 0.16f, 0.14f, 1f);
+        private static readonly Color ButtonFillHover = new Color(0.22f, 0.27f, 0.24f, 1f);
+        private static readonly Color ButtonFillPressed = new Color(0.30f, 0.35f, 0.32f, 1f);
+        private static readonly Color ButtonOnFill = new Color(0.36f, 0.41f, 0.38f, 1f);
+        private static readonly Color ButtonOnFillHover = new Color(0.45f, 0.50f, 0.47f, 1f);
+        private static readonly Color ButtonOutline = new Color(0.40f, 0.45f, 0.42f, 1f);
+        private static readonly Color ButtonText = new Color(0.92f, 0.93f, 0.92f, 1f);
+
         private static GUISkin _skin;
 
         /// <summary>
@@ -54,6 +65,7 @@ namespace RithmaticDuels.Presentation
             HideButton(_skin.verticalScrollbarDownButton);
             HideButton(_skin.horizontalScrollbarLeftButton);
             HideButton(_skin.horizontalScrollbarRightButton);
+            StyleButton(_skin.button);
             return _skin;
         }
 
@@ -79,6 +91,29 @@ namespace RithmaticDuels.Presentation
                 style.fixedWidth = 0;
                 style.margin = new RectOffset(0, 0, 4, 0);
             }
+        }
+
+        private static void StyleButton(GUIStyle style)
+        {
+            ClearStates(style);
+            var normal = Rounded(ButtonRadius, ButtonFill, ButtonOutline);
+            var hover = Rounded(ButtonRadius, ButtonFillHover, ButtonOutline);
+            var pressed = Rounded(ButtonRadius, ButtonFillPressed, ButtonOutline);
+            var on = Rounded(ButtonRadius, ButtonOnFill, ButtonOutline);
+            var onHover = Rounded(ButtonRadius, ButtonOnFillHover, ButtonOutline);
+            style.normal.background = normal;
+            style.focused.background = normal;
+            style.hover.background = hover;
+            style.active.background = pressed;
+            style.onNormal.background = on;
+            style.onFocused.background = on;
+            style.onHover.background = onHover;
+            style.onActive.background = pressed;
+            foreach (var state in new[] { style.normal, style.focused, style.hover, style.active,
+                                          style.onNormal, style.onFocused, style.onHover, style.onActive })
+                state.textColor = ButtonText;
+            style.border = new RectOffset(ButtonRadius, ButtonRadius, ButtonRadius, ButtonRadius);
+            style.overflow = new RectOffset();
         }
 
         private static void StyleThumb(GUIStyle style, bool vertical)
