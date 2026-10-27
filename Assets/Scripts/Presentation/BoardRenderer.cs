@@ -19,6 +19,8 @@ namespace RithmaticDuels.Presentation
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
         private static readonly Color HighlightColour = new Color(0.6f, 0.9f, 1f, 0.45f);
+        private static readonly Color HoverColour = new Color(0.6f, 0.9f, 1f, 1f);
+        private const float HoverMarkSize = 0.22f;
         private static readonly Color BlockedFill = new Color(0.95f, 0.3f, 0.25f, 0.75f);
 
         private const float WardWidth = 0.08f;
@@ -41,6 +43,10 @@ namespace RithmaticDuels.Presentation
         public PlacementPreview Preview { get; set; }
         /// <summary>A line to pick out with a glow, such as one hovered in a lines list. -1 for none.</summary>
         public int HighlightLineId { get; set; } = -1;
+        /// <summary>Set from OnGUI: the LoW outline point whose durability the hover readout shows.</summary>
+        public Vec2? HoverWardPoint { get; set; }
+        /// <summary>Set from OnGUI: the LoV under the mouse, whose direction of travel gets an arrow.</summary>
+        public VigorBody HoverVigor { get; set; }
 
         private void OnRenderObject()
         {
@@ -62,6 +68,7 @@ namespace RithmaticDuels.Presentation
             if (highlighted != null) DrawHighlight(highlighted);
             foreach (var body in Board.Bodies) DrawBody(body);
             if (Preview != null) DrawPreview(Preview);
+            DrawHover();
             GL.End();
             GL.PopMatrix();
         }
@@ -202,6 +209,29 @@ namespace RithmaticDuels.Presentation
                     DiamondOutline(sketch.Point.Value, 0.25f, colour);
                     return;
             }
+        }
+
+        /// <summary>Marks for the line under the mouse, matching the hover readout.</summary>
+        private void DrawHover()
+        {
+            if (HoverWardPoint.HasValue)
+            {
+                Disc(HoverWardPoint.Value, HoverMarkSize / 2f + 0.03f, Color.black);
+                Disc(HoverWardPoint.Value, HoverMarkSize / 2f, HoverColour);
+            }
+            if (HoverVigor != null && HoverVigor.Line.IsActive) Arrowhead(HoverVigor.Position, HoverVigor.Direction, HoverColour);
+        }
+
+        /// <summary>An arrowhead whose tip is just ahead of <paramref name="tip"/>, pointing along <paramref name="direction"/>.</summary>
+        private static void Arrowhead(Vec2 tip, Vec2 direction, Color colour)
+        {
+            const float length = 0.45f;
+            const float halfWidth = 0.25f;
+            Vec2 point = tip + direction * 0.3f;
+            Vec2 back = point - direction * length;
+            Vec2 side = direction.Perp * halfWidth;
+            Line(point, back + side, 0.07f, colour);
+            Line(point, back - side, 0.07f, colour);
         }
 
         private void DrawPreview(PlacementPreview preview)
