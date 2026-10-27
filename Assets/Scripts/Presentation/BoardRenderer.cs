@@ -113,7 +113,7 @@ namespace RithmaticDuels.Presentation
             {
                 // A glow along the wave itself, plus its aim line in the usual aim line colour.
                 Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, HighlightColour, false, 0.06f + glow);
-                AimLine(vigor.Position, vigor.Direction, HoverColour);
+                AimLine(vigor.Position, vigor.Direction, PreviewColour);
                 return;
             }
             var chalkling = body as ChalklingBody;
