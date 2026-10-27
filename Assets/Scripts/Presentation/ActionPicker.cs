@@ -302,15 +302,98 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>
-        /// A right-click on the board lets go of what has been picked there so far: the positions or bind points
-        /// clicked for the line being placed, and the LoF chosen for dismissal. Returns true if anything was let go.
-        /// Sizes set with the scroll wheel are kept.
+        /// A right-click anywhere while choosing: undoes the last choice made, one layer of the menu at a time,
+        /// so repeated right-clicks walk all the way back to no action. Layers, last first: pace; the placement
+        /// (positions, bind points and scroll sizes together); the placement or tier choice; for a chalkling its
+        /// glyph, tether, + modifier stat and stat values; the line type; the action. Returns true if anything changed.
         /// </summary>
-        public bool HandleRightClick()
+        public bool HandleRightClick(ChalkBoard board, Player player, RulesConfig config)
         {
-            bool picked = _bindA >= 0 || _bindB >= 0 || _pointA.HasValue || _pointB.HasValue || _targetLineId >= 0;
-            ClearPicks();
-            return picked;
+            bool needsMain = board.MainWardOf(player) == null && config.MainWardFirst;
+            if (Effective == ActionKind.StartDrawing)
+            {
+                if (needsMain ? StepBackMainWard(config.Geometry.MainWardAtHome) : StepBackDrawing()) return true;
+            }
+            else if (Effective == ActionKind.DismissForbiddance && _targetLineId >= 0)
+            {
+                _targetLineId = -1;
+                return true;
+            }
+            else if (Effective == ActionKind.DrawBindPoints && _bindPointChoice >= 0)
+            {
+                _bindPointChoice = -1;
+                return true;
+            }
+
+            if (_kind == ActionKind.CancelDrawing && _afterCancel.HasValue) { _afterCancel = null; return true; }
+            if (_kind.HasValue) { _kind = null; return true; }
+            return false;
+        }
+
+        /// <summary>The main LoW setup, last first: bind points, position (unless it sits at home), flatness, shape.</summary>
+        private bool StepBackMainWard(bool atHome)
+        {
+            if (_bindPointChoice >= 0) { _bindPointChoice = -1; return true; }
+            // At home the position is filled in for the player, so it isn't a choice to undo.
+            if (_pointA.HasValue && !atHome) { ClearClicks(); return true; }
+            if (_semiMinor > 0f) { _semiMinor = -1f; return true; }
+            if (_mainShape.HasValue) { _mainShape = null; _pointA = null; return true; }
+            return false;
+        }
+
+        /// <summary>A drawing during the duel, last first. Returns false once only the action is left to undo.</summary>
+        private bool StepBackDrawing()
+        {
+            if (_pace != DrawingPace.Normal) { _pace = DrawingPace.Normal; return true; }
+            if (HasPlacement()) { ClearPlacement(); return true; }
+            switch (_lineType)
+            {
+                case LineType.Warding:
+                    if (_attachedWardChoice >= 0) { _attachedWardChoice = -1; return true; }
+                    break;
+                case LineType.Forbiddance:
+                    if (_forbiddanceMode.HasValue) { _forbiddanceMode = null; return true; }
+                    break;
+                case LineType.Vigor:
+                    if (_tier.HasValue) { _tier = null; return true; }
+                    break;
+                case LineType.Making:
+                    if (_glyph.HasValue) { _glyph = null; return true; }
+                    if (_chalklingMode.HasValue) { _chalklingMode = null; return true; }
+                    if (_modifierStat.HasValue) { _modifierStat = null; return true; }
+                    if (_durabilityBuffs != 0 || _damageBuffs != 0 || _speedBuffs != 0) { ClearStats(); return true; }
+                    break;
+            }
+            if (_lineType.HasValue) { _lineType = null; return true; }
+            return false;
+        }
+
+        /// <summary>True if anything has been placed: a position or bind point clicked, or a size scrolled.</summary>
+        private bool HasPlacement()
+        {
+            return _bindA >= 0 || _bindB >= 0 || _pointA.HasValue || _pointB.HasValue
+                || _length > 0f || _attachedSize > 0f || _attachedScale > 0f || _join != 0;
+        }
+
+        private void ClearPlacement()
+        {
+            ClearClicks();
+            _length = -1f;
+            _attachedSize = -1f;
+            _attachedScale = -1f;
+            _join = 0;
+        }
+
+        private void ClearStats()
+        {
+            _durabilityBuffs = 0;
+            _damageBuffs = 0;
+            _speedBuffs = 0;
+            foreach (var entry in new[] { _durabilityEntry, _damageEntry, _speedEntry })
+            {
+                entry.Text = "";
+                entry.ShownBuffs = -1;
+            }
         }
 
         /// <summary>
@@ -722,19 +805,11 @@ namespace RithmaticDuels.Presentation
             if (targets.Count == 0) return null;
             int index = targets.FindIndex(line => line.Id == _targetLineId);
 
-            // One button per line, laid out by hand so a right-click can be caught before the button sees it.
-            var current = Event.current;
+            // One button per line. A right-click never reaches them: DuelController takes it first (HandleRightClick).
             for (int i = 0; i < targets.Count; i++)
             {
                 var label = new GUIContent(TurnNarrator.LineName(targets[i]) + "  " + targets[i].Durability + "/" + targets[i].MaxDurability);
                 Rect rect = GUILayoutUtility.GetRect(label, GUI.skin.button);
-                if (current.type == EventType.MouseDown && current.button == 1 && rect.Contains(current.mousePosition))
-                {
-                    // Right-clicking a box lets go of the chosen line, whichever box it is.
-                    _targetLineId = -1;
-                    current.Use();
-                    GUIUtility.ExitGUI();
-                }
                 bool selected = i == index;
                 if (GUI.Toggle(rect, selected, label, GUI.skin.button) != selected && !selected)
                 {
@@ -1039,12 +1114,6 @@ namespace RithmaticDuels.Presentation
             _bindB = -1;
             _pointA = null;
             _pointB = null;
-        }
-
-        private void ClearPicks()
-        {
-            ClearClicks();
-            _targetLineId = -1;
         }
 
         /// <summary>A label with - and + buttons. A button that would go past the limits is greyed out.</summary>

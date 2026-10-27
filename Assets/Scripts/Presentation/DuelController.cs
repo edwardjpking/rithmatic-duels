@@ -173,8 +173,12 @@ namespace RithmaticDuels.Presentation
                 bool changed = false;
                 if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 0)
                     changed = picker.HandleBoardClick(_board, _chooser, _rules, boardPoint.Value);
-                else if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 1)
-                    changed = picker.HandleRightClick();
+                else if (current.type == EventType.MouseDown && current.button == 1)
+                {
+                    picker.HandleRightClick(_board, _chooser, _rules);
+                    // A right-click anywhere steps back. Always take it, so no button treats it as a left-click.
+                    changed = true;
+                }
                 else if (boardPoint.HasValue && current.type == EventType.ScrollWheel)
                 {
                     // Shift + scroll changes an attached ellipse's roundness or turns a circle. Some platforms turn Shift + scroll into
