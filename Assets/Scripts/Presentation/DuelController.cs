@@ -58,6 +58,8 @@ namespace RithmaticDuels.Presentation
         private readonly List<float> _logHeights = new List<float>();
         private float _logHeightsWidth = -1f;
         private Vector2 _menuScroll;
+        /// <summary>The menu area's width this frame, so the picker can wrap its button rows to fit.</summary>
+        private float _menuContentWidth = 400f;
         private string _error;
 
         /// <summary>
@@ -207,6 +209,7 @@ namespace RithmaticDuels.Presentation
 
             float logTop = height * LogTop;
             float menuWidth = width * MenuFraction();
+            _menuContentWidth = menuWidth - 20;
             GUILayout.BeginArea(new Rect(10, HeaderHeight, menuWidth - 20, height - HeaderHeight - 10));
             if (_phase == Phase.Choosing)
             {
@@ -340,7 +343,7 @@ namespace RithmaticDuels.Presentation
         {
             GUILayout.Label(TurnNarrator.PlayerName(_chooser) + ". " + DescribeWork(_chooser, true));
             GUILayout.Label("Opponent: " + DescribeWork(_chooser.Opponent(), false));
-            var choice = _pickers[(int)_chooser].Draw(_duel, _board, _chooser, ref _menuScroll);
+            var choice = _pickers[(int)_chooser].Draw(_duel, _board, _chooser, ref _menuScroll, _menuContentWidth);
             if (choice != null) Then(() => Lock(choice));
         }
 
