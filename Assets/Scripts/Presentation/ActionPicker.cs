@@ -1285,8 +1285,8 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// A row of buttons, one selected. The row always stays on one line, at the largest font size that fits in
-        /// <paramref name="width"/> (never above the skin's own size). Each button is as wide as its label needs,
-        /// with the spare room shared out, so short labels don't force long ones to shrink. Only below
+        /// <paramref name="width"/> (never above the skin's own size). Every button in the row
+        /// has the same width, and together they fill it. Only below
         /// MinButtonFontSize does the row wrap onto more lines.
         /// </summary>
         private static int Buttons(int selected, string[] labels, float width)
@@ -1317,25 +1317,28 @@ namespace RithmaticDuels.Presentation
                 }
             }
 
-            float total = TotalWidth(_smallButton, labels);
-            float spare = Mathf.Max(0f, available - total) / labels.Length;
+            // Every button in the row gets the same share of the width.
+            float each = available / labels.Length;
             int chosen = selected;
             GUILayout.BeginHorizontal(GUILayout.MaxWidth(width));
             for (int i = 0; i < labels.Length; i++)
             {
-                float w = _smallButton.CalcSize(new GUIContent(labels[i])).x + spare;
+                float w = each;
                 if (GUILayout.Toggle(i == selected, labels[i], _smallButton, GUILayout.Width(w)) && i != selected) chosen = i;
             }
             GUILayout.EndHorizontal();
             return chosen;
         }
 
-        /// <summary>The width these labels need side by side in this style, gaps not included.</summary>
+        /// <summary>
+        /// The width these labels need side by side in this style, gaps not included. The buttons share one
+        /// width, so it is the widest label times the count.
+        /// </summary>
         private static float TotalWidth(GUIStyle style, string[] labels)
         {
-            float total = 0f;
-            foreach (var label in labels) total += style.CalcSize(new GUIContent(label)).x;
-            return total;
+            float widest = 0f;
+            foreach (var label in labels) widest = Mathf.Max(widest, style.CalcSize(new GUIContent(label)).x);
+            return widest * labels.Length;
         }
 
         private static string ActionLabel(ActionKind kind)
