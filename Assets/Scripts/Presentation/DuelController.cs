@@ -259,6 +259,10 @@ namespace RithmaticDuels.Presentation
             if (blocked) current.type = EventType.Used;
             Vector2 realMouse = current.mousePosition;
             if (_showLines) current.mousePosition = new Vector2(-10000f, -10000f);
+            // Unity lights buttons up from its own record of the mouse, so also draw them with no hover look.
+            var buttonStyle = GUI.skin.button;
+            GUIStyleState realHover = buttonStyle.hover, realOnHover = buttonStyle.onHover;
+            if (_showLines) { buttonStyle.hover = buttonStyle.normal; buttonStyle.onHover = buttonStyle.onNormal; }
             GUILayout.BeginArea(menuRect);
             // Ended in finally so a click's ExitGUI can't leave the area's clip pushed.
             try
@@ -291,6 +295,8 @@ namespace RithmaticDuels.Presentation
             // Restore only what was blocked here: a menu button that used the click must leave it used.
             if (blocked) current.type = realType;
             if (_showLines) current.mousePosition = realMouse;
+            buttonStyle.hover = realHover;
+            buttonStyle.onHover = realOnHover;
             if (_showLines) DrawLinesOverlay(menuRect);
 
             GUILayout.BeginArea(new Rect(menuWidth, HeaderHeight, width - menuWidth - 10, 24));
@@ -322,7 +328,14 @@ namespace RithmaticDuels.Presentation
         }
 
         private Texture2D _crossCursor;
+        private int _crossSize;
         private bool _crossShown;
+
+        /// <summary>How wide the red cross is, in board units, so it matches marks drawn on the board (a chalkling's diamond).</summary>
+        private const float CrossBoardSize = 0.5f;
+        /// <summary>Pointer sizes the operating system reliably accepts; outside these the cross stops scaling.</summary>
+        private const int MinCrossPixels = 16;
+        private const int MaxCrossPixels = 128;
 
         /// <summary>
         /// Where nothing can be placed (DESIGN.md section 1.1), the mouse pointer itself turns into a red cross. Using
@@ -331,11 +344,29 @@ namespace RithmaticDuels.Presentation
         private void UpdateInvalidCursor()
         {
             var preview = _phase == Phase.Choosing && _duel != null ? _pickers[(int)_chooser].Preview : null;
-            bool show = preview != null && preview.InvalidHover.HasValue;
-            if (show == _crossShown) return;
+            bool show = !_showLines && preview != null && preview.InvalidHover.HasValue;
+            // The cross is sized to the board, so rebuild it when the window (and so the board's scale) changes.
+            int size = show ? CrossPixels() : _crossSize;
+            if (show == _crossShown && size == _crossSize) return;
             _crossShown = show;
-            if (show && _crossCursor == null) _crossCursor = MakeCrossCursor(32);
-            Cursor.SetCursor(show ? _crossCursor : null, new Vector2(16f, 16f), CursorMode.Auto);
+            if (show && (_crossCursor == null || size != _crossSize))
+            {
+                if (_crossCursor != null) Destroy(_crossCursor);
+                _crossCursor = MakeCrossCursor(size);
+                _crossSize = size;
+            }
+            Cursor.SetCursor(show ? _crossCursor : null, new Vector2(_crossSize / 2f, _crossSize / 2f), CursorMode.Auto);
+        }
+
+        /// <summary>The cross's width in screen pixels: <see cref="CrossBoardSize"/> board units at the board's current scale.</summary>
+        private int CrossPixels()
+        {
+            if (_camera == null || _camera.orthographicSize <= 0f) return 32;
+            float pixelsPerUnit = _camera.pixelRect.height / (2f * _camera.orthographicSize);
+            int size = Mathf.RoundToInt(CrossBoardSize * pixelsPerUnit);
+            // Even sizes keep the hotspot on the cross's centre.
+            size += size % 2;
+            return Mathf.Clamp(size, MinCrossPixels, MaxCrossPixels);
         }
 
         private void OnDisable()
@@ -350,15 +381,20 @@ namespace RithmaticDuels.Presentation
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
             var red = new Color(0.95f, 0.3f, 0.25f, 1f);
             var outline = new Color(0f, 0f, 0f, 0.8f);
+            // Stroke and margins scale with the size; at 32 pixels they are 1.6 and 2.8 pixels wide, 4 and 3 in from the edge.
+            float stroke = size * 0.05f;
+            float edge = size * 0.0875f;
+            int margin = Mathf.Max(1, Mathf.RoundToInt(size * 0.125f));
+            int outerMargin = Mathf.Max(0, margin - Mathf.Max(1, Mathf.RoundToInt(size / 32f)));
             for (int y = 0; y < size; y++)
                 for (int x = 0; x < size; x++)
                 {
                     // Distance from either diagonal, in pixels.
                     float d = Mathf.Min(Mathf.Abs(x - y), Mathf.Abs(x + y - (size - 1))) / 1.41421f;
-                    bool inside = x >= 4 && x < size - 4 && y >= 4 && y < size - 4;
+                    bool inside = x >= margin && x < size - margin && y >= margin && y < size - margin;
                     Color c = Color.clear;
-                    if (inside && d <= 1.6f) c = red;
-                    else if (x >= 3 && x < size - 3 && y >= 3 && y < size - 3 && d <= 2.8f) c = outline;
+                    if (inside && d <= stroke) c = red;
+                    else if (x >= outerMargin && x < size - outerMargin && y >= outerMargin && y < size - outerMargin && d <= edge) c = outline;
                     texture.SetPixel(x, y, c);
                 }
             texture.Apply();
@@ -649,12 +685,17 @@ namespace RithmaticDuels.Presentation
                 foreach (var line in _duel.Lines)
                 {
                     if (line.Owner != player || !line.IsActive) continue;
-                    // The entry for the line hovered on the board is picked out in the highlight colour, so it works both ways.
-                    Color oldColour = GUI.contentColor;
-                    if (line.Id == _boardHoverLineId) GUI.contentColor = new Color(BoardRenderer.HighlightColour.r, BoardRenderer.HighlightColour.g, BoardRenderer.HighlightColour.b, 1f);
-                    GUILayout.Label("    " + TurnNarrator.LineName(line));
-                    GUI.contentColor = oldColour;
-                    if (Event.current.type == EventType.Repaint && GUILayoutUtility.GetLastRect().Contains(Event.current.mousePosition))
+                    // The hovered entry, or the entry for the line hovered on the board, gets the same light grey
+                    // background as a hovered menu button, so the highlight works both ways.
+                    var content = new GUIContent("    " + TurnNarrator.LineName(line));
+                    Rect rect = GUILayoutUtility.GetRect(content, GUI.skin.label);
+                    if (Event.current.type == EventType.Repaint && (line.Id == _boardHoverLineId || rect.Contains(Event.current.mousePosition)))
+                    {
+                        var hover = GUI.skin.button.hover.background;
+                        if (hover != null) GUI.DrawTexture(rect, hover);
+                    }
+                    GUI.Label(rect, content);
+                    if (Event.current.type == EventType.Repaint && rect.Contains(Event.current.mousePosition))
                         _listHoverLineId = line.Id;
                 }
             }

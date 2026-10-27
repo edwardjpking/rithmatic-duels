@@ -120,7 +120,6 @@ namespace RithmaticDuels.Presentation
         private Glyph? _glyph;
         private ChalklingStat? _modifierStat;
         private int _targetLineId = -1;
-        private int _amount = 1;
 
         // What the player has typed into each chalkling stat box (see StatEntry).
         private readonly TypedStat _durabilityEntry = new TypedStat();

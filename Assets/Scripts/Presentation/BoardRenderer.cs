@@ -19,8 +19,8 @@ namespace RithmaticDuels.Presentation
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
         internal static readonly Color HighlightColour = new Color(1f, 0.4f, 0.85f, 0.5f);
-        // Hover marks use lime so they never look like the light-blue placement preview or the magenta list highlight.
-        private static readonly Color HoverColour = new Color(0.6f, 1f, 0.3f, 1f);
+        // Lime is used for the durability dot and nothing else: one colour, one meaning (DESIGN.md section 1.1).
+        private static readonly Color DurabilityDotColour = new Color(0.6f, 1f, 0.3f, 1f);
         private const float HoverMarkSize = 0.22f;
         private static readonly Color BlockedFill = new Color(0.95f, 0.3f, 0.25f, 0.75f);
 
@@ -111,7 +111,9 @@ namespace RithmaticDuels.Presentation
             var vigor = body as VigorBody;
             if (vigor != null)
             {
-                Disc(vigor.Position, 0.2f + glow, HighlightColour);
+                // A glow along the wave itself, plus its aim line in the usual aim line colour.
+                Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, HighlightColour, false, 0.06f + glow);
+                AimLine(vigor.Position, vigor.Direction, PreviewColour);
                 return;
             }
             var chalkling = body as ChalklingBody;
@@ -219,9 +221,9 @@ namespace RithmaticDuels.Presentation
             if (HoverWardPoint.HasValue)
             {
                 Disc(HoverWardPoint.Value, HoverMarkSize / 2f + 0.03f, Color.black);
-                Disc(HoverWardPoint.Value, HoverMarkSize / 2f, HoverColour);
+                Disc(HoverWardPoint.Value, HoverMarkSize / 2f, DurabilityDotColour);
             }
-            if (HoverAimFrom.HasValue && HoverAimDirection.HasValue) AimLine(HoverAimFrom.Value, HoverAimDirection.Value, HoverColour);
+            if (HoverAimFrom.HasValue && HoverAimDirection.HasValue) AimLine(HoverAimFrom.Value, HoverAimDirection.Value, PreviewColour);
         }
 
         private const float AimDash = 0.3f;
@@ -313,7 +315,7 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A LoV is drawn as a short sine wave along its direction of travel; dotted while in progress.</summary>
-        private static void Wave(Vec2 centre, Vec2 direction, float length, Color colour, bool dotted = false)
+        private static void Wave(Vec2 centre, Vec2 direction, float length, Color colour, bool dotted = false, float width = 0.06f)
         {
             const float amplitude = 0.18f;
             const int steps = 16;
@@ -323,7 +325,7 @@ namespace RithmaticDuels.Presentation
             {
                 float s = (float)i / steps;
                 Vec2 point = centre + direction * ((s - 1f) * length) + side * (amplitude * Mathf.Sin(s * 4f * Mathf.PI));
-                if (i > 0 && !(dotted && i % 2 == 0)) Line(previous, point, 0.06f, colour);
+                if (i > 0 && !(dotted && i % 2 == 0)) Line(previous, point, width, colour);
                 previous = point;
             }
         }

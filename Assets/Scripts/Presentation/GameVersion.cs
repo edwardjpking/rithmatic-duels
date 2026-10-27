@@ -6,10 +6,10 @@ namespace RithmaticDuels.Presentation
     /// </summary>
     public static class GameVersion
     {
-        public const string Number = "0.20";
+        public const string Number = "0.21";
         public const string Date = "2026-10-27";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "bent aim line, lime hover marks, two-way list hover, GUIClip fix, no LoF through the main LoW centre";
+        public const string Summary = "grey list highlight, LoV wave glow, blue aim lines, one colour one meaning";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }
