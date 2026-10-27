@@ -6,10 +6,10 @@ namespace RithmaticDuels.Presentation
     /// </summary>
     public static class GameVersion
     {
-        public const string Number = "0.17.1";
+        public const string Number = "0.18";
         public const string Date = "2026-10-27";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "smooth red cross, one-row buttons, ellipse fit, turning circles, Mark's Cross LoF, LoW touch only where bound";
+        public const string Summary = "cross fixed, bigger buttons, right-click back, ellipse scroll swap, point durability, children fall with their LoW";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }

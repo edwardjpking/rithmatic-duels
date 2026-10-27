@@ -173,11 +173,15 @@ namespace RithmaticDuels.Presentation
                 bool changed = false;
                 if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 0)
                     changed = picker.HandleBoardClick(_board, _chooser, _rules, boardPoint.Value);
-                else if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 1)
-                    changed = picker.HandleRightClick();
+                else if (current.type == EventType.MouseDown && current.button == 1)
+                {
+                    picker.HandleRightClick(_board, _chooser, _rules);
+                    // A right-click anywhere steps back. Always take it, so no button treats it as a left-click.
+                    changed = true;
+                }
                 else if (boardPoint.HasValue && current.type == EventType.ScrollWheel)
                 {
-                    // Shift + scroll scales an attached ellipse overall. Some platforms turn Shift + scroll into
+                    // Shift + scroll changes an attached ellipse's roundness or turns a circle. Some platforms turn Shift + scroll into
                     // a sideways scroll, so fall back to the horizontal delta.
                     float delta = current.shift && Mathf.Abs(current.delta.y) < 1e-6f ? current.delta.x : current.delta.y;
                     changed = picker.HandleScroll(_board, _chooser, _rules, delta, current.shift);
@@ -253,14 +257,15 @@ namespace RithmaticDuels.Presentation
             float length = 0.7f * unit;
             float thickness = Mathf.Max(2f, 0.07f * unit);
             Color oldColour = GUI.color;
-            Matrix4x4 oldMatrix = GUI.matrix;
             GUI.color = new Color(0.95f, 0.3f, 0.25f, 0.9f);
-            var bar = new Rect(mouse.x - length / 2f, mouse.y - thickness / 2f, length, thickness);
-            foreach (float angle in new[] { 45f, -45f })
+            // Two diagonals made of small squares. GUI rotation misplaces things under the scaled GUI.matrix, so none is used.
+            const int steps = 12;
+            for (int i = 0; i <= steps; i++)
             {
-                GUIUtility.RotateAroundPivot(angle, mouse);
-                GUI.DrawTexture(bar, Texture2D.whiteTexture);
-                GUI.matrix = oldMatrix;
+                float offset = (i / (float)steps - 0.5f) * length / 1.41421f;
+                foreach (float sign in new[] { 1f, -1f })
+                    GUI.DrawTexture(new Rect(mouse.x + offset - thickness / 2f, mouse.y + sign * offset - thickness / 2f,
+                        thickness, thickness), Texture2D.whiteTexture);
             }
             GUI.color = oldColour;
         }
@@ -275,11 +280,17 @@ namespace RithmaticDuels.Presentation
             if (body == null) return;
             var line = body.Line;
             string text = TurnNarrator.LineName(line);
-            if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability + (line.Type == LineType.Warding ? " (weakest point)" : "");
+            var ward = body as WardBody;
+            if (ward != null)
+            {
+                // A LoW's durability varies around its outline, so show the point nearest the mouse.
+                int nearest = NearestSample(ward, boardPoint);
+                text += "\nDurability here " + ward.SampleDurability(nearest) + "/" + ward.SampleMax(nearest);
+            }
+            else if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability;
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
-            var ward = body as WardBody;
             if (ward != null && ward.BindPoints.Count > 0) text += "\n" + ward.BindPoints.Count + " bind points";
 
             if (_statsStyle == null)
@@ -304,6 +315,18 @@ namespace RithmaticDuels.Presentation
             DrawOutline(rect);
             GUI.color = oldColour;
             GUI.Label(rect, content, _statsStyle);
+        }
+
+        private static int NearestSample(WardBody ward, Vec2 point)
+        {
+            int nearest = 0;
+            float best = float.MaxValue;
+            for (int i = 0; i < ward.SampleCount; i++)
+            {
+                float distance = Vec2.Distance(ward.SamplePoint(i), point);
+                if (distance < best) { best = distance; nearest = i; }
+            }
+            return nearest;
         }
 
         private static void DrawOutline(Rect rect)
