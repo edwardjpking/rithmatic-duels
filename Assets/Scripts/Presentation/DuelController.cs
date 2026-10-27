@@ -259,6 +259,10 @@ namespace RithmaticDuels.Presentation
             if (blocked) current.type = EventType.Used;
             Vector2 realMouse = current.mousePosition;
             if (_showLines) current.mousePosition = new Vector2(-10000f, -10000f);
+            // Unity lights buttons up from its own record of the mouse, so also draw them with no hover look.
+            var buttonStyle = GUI.skin.button;
+            GUIStyleState realHover = buttonStyle.hover, realOnHover = buttonStyle.onHover;
+            if (_showLines) { buttonStyle.hover = buttonStyle.normal; buttonStyle.onHover = buttonStyle.onNormal; }
             GUILayout.BeginArea(menuRect);
             // Ended in finally so a click's ExitGUI can't leave the area's clip pushed.
             try
@@ -291,6 +295,8 @@ namespace RithmaticDuels.Presentation
             // Restore only what was blocked here: a menu button that used the click must leave it used.
             if (blocked) current.type = realType;
             if (_showLines) current.mousePosition = realMouse;
+            buttonStyle.hover = realHover;
+            buttonStyle.onHover = realOnHover;
             if (_showLines) DrawLinesOverlay(menuRect);
 
             GUILayout.BeginArea(new Rect(menuWidth, HeaderHeight, width - menuWidth - 10, 24));
@@ -338,7 +344,7 @@ namespace RithmaticDuels.Presentation
         private void UpdateInvalidCursor()
         {
             var preview = _phase == Phase.Choosing && _duel != null ? _pickers[(int)_chooser].Preview : null;
-            bool show = preview != null && preview.InvalidHover.HasValue;
+            bool show = !_showLines && preview != null && preview.InvalidHover.HasValue;
             // The cross is sized to the board, so rebuild it when the window (and so the board's scale) changes.
             int size = show ? CrossPixels() : _crossSize;
             if (show == _crossShown && size == _crossSize) return;
@@ -679,12 +685,17 @@ namespace RithmaticDuels.Presentation
                 foreach (var line in _duel.Lines)
                 {
                     if (line.Owner != player || !line.IsActive) continue;
-                    // The entry for the line hovered on the board is picked out in the highlight colour, so it works both ways.
-                    Color oldColour = GUI.contentColor;
-                    if (line.Id == _boardHoverLineId) GUI.contentColor = new Color(BoardRenderer.HighlightColour.r, BoardRenderer.HighlightColour.g, BoardRenderer.HighlightColour.b, 1f);
-                    GUILayout.Label("    " + TurnNarrator.LineName(line));
-                    GUI.contentColor = oldColour;
-                    if (Event.current.type == EventType.Repaint && GUILayoutUtility.GetLastRect().Contains(Event.current.mousePosition))
+                    // The hovered entry, or the entry for the line hovered on the board, gets the same light grey
+                    // background as a hovered menu button, so the highlight works both ways.
+                    var content = new GUIContent("    " + TurnNarrator.LineName(line));
+                    Rect rect = GUILayoutUtility.GetRect(content, GUI.skin.label);
+                    if (Event.current.type == EventType.Repaint && (line.Id == _boardHoverLineId || rect.Contains(Event.current.mousePosition)))
+                    {
+                        var hover = GUI.skin.button.hover.background;
+                        if (hover != null) GUI.DrawTexture(rect, hover);
+                    }
+                    GUI.Label(rect, content);
+                    if (Event.current.type == EventType.Repaint && rect.Contains(Event.current.mousePosition))
                         _listHoverLineId = line.Id;
                 }
             }

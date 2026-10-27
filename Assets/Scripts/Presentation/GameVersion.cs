@@ -9,7 +9,7 @@ namespace RithmaticDuels.Presentation
         public const string Number = "0.21";
         public const string Date = "2026-10-27";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "one colour one meaning, unused field removed";
+        public const string Summary = "grey list highlight, LoV wave glow, blue aim lines, one colour one meaning";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }
