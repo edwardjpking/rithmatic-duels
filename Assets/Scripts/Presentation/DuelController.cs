@@ -262,9 +262,17 @@ namespace RithmaticDuels.Presentation
             Vector2 realMouse = current.mousePosition;
             if (_showLines) current.mousePosition = new Vector2(-10000f, -10000f);
             // Unity lights buttons up from its own record of the mouse, so also draw them with no hover look.
+            // Assigning a GUIStyleState copies its contents rather than the reference, so save the hover looks' values to put back.
             var buttonStyle = GUI.skin.button;
-            GUIStyleState realHover = buttonStyle.hover, realOnHover = buttonStyle.onHover;
-            if (_showLines) { buttonStyle.hover = buttonStyle.normal; buttonStyle.onHover = buttonStyle.onNormal; }
+            Texture2D hoverBack = buttonStyle.hover.background, onHoverBack = buttonStyle.onHover.background;
+            Color hoverText = buttonStyle.hover.textColor, onHoverText = buttonStyle.onHover.textColor;
+            if (_showLines)
+            {
+                buttonStyle.hover.background = buttonStyle.normal.background;
+                buttonStyle.hover.textColor = buttonStyle.normal.textColor;
+                buttonStyle.onHover.background = buttonStyle.onNormal.background;
+                buttonStyle.onHover.textColor = buttonStyle.onNormal.textColor;
+            }
             GUILayout.BeginArea(menuRect);
             // Ended in finally so a click's ExitGUI can't leave the area's clip pushed.
             try
@@ -297,8 +305,10 @@ namespace RithmaticDuels.Presentation
             // Restore only what was blocked here: a menu button that used the click must leave it used.
             if (blocked) current.type = realType;
             if (_showLines) current.mousePosition = realMouse;
-            buttonStyle.hover = realHover;
-            buttonStyle.onHover = realOnHover;
+            buttonStyle.hover.background = hoverBack;
+            buttonStyle.hover.textColor = hoverText;
+            buttonStyle.onHover.background = onHoverBack;
+            buttonStyle.onHover.textColor = onHoverText;
             if (_showLines) DrawLinesOverlay(menuRect);
 
             GUILayout.BeginArea(new Rect(menuWidth, HeaderHeight, width - menuWidth - 10, 24));
