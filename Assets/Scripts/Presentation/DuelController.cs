@@ -319,7 +319,7 @@ namespace RithmaticDuels.Presentation
             DrawLog(width - menuWidth - 10, height - logTop - 10);
             GUILayout.EndArea();
 
-            if (_renderer != null) { _renderer.HoverWardPoint = null; _renderer.HoverAimFrom = null; _renderer.HoverAimDirection = null; }
+            if (_renderer != null) { _renderer.HoverWardPoint = null; _renderer.HoverAimFrom = null; _renderer.HoverAimDirection = null; _renderer.HoverChalkling = null; }
             if (boardPoint.HasValue)
             {
                 var hovered = _board.BodyAt(boardPoint.Value, 0.3f);
@@ -438,6 +438,7 @@ namespace RithmaticDuels.Presentation
                 _renderer.HoverAimDirection = vigor.Direction;
             }
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
+            if (_renderer != null && body is ChalklingBody) _renderer.HoverChalkling = (ChalklingBody)body;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
             if (ward != null && ward.BindPoints.Count > 0) text += "\n" + ward.BindPoints.Count + " bind points";

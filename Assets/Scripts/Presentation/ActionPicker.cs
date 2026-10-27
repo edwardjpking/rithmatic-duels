@@ -30,6 +30,10 @@ namespace RithmaticDuels.Presentation
         public Vec2? From;
         public Vec2? To;
         public Vec2? Point;
+        /// <summary>A chalkling being placed: its glyph and where it will stand, for its guard ring or attack path.</summary>
+        public Glyph? ChalklingGlyph;
+        public Vec2? ChalklingAnchor;
+        public float ChalklingGuardDistance;
         /// <summary>Bind points of the main LoW the player has picked.</summary>
         public readonly List<int> BindPoints = new List<int>();
     }
@@ -697,6 +701,10 @@ namespace RithmaticDuels.Presentation
                     if (bound && _bindA >= 0) placement = Placement.AtBindPoint(_bindA);
                     if (!bound && _pointA.HasValue) placement = Placement.At(_pointA.Value);
                     preview.Point = bound ? null : _pointA;
+                    preview.ChalklingGlyph = spec.Glyph;
+                    var bindSpots = board.BindPointsOf(player);
+                    preview.ChalklingAnchor = bound ? (_bindA >= 0 && _bindA < bindSpots.Count ? bindSpots[_bindA] : (Vec2?)null) : _pointA ?? _hover;
+                    preview.ChalklingGuardDistance = bound ? config.Making.TetherDistance : config.Making.GuardDistance;
                     if (!bound) preview.InvalidHover = InvalidHover(board, player);
                     break;
             }
