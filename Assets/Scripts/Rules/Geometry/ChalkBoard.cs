@@ -247,6 +247,12 @@ namespace RithmaticDuels.Rules.Geometry
                         if (placement.Size < min - 1e-4f || placement.Size > max + 1e-4f)
                             return spec.BindPoints == 2 ? "That ellipse is too flat or too round." : "That circle is too small or too big.";
                     }
+                    if (!spec.IsMarksCross && spec.BindPoints == 2 && placement.Scale > 0f)
+                    {
+                        var geometry = _config.Geometry;
+                        if (placement.Scale < geometry.AttachedEllipseMinScale - 1e-4f || placement.Scale > geometry.AttachedEllipseMaxScale + 1e-4f)
+                            return "That ellipse is too small or too big.";
+                    }
                     string bindPoint = ValidBindPoint(placement.BindPointA, bindPoints);
                     if (bindPoint != null) return bindPoint;
                     if (BindPointFull(player, placement.BindPointA))
@@ -324,13 +330,12 @@ namespace RithmaticDuels.Rules.Geometry
                 case PlacementKind.FreePoint:
                     return DistanceOutside(main, placement.PointA);
                 case PlacementKind.FreeSegment:
-                    const int steps = 16;
+                    // The nearest the line comes to the outline; 0 if any of it is inside.
+                    if (main.Shape.Contains(placement.PointA) || main.Shape.Contains(placement.PointB)) return 0f;
                     float nearest = float.PositiveInfinity;
-                    for (int i = 0; i <= steps; i++)
-                    {
-                        Vec2 point = placement.PointA + (placement.PointB - placement.PointA) * ((float)i / steps);
-                        nearest = Math.Min(nearest, DistanceOutside(main, point));
-                    }
+                    int count = main.SampleCount;
+                    for (int i = 0; i < count; i++)
+                        nearest = Math.Min(nearest, SegmentDistance(placement.PointA, placement.PointB, main.SamplePoint(i), main.SamplePoint((i + 1) % count)));
                     return nearest;
                 default:
                     return 0f;
@@ -384,16 +389,45 @@ namespace RithmaticDuels.Rules.Geometry
         /// The biggest size (radius, or an ellipse's semi-minor axis) an attached LoW at this bind point can
         /// have and still fit on the board and the player's half, within its configured range.
         /// </summary>
-        public float MaxAttachedSize(Player player, DrawingSpec spec, int bindPoint)
+        public float MaxAttachedSize(Player player, DrawingSpec spec, int bindPoint, float scale = 0f)
         {
             float min, max, start;
             AttachedSizeRange(spec, out min, out max, out start);
-            return LargestThatFits(min, max, size =>
+            return LargestThatFits(min, max, size => AttachedFits(player, spec, Placement.AtBindPoint(bindPoint, size, scale)));
+        }
+
+        /// <summary>
+        /// The biggest overall scale an attached ellipse at this bind point, with this semi-minor axis (before
+        /// scaling), can have and still fit on the board and the player's half, within its configured range.
+        /// </summary>
+        public float MaxAttachedScale(Player player, DrawingSpec spec, int bindPoint, float size)
+        {
+            var geometry = _config.Geometry;
+            return LargestThatFits(geometry.AttachedEllipseMinScale, geometry.AttachedEllipseMaxScale,
+                scale => AttachedFits(player, spec, Placement.AtBindPoint(bindPoint, size, scale)));
+        }
+
+        /// <summary>
+        /// The overall scales an attached ellipse at this bind point can be given, one for each whole-number
+        /// durability of its weakest point, as far as it fits on the player's half.
+        /// </summary>
+        public List<float> AttachedScales(Player player, DrawingSpec spec, int bindPoint, float size)
+        {
+            var geometry = _config.Geometry;
+            float max = bindPoint >= 0 ? MaxAttachedScale(player, spec, bindPoint, size) : geometry.AttachedEllipseMaxScale;
+            int at = Math.Max(0, bindPoint);
+            return HealthSteps(geometry.AttachedEllipseMinScale, max, scale =>
             {
                 IReadOnlyList<Vec2> unused;
-                var shape = WardGeometry(player, spec, Placement.AtBindPoint(bindPoint, size), out unused);
-                return shape != null && CheckOutline(player, shape, _config.Geometry.DrawOnOwnHalfOnly) == null;
+                return WardGeometry(player, spec, Placement.AtBindPoint(at, size, scale), out unused);
             });
+        }
+
+        private bool AttachedFits(Player player, DrawingSpec spec, Placement placement)
+        {
+            IReadOnlyList<Vec2> unused;
+            var shape = WardGeometry(player, spec, placement, out unused);
+            return shape != null && CheckOutline(player, shape, _config.Geometry.DrawOnOwnHalfOnly) == null;
         }
 
         /// <summary>
@@ -433,16 +467,16 @@ namespace RithmaticDuels.Rules.Geometry
         /// The sizes an attached LoW at this bind point can be given (radius, or an ellipse's semi-minor axis),
         /// one for each whole-number durability of its weakest point, as far as it fits on the player's half.
         /// </summary>
-        public List<float> AttachedSizes(Player player, DrawingSpec spec, int bindPoint)
+        public List<float> AttachedSizes(Player player, DrawingSpec spec, int bindPoint, float scale = 0f)
         {
             float min, max, start;
             AttachedSizeRange(spec, out min, out max, out start);
-            if (bindPoint >= 0) max = MaxAttachedSize(player, spec, bindPoint);
+            if (bindPoint >= 0) max = MaxAttachedSize(player, spec, bindPoint, scale);
             int at = Math.Max(0, bindPoint);
             return HealthSteps(min, max, size =>
             {
                 IReadOnlyList<Vec2> unused;
-                return WardGeometry(player, spec, Placement.AtBindPoint(at, size), out unused);
+                return WardGeometry(player, spec, Placement.AtBindPoint(at, size, scale), out unused);
             });
         }
 
@@ -896,8 +930,9 @@ namespace RithmaticDuels.Rules.Geometry
 
             // An attached ellipse sticks straight out from the bind point, so it reaches as far as its long axis.
             bool attachedEllipse = !spec.IsMarksCross && spec.BindPoints == 2;
+            float scale = attachedEllipse ? AttachedScale(placement) : 1f;
             float reach = spec.IsMarksCross ? _config.Warding.MarksCrossRadius
-                : attachedEllipse ? _config.Geometry.AttachedEllipseSemiMajor
+                : attachedEllipse ? _config.Geometry.AttachedEllipseSemiMajor * scale
                 : AttachedSize(spec, placement);
             int count = spec.IsMarksCross ? _config.Warding.MarksCrossBindPoints : spec.BindPoints;
             Vec2 centre;
@@ -923,7 +958,7 @@ namespace RithmaticDuels.Rules.Geometry
             }
             if (attachedEllipse)
             {
-                var shape = WardShape.Ellipse(centre, reach, AttachedSize(spec, placement), outward.Angle);
+                var shape = WardShape.Ellipse(centre, reach, AttachedSize(spec, placement) * scale, outward.Angle);
                 bindPoints = BindPoints.ForEllipse(shape);
                 return shape;
             }
@@ -941,6 +976,14 @@ namespace RithmaticDuels.Rules.Geometry
             AttachedSizeRange(spec, out min, out max, out start);
             float wanted = placement != null && placement.Size > 0f ? placement.Size : start;
             return Math.Max(min, Math.Min(max, wanted));
+        }
+
+        /// <summary>The overall scale actually used for an attached ellipse with this placement, within the configured range.</summary>
+        public float AttachedScale(Placement placement)
+        {
+            var geometry = _config.Geometry;
+            float wanted = placement != null && placement.Scale > 0f ? placement.Scale : 1f;
+            return Math.Max(geometry.AttachedEllipseMinScale, Math.Min(geometry.AttachedEllipseMaxScale, wanted));
         }
 
         /// <summary>The range the scroll wheel can set an attached LoW's size in, and where it starts.</summary>
@@ -1383,7 +1426,51 @@ namespace RithmaticDuels.Rules.Geometry
             Vec2 side = along.Length > 1e-6f ? along.Perp.Normalized * halfWidth : Vec2.Zero;
             return CheckLoFCorner(player, segment.A + side, halfOnly, halfWidth) ?? CheckLoFCorner(player, segment.A - side, halfOnly, halfWidth)
                 ?? CheckLoFCorner(player, segment.B + side, halfOnly, halfWidth) ?? CheckLoFCorner(player, segment.B - side, halfOnly, halfWidth)
-                ?? (CrossesAWard(player, segment) ? "A Line of Forbiddance can't cross a Line of Warding. It can lie along one as a tangent, or join two bind points of one." : null);
+                ?? (CrossesAWard(player, segment) || !ClearOfWards(player, segment, halfWidth)
+                    ? "A Line of Forbiddance can't overlap a Line of Warding. It can only touch one at a bind point: as a tangent there, or joining two bind points." : null);
+        }
+
+        /// <summary>Half the thickness a LoW is drawn with.</summary>
+        private float LineHalfWidth(WardBody ward)
+        {
+            var geometry = _config.Geometry;
+            return (ward.Line.IsMainWard ? geometry.MainWardLineWidth : geometry.WardLineWidth) / 2f;
+        }
+
+        /// <summary>
+        /// True if no part of the LoF, drawn <paramref name="halfWidth"/> either side of the segment, overlaps a LoW
+        /// as drawn. A LoW the segment meets at one of its bind points is exempt: there the two touch, as a tangent or
+        /// a chord does, and <see cref="CrossesAWard"/> checks they only touch.
+        /// </summary>
+        private bool ClearOfWards(Player player, Segment segment, float halfWidth)
+        {
+            foreach (var ward in WardsOf(player))
+            {
+                bool touches = false;
+                foreach (var point in ward.BindPoints) touches |= DistanceToSegment(point, segment) < SameBindPoint;
+                if (touches) continue;
+                float clearance = halfWidth + LineHalfWidth(ward);
+                if (DistanceToSegment(ward.Shape.Centre, segment) > Extent(ward.Shape) + clearance) continue;
+                int count = ward.SampleCount;
+                for (int i = 0; i < count; i++)
+                    if (SegmentDistance(segment.A, segment.B, ward.SamplePoint(i), ward.SamplePoint((i + 1) % count)) < clearance - 1e-4f)
+                        return false;
+            }
+            return true;
+        }
+
+        /// <summary>The shortest distance between segments ab and cd: 0 if they cross.</summary>
+        private static float SegmentDistance(Vec2 a, Vec2 b, Vec2 c, Vec2 d)
+        {
+            float d1 = Cross(b - a, c - a), d2 = Cross(b - a, d - a), d3 = Cross(d - c, a - c), d4 = Cross(d - c, b - c);
+            if (((d1 > 0f && d2 < 0f) || (d1 < 0f && d2 > 0f)) && ((d3 > 0f && d4 < 0f) || (d3 < 0f && d4 > 0f))) return 0f;
+            return Math.Min(Math.Min(DistanceToSegment(a, new Segment(c, d)), DistanceToSegment(b, new Segment(c, d))),
+                Math.Min(DistanceToSegment(c, new Segment(a, b)), DistanceToSegment(d, new Segment(a, b))));
+        }
+
+        private static float Cross(Vec2 u, Vec2 v)
+        {
+            return u.X * v.Y - u.Y * v.X;
         }
 
         /// <summary>Points this close to an outline (as a share of the shape's size) count as touching it, not crossing.</summary>
@@ -1435,6 +1522,7 @@ namespace RithmaticDuels.Rules.Geometry
                     float t = 2f * (float)Math.PI * i / steps;
                     if (Side(ward.Shape, shape.PointAt(t)) < 0 || Side(shape, ward.Shape.PointAt(t)) < 0) return true;
                 }
+                if (!TouchesAtABindPoint(shape, ward.BindPoints) && TooClose(shape, ward, LineHalfWidth(ward))) return true;
             }
             foreach (var body in _bodies.Values)
             {
@@ -1442,8 +1530,50 @@ namespace RithmaticDuels.Rules.Geometry
                 if (forbiddance == null || forbiddance.Owner != player || !forbiddance.Line.IsActive) continue;
                 for (int i = 0; i <= steps; i++)
                     if (Side(shape, forbiddance.Segment.A + (forbiddance.Segment.B - forbiddance.Segment.A) * ((float)i / steps)) < 0) return true;
+                // A LoF that meets the new LoW at a bind point (a tangent there, say) touches it; any other must keep clear.
+                bool touches = false;
+                foreach (var point in BindPointsOf(player))
+                    touches |= Side(shape, point) == 0 && DistanceToSegment(point, forbiddance.Segment) < SameBindPoint;
+                if (touches) continue;
+                float clearance = _config.Geometry.ForbiddanceWidth / 2f + _config.Geometry.WardLineWidth / 2f;
+                for (int i = 0; i < steps; i++)
+                    if (SegmentDistance(forbiddance.Segment.A, forbiddance.Segment.B, shape.PointAt(2f * (float)Math.PI * i / steps),
+                        shape.PointAt(2f * (float)Math.PI * (i + 1) / steps)) < clearance - 1e-4f) return true;
             }
             return false;
+        }
+
+        /// <summary>True if one of these bind points lies on the shape's outline: the two LoW meet there.</summary>
+        private static bool TouchesAtABindPoint(WardShape shape, IReadOnlyList<Vec2> bindPoints)
+        {
+            foreach (var point in bindPoints) if (Side(shape, point) == 0) return true;
+            return false;
+        }
+
+        /// <summary>True if a new LoW with this shape, drawn as thick as any LoW but the main one, would overlap the outline of this one as drawn.</summary>
+        private bool TooClose(WardShape shape, WardBody ward, float wardHalfWidth)
+        {
+            const int steps = 64;
+            float clearance = _config.Geometry.WardLineWidth / 2f + wardHalfWidth;
+            if (Vec2.Distance(shape.Centre, ward.Shape.Centre) > Extent(shape) + Extent(ward.Shape) + clearance) return false;
+            int count = ward.SampleCount;
+            var outline = new Vec2[count];
+            for (int j = 0; j < count; j++) outline[j] = ward.SamplePoint(j);
+            Vec2 a = shape.PointAt(0f);
+            for (int i = 1; i <= steps; i++)
+            {
+                Vec2 b = shape.PointAt(2f * (float)Math.PI * i / steps);
+                for (int j = 0; j < count; j++)
+                    if (SegmentDistance(a, b, outline[j], outline[(j + 1) % count]) < clearance - 1e-4f) return true;
+                a = b;
+            }
+            return false;
+        }
+
+        /// <summary>How far the shape's outline reaches from its centre, at most.</summary>
+        private static float Extent(WardShape shape)
+        {
+            return Math.Max(shape.A, shape.B);
         }
 
         private string CheckLoFCorner(Player player, Vec2 point, bool halfOnly, float halfWidth)

@@ -165,10 +165,23 @@ namespace RithmaticDuels.Rules
         public float AttachedEllipseSemiMinor = 1.25f;
         public float AttachedEllipseMinSemiMinor = 0.75f;
         public float AttachedEllipseMaxSemiMinor = 1.75f;
+        /// <summary>
+        /// Shift + scroll scales an attached ellipse's overall size (both axes) without changing how round it
+        /// is. Its semi-major axis spans the same range as an attached circle's radius, so the scale runs from
+        /// AttachedWardMinRadius to AttachedWardMaxRadius over AttachedEllipseSemiMajor (decided 2026-10-27).
+        /// </summary>
+        public float AttachedEllipseMinScale { get { return AttachedWardMinRadius / AttachedEllipseSemiMajor; } }
+        public float AttachedEllipseMaxScale { get { return AttachedWardMaxRadius / AttachedEllipseSemiMajor; } }
         /// <summary>Starting length of a LoF that is not bound at two points (tangent or free). The scroll wheel changes it within the range below.</summary>
         public float TangentForbiddanceLength = 3f;
         /// <summary>A LoF is a rectangle this wide. All of it must be on the player's half (DESIGN.md section 1.1).</summary>
         public float ForbiddanceWidth = 0.14f;
+        /// <summary>
+        /// How thick a LoW's outline is drawn (the main LoW, and every other). Lines may touch where they share a
+        /// bind point, but elsewhere no part of a LoF or LoW may overlap any of this thickness.
+        /// </summary>
+        public float WardLineWidth = 0.08f;
+        public float MainWardLineWidth = 0.12f;
         public float MinForbiddanceLength = 1f;
         public float MaxForbiddanceLength = 8f;
         /// <summary>The scroll wheel changes ellipse flatness, attached LoW radius and LoF length by this much per notch.</summary>
