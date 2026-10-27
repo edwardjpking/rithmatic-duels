@@ -173,8 +173,12 @@ namespace RithmaticDuels.Presentation
                 bool changed = false;
                 if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 0)
                     changed = picker.HandleBoardClick(_board, _chooser, _rules, boardPoint.Value);
-                else if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 1)
-                    changed = picker.HandleRightClick();
+                else if ((boardPoint.HasValue || OverMenu(mousePixels)) && current.type == EventType.MouseDown && current.button == 1)
+                {
+                    picker.HandleRightClick(_board, _chooser, _rules);
+                    // Always take the right-click, so the menu's buttons never treat it as a left-click.
+                    changed = true;
+                }
                 else if (boardPoint.HasValue && current.type == EventType.ScrollWheel)
                 {
                     // Shift + scroll scales an attached ellipse overall. Some platforms turn Shift + scroll into
@@ -312,6 +316,13 @@ namespace RithmaticDuels.Presentation
             GUI.DrawTexture(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), Texture2D.whiteTexture);
             GUI.DrawTexture(new Rect(rect.x, rect.y, 1f, rect.height), Texture2D.whiteTexture);
             GUI.DrawTexture(new Rect(rect.xMax - 1f, rect.y, 1f, rect.height), Texture2D.whiteTexture);
+        }
+
+        /// <summary>True if a position in real pixels (y down) is over the menu panel on the left, below the top bar.</summary>
+        private bool OverMenu(Vector2 pixels)
+        {
+            float scale = GuiScale();
+            return pixels.y > HeaderHeight * scale && pixels.x < Screen.width * MenuFraction();
         }
 
         /// <summary>The board point under a position in GUI pixels (y down), or null if it is off the board view.</summary>

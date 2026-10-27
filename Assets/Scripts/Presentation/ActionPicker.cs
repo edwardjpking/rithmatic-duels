@@ -302,15 +302,66 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>
-        /// A right-click on the board lets go of what has been picked there so far: the positions or bind points
-        /// clicked for the line being placed, and the LoF chosen for dismissal. Returns true if anything was let go.
-        /// Sizes set with the scroll wheel are kept.
+        /// A right-click on the board or the menu. If positions, bind points or a LoF to dismiss have been picked,
+        /// it lets go of them (sizes set with the scroll wheel are kept). Otherwise it steps back one level of the
+        /// menu, undoing the last choice made: for example, from a tangent LoF back to LoF with no placement chosen.
+        /// Returns true if anything changed.
         /// </summary>
-        public bool HandleRightClick()
+        public bool HandleRightClick(ChalkBoard board, Player player, RulesConfig config)
         {
-            bool picked = _bindA >= 0 || _bindB >= 0 || _pointA.HasValue || _pointB.HasValue || _targetLineId >= 0;
-            ClearPicks();
-            return picked;
+            bool needsMain = board.MainWardOf(player) == null && config.MainWardFirst;
+            // At home the main LoW's position is filled in for the player, so it isn't a pick to let go of.
+            bool mainAtHome = needsMain && config.Geometry.MainWardAtHome;
+            if (_bindA >= 0 || _bindB >= 0 || (_pointA.HasValue && !mainAtHome) || _pointB.HasValue || _targetLineId >= 0)
+            {
+                ClearPicks();
+                return true;
+            }
+            return StepBack(needsMain);
+        }
+
+        /// <summary>Undo the deepest menu choice made so far. Returns false if there is nothing to undo.</summary>
+        private bool StepBack(bool needsMain)
+        {
+            if (Effective == ActionKind.StartDrawing)
+            {
+                if (needsMain)
+                {
+                    if (_bindPointChoice >= 0) { _bindPointChoice = -1; return true; }
+                    if (_mainShape.HasValue) { _mainShape = null; return true; }
+                }
+                else
+                {
+                    switch (_lineType)
+                    {
+                        case LineType.Warding:
+                            if (_attachedWardChoice >= 0) { _attachedWardChoice = -1; return true; }
+                            break;
+                        case LineType.Forbiddance:
+                            if (_forbiddanceMode.HasValue) { _forbiddanceMode = null; return true; }
+                            break;
+                        case LineType.Vigor:
+                            if (_tier.HasValue) { _tier = null; return true; }
+                            break;
+                        case LineType.Making:
+                            // The point buy's stat values aren't steps; the choices below them are, last first.
+                            if (_glyph.HasValue) { _glyph = null; return true; }
+                            if (_chalklingMode.HasValue) { _chalklingMode = null; return true; }
+                            if (_modifierStat.HasValue) { _modifierStat = null; return true; }
+                            break;
+                    }
+                    if (_lineType.HasValue) { _lineType = null; return true; }
+                }
+            }
+            else if (Effective == ActionKind.DrawBindPoints && _bindPointChoice >= 0)
+            {
+                _bindPointChoice = -1;
+                return true;
+            }
+
+            if (_kind == ActionKind.CancelDrawing && _afterCancel.HasValue) { _afterCancel = null; return true; }
+            if (_kind.HasValue) { _kind = null; return true; }
+            return false;
         }
 
         /// <summary>
@@ -721,19 +772,11 @@ namespace RithmaticDuels.Presentation
             if (targets.Count == 0) return null;
             int index = targets.FindIndex(line => line.Id == _targetLineId);
 
-            // One button per line, laid out by hand so a right-click can be caught before the button sees it.
-            var current = Event.current;
+            // One button per line. A right-click never reaches them: DuelController takes it first (HandleRightClick).
             for (int i = 0; i < targets.Count; i++)
             {
                 var label = new GUIContent(TurnNarrator.LineName(targets[i]) + "  " + targets[i].Durability + "/" + targets[i].MaxDurability);
                 Rect rect = GUILayoutUtility.GetRect(label, GUI.skin.button);
-                if (current.type == EventType.MouseDown && current.button == 1 && rect.Contains(current.mousePosition))
-                {
-                    // Right-clicking a box lets go of the chosen line, whichever box it is.
-                    _targetLineId = -1;
-                    current.Use();
-                    GUIUtility.ExitGUI();
-                }
                 bool selected = i == index;
                 if (GUI.Toggle(rect, selected, label, GUI.skin.button) != selected && !selected)
                 {
