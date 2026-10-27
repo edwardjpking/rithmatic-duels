@@ -182,11 +182,6 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public float WardLineWidth = 0.08f;
         public float MainWardLineWidth = 0.12f;
-        /// <summary>
-        /// How wide a bind point is drawn. Bind points of different LoW may not come closer than this, so their
-        /// rings never overlap, unless they are one shared point where the LoW touch (DESIGN.md section 4.1).
-        /// </summary>
-        public float BindPointSize = 0.4f;
         public float MinForbiddanceLength = 1f;
         public float MaxForbiddanceLength = 8f;
         /// <summary>The scroll wheel changes ellipse flatness, attached LoW radius and LoF length by this much per notch.</summary>

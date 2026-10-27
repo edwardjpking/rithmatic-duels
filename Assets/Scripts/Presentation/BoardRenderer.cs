@@ -22,7 +22,7 @@ namespace RithmaticDuels.Presentation
 
         private const float WardWidth = 0.08f;
         private const float MainWardWidth = 0.12f;
-        private float BindPointSize { get { return Board.Config.Geometry.BindPointSize; } }
+        private const float BindPointSize = 0.4f;
         private const float BindPointRingWidth = 0.05f;
         /// <summary>How strongly a drawing in progress shows, compared with a finished line.</summary>
         private const float SketchAlpha = 0.6f;
@@ -279,7 +279,7 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A bind point: a hollow circle with a dot in the middle, so it stands out on top of its line.</summary>
-        private void BindPoint(Vec2 centre, Color colour)
+        private static void BindPoint(Vec2 centre, Color colour)
         {
             Ring(centre, BindPointSize / 2f, BindPointRingWidth, colour);
             Disc(centre, 0.05f, colour);
@@ -289,7 +289,7 @@ namespace RithmaticDuels.Presentation
         /// A bind point that isn't finished yet: a dashed ring with no dot, so it can't be mistaken for a
         /// finished one (solid ring and dot).
         /// </summary>
-        private void UnfinishedBindPoint(Vec2 centre, Color colour)
+        private static void UnfinishedBindPoint(Vec2 centre, Color colour)
         {
             Ring(centre, BindPointSize / 2f, BindPointRingWidth, colour, true);
         }

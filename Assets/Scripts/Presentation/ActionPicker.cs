@@ -338,14 +338,9 @@ namespace RithmaticDuels.Presentation
                 var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
                 if (overall && board.JoinChoices(spec) > 1)
                 {
-                    // Turn the circle so the next of its bind points joins, skipping turns where every size would
-                    // put a bind point over another LoW's.
+                    // Turn the circle so the next of its bind points joins.
                     int choices = board.JoinChoices(spec);
-                    for (int tries = 0; tries < choices; tries++)
-                    {
-                        _join = ((_join + (delta < 0f ? 1 : -1)) % choices + choices) % choices;
-                        if (_bindA < 0 || board.AttachedSizes(player, spec, _bindA, 0f, _join).Count > 0) break;
-                    }
+                    _join = ((_join + (delta < 0f ? 1 : -1)) % choices + choices) % choices;
                     return true;
                 }
                 if (overall)
@@ -773,18 +768,11 @@ namespace RithmaticDuels.Presentation
         private List<float> AttachedSteps(ChalkBoard board, Player player, DrawingSpec spec)
         {
             float scale = spec.BindPoints == 2 ? ChosenScale(board) : 0f;
-            int choices = board.JoinChoices(spec);
-            string key = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count + "/" + scale + "/" + _join % choices;
+            string key = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count + "/" + scale;
             if (_attachedSteps == null || key != _attachedStepsKey)
             {
-                _attachedSteps = board.AttachedSizes(player, spec, _bindA, scale, _join % choices);
-                // If this way of turning it has no size whose bind points keep clear of other LoW's, turn it to one that does.
-                for (int tries = 1; _attachedSteps.Count == 0 && tries < choices; tries++)
-                {
-                    _join = (_join + 1) % choices;
-                    _attachedSteps = board.AttachedSizes(player, spec, _bindA, scale, _join);
-                }
-                _attachedStepsKey = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count + "/" + scale + "/" + _join % choices;
+                _attachedSteps = board.AttachedSizes(player, spec, _bindA, scale);
+                _attachedStepsKey = key;
             }
             return _attachedSteps;
         }
@@ -818,8 +806,6 @@ namespace RithmaticDuels.Presentation
 
         private static float Nearest(List<float> steps, float value)
         {
-            // No step at all only happens on a spot that is shown as invalid, so keep the value.
-            if (steps.Count == 0) return value;
             float best = steps[0];
             foreach (float step in steps) if (Mathf.Abs(step - value) < Mathf.Abs(best - value)) best = step;
             return best;
@@ -828,7 +814,6 @@ namespace RithmaticDuels.Presentation
         /// <summary>The step after (direction 1) or before (-1) the one nearest the value, stopping at the ends.</summary>
         private static float StepAlong(List<float> steps, float value, int direction)
         {
-            if (steps.Count == 0) return value;
             int index = steps.IndexOf(Nearest(steps, value)) + direction;
             return steps[index < 0 ? 0 : index >= steps.Count ? steps.Count - 1 : index];
         }
@@ -927,7 +912,7 @@ namespace RithmaticDuels.Presentation
         /// <summary>
         /// True if this bind point can't be picked for the drawing being placed, so it is filled in red and
         /// clicks on it are ignored:
-        /// a LoW can't bind at a point that already has its LoW, or where none of its sizes fits with its bind points clear of other LoW's;
+        /// a LoW can't bind at a point that already has its LoW;
         /// a tangent LoF can't go where even the shortest one wouldn't fit (it would cross a LoW or leave your half);
         /// a LoF between two bind points can't join two points whose line wouldn't fit. Before the first pick, a
         /// point is blocked if no other point can join it; after it, a point is blocked if it can't join the first.
@@ -939,11 +924,14 @@ namespace RithmaticDuels.Presentation
                 case LineType.Warding:
                     if (board.BindPointFull(player, index)) return true;
                     if (_attachedWardChoice < 0) return false;
-                    // Blocked if no LoW of the chosen kind fits there: even the smallest would overlap another line,
-                    // or every size would put one of its bind points over another LoW's.
+                    // Blocked if even the smallest LoW of the chosen kind wouldn't fit there (it would overlap another line).
                     int bindPoints = AttachedWardBindPoints[_attachedWardChoice];
                     var ward = bindPoints == 0 ? DrawingSpec.MarksCross(board.Config) : DrawingSpec.Warding(bindPoints);
-                    return !board.CanAttachAt(player, ward, index);
+                    float min = 0f, max, start;
+                    if (bindPoints > 0) board.AttachedSizeRange(ward, out min, out max, out start);
+                    // An ellipse is smallest at its smallest overall scale (Shift + scroll) too.
+                    float scale = bindPoints == 2 ? board.Config.Geometry.AttachedEllipseMinScale : 0f;
+                    return !Fits(board, player, ward, Placement.AtBindPoint(index, min, scale));
                 case LineType.Forbiddance:
                     if (_forbiddanceMode == ForbiddanceMode.Tangent)
                         return !ForbiddanceFits(board, player, DrawingSpec.Forbiddance(1),
