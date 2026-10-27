@@ -235,6 +235,34 @@ namespace RithmaticDuels.Presentation
             GUILayout.EndArea();
 
             if (boardPoint.HasValue) DrawLineStats(boardPoint.Value, mousePixels / scale, width, height);
+            if (current.type == EventType.Repaint) DrawInvalidCross(mousePixels / scale, scale);
+        }
+
+        /// <summary>
+        /// A red cross under the mouse where nothing can be placed (DESIGN.md section 1.1). It is drawn here, in OnGUI,
+        /// rather than with the board, because OnGUI sees this frame's mouse position while the board is rendered
+        /// before it and would show the cross a frame behind the pointer.
+        /// </summary>
+        private void DrawInvalidCross(Vector2 mouse, float scale)
+        {
+            if (_phase != Phase.Choosing || _duel == null) return;
+            var preview = _pickers[(int)_chooser].Preview;
+            if (preview == null || !preview.InvalidHover.HasValue) return;
+            // 0.25 board units each way from the centre, as the board would draw it.
+            float unit = _camera.pixelHeight / (2f * _camera.orthographicSize) / scale;
+            float length = 0.7f * unit;
+            float thickness = Mathf.Max(2f, 0.07f * unit);
+            Color oldColour = GUI.color;
+            Matrix4x4 oldMatrix = GUI.matrix;
+            GUI.color = new Color(0.95f, 0.3f, 0.25f, 0.9f);
+            var bar = new Rect(mouse.x - length / 2f, mouse.y - thickness / 2f, length, thickness);
+            foreach (float angle in new[] { 45f, -45f })
+            {
+                GUIUtility.RotateAroundPivot(angle, mouse);
+                GUI.DrawTexture(bar, Texture2D.whiteTexture);
+                GUI.matrix = oldMatrix;
+            }
+            GUI.color = oldColour;
         }
 
         /// <summary>
