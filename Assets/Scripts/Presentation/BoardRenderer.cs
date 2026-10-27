@@ -18,7 +18,7 @@ namespace RithmaticDuels.Presentation
         private static readonly Color Faint = new Color(1f, 1f, 1f, 0.15f);
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
-        private static readonly Color HighlightColour = new Color(0.6f, 0.9f, 1f, 0.45f);
+        private static readonly Color HighlightColour = new Color(1f, 0.4f, 0.85f, 0.5f);
         private static readonly Color HoverColour = new Color(0.6f, 0.9f, 1f, 1f);
         private const float HoverMarkSize = 0.22f;
         private static readonly Color BlockedFill = new Color(0.95f, 0.3f, 0.25f, 0.75f);
@@ -87,7 +87,7 @@ namespace RithmaticDuels.Presentation
             if (Board.CentreWallUp) Line(Board.CentreWall.A, Board.CentreWall.B, ForbiddanceWidth, CentreWallColour);
         }
 
-        /// <summary>A wide glow under a line, drawn before the lines so the line itself stays readable on top.</summary>
+        /// <summary>A wide pink glow under a line (not blue, so it can't be mistaken for a placement preview), drawn before the lines so the line itself stays readable on top.</summary>
         private void DrawHighlight(LineBody body)
         {
             const float glow = 0.18f;

@@ -61,8 +61,9 @@ namespace RithmaticDuels.Presentation
         /// <summary>The menu area's width this frame, so the picker can wrap its button rows to fit.</summary>
         private float _menuContentWidth = 400f;
         private string _error;
-        /// <summary>Tab shows every current line of both players over the action menu, until Tab or a right-click closes it.</summary>
+        /// <summary>Tab shows every current line of both players over the menu, at any point, until Tab or a right-click closes it.</summary>
         private bool _showLines;
+        private Vector2 _linesScroll;
         /// <summary>The line whose entry in a lines list is under the mouse, highlighted on the board. -1 for none.</summary>
         private int _listHoverLineId = -1;
 
@@ -174,15 +175,15 @@ namespace RithmaticDuels.Presentation
             Vec2? boardPoint = BoardPoint(mousePixels);
             // Lists find the hovered entry while painting, so start each paint with none.
             if (current.type == EventType.Repaint) _listHoverLineId = -1;
-            if (_duel != null && _phase == Phase.Choosing && current.type == EventType.KeyDown && current.keyCode == KeyCode.Tab)
+            if (_duel != null && current.type == EventType.KeyDown && current.keyCode == KeyCode.Tab)
             {
                 _showLines = !_showLines;
                 current.Use();
                 GUIUtility.ExitGUI();
             }
-            if (_duel != null && _phase == Phase.Choosing && _showLines)
+            if (_duel != null && _showLines)
             {
-                // The menu is hidden under the list, so board clicks and scrolls do nothing; a right-click closes the list.
+                // The list covers the menu, so board clicks and scrolls do nothing; a right-click closes the list.
                 if (current.type == EventType.MouseDown && current.button == 1)
                 {
                     _showLines = false;
@@ -239,7 +240,11 @@ namespace RithmaticDuels.Presentation
             float logTop = height * LogTop;
             float menuWidth = width * MenuFraction();
             _menuContentWidth = menuWidth - 20;
-            GUILayout.BeginArea(new Rect(10, HeaderHeight, menuWidth - 20, height - HeaderHeight - 10));
+            var menuRect = new Rect(10, HeaderHeight, menuWidth - 20, height - HeaderHeight - 10);
+            // Under the lines list the menu shows through but takes no mouse input, so a click can't reach a hidden button.
+            EventType realType = current.type;
+            if (_showLines && (current.isMouse || realType == EventType.ScrollWheel)) current.type = EventType.Used;
+            GUILayout.BeginArea(menuRect);
             if (_phase == Phase.Choosing)
             {
                 // The picker scrolls its own options (only if they don't fit) and keeps Lock in at the bottom.
@@ -254,6 +259,8 @@ namespace RithmaticDuels.Presentation
             }
             if (_error != null) GUILayout.Label(_error);
             GUILayout.EndArea();
+            if (current.type == EventType.Used && realType != EventType.Used) current.type = realType;
+            if (_showLines) DrawLinesOverlay(menuRect);
 
             GUILayout.BeginArea(new Rect(menuWidth, HeaderHeight, width - menuWidth - 10, 24));
             DrawWardStatus();
@@ -264,7 +271,17 @@ namespace RithmaticDuels.Presentation
             GUILayout.EndArea();
 
             if (_renderer != null) { _renderer.HoverWardPoint = null; _renderer.HoverVigor = null; }
-            if (boardPoint.HasValue) DrawLineStats(boardPoint.Value, mousePixels / scale, width, height);
+            if (boardPoint.HasValue)
+            {
+                var hovered = _board.BodyAt(boardPoint.Value, 0.3f);
+                if (hovered != null) DrawLineStats(hovered, boardPoint, mousePixels / scale, width, height);
+            }
+            else if (_listHoverLineId >= 0)
+            {
+                // Hovering an entry in a lines list shows the same stats box as hovering the line itself.
+                var listed = _board.BodyOf(_listHoverLineId);
+                if (listed != null) DrawLineStats(listed, null, mousePixels / scale, width, height);
+            }
             if (current.type == EventType.Repaint) DrawInvalidCross(mousePixels / scale, scale);
         }
 
@@ -300,22 +317,21 @@ namespace RithmaticDuels.Presentation
         /// Hovering over a line on the board shows its stats next to the mouse, on an opaque panel. It is drawn last
         /// in OnGUI so it sits on top of the menus. Near the edge of the screen it flips to the other side of the pointer.
         /// </summary>
-        private void DrawLineStats(Vec2 boardPoint, Vector2 mouse, float screenWidth, float screenHeight)
+        /// <remarks><paramref name="boardPoint"/> is null when the line is hovered in a list rather than on the board.</remarks>
+        private void DrawLineStats(LineBody body, Vec2? boardPoint, Vector2 mouse, float screenWidth, float screenHeight)
         {
-            var body = _board.BodyAt(boardPoint, 0.3f);
-            if (body == null) return;
             var line = body.Line;
             string text = TurnNarrator.LineName(line);
             var ward = body as WardBody;
-            if (ward != null)
+            if (ward != null && boardPoint.HasValue)
             {
                 // A LoW's durability varies around its outline, so show the point nearest the mouse.
-                int nearest = NearestSample(ward, boardPoint);
+                int nearest = NearestSample(ward, boardPoint.Value);
                 if (_renderer != null) _renderer.HoverWardPoint = ward.SamplePoint(nearest);
                 text += "\nDurability here " + ward.SampleDurability(nearest) + "/" + ward.SampleMax(nearest);
             }
             else if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability;
-            if (_renderer != null) _renderer.HoverVigor = body as VigorBody;
+            if (_renderer != null && boardPoint.HasValue) _renderer.HoverVigor = body as VigorBody;
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
@@ -423,12 +439,6 @@ namespace RithmaticDuels.Presentation
         {
             GUILayout.Label(TurnNarrator.PlayerName(_chooser) + ". " + DescribeWork(_chooser, true));
             GUILayout.Label("Opponent: " + DescribeWork(_chooser.Opponent(), false));
-            if (_showLines)
-            {
-                GUILayout.Label("All current lines. Hover one to find it on the board. Tab or right-click to go back to your choice.");
-                DrawLinesList();
-                return;
-            }
             GUILayout.Label("Tab: show all current lines.");
             var choice = _pickers[(int)_chooser].Draw(_duel, _board, _chooser, ref _menuScroll, _menuContentWidth);
             if (choice != null) Then(() => Lock(choice));
@@ -485,12 +495,29 @@ namespace RithmaticDuels.Presentation
 
             GUILayout.Space(6);
             GUILayout.Label("Trails show where each Line of Vigor went this turn.");
+            GUILayout.Label("Tab: show all current lines.");
+        }
+
+        /// <summary>The lines list, on a translucent panel over the menu. It scrolls like the log if it gets long.</summary>
+        private void DrawLinesOverlay(Rect area)
+        {
+            Color oldColour = GUI.color;
+            GUI.color = new Color(0.05f, 0.07f, 0.06f, 0.8f);
+            GUI.DrawTexture(area, Texture2D.whiteTexture);
+            GUI.color = new Color(1f, 1f, 1f, 0.6f);
+            DrawOutline(area);
+            GUI.color = oldColour;
+            GUILayout.BeginArea(new Rect(area.x + 6, area.y + 4, area.width - 12, area.height - 8));
+            GUILayout.Label("All current lines. Hover one to find it on the board. Tab or right-click to close.");
+            _linesScroll = GUILayout.BeginScrollView(_linesScroll);
             DrawLinesList();
+            GUILayout.EndScrollView();
+            GUILayout.EndArea();
         }
 
         /// <summary>
-        /// Every active line of both players, with what each is drawing. Hovering an entry highlights that line on the
-        /// board, the same way as hovering a target in the Dismiss LoF menu.
+        /// Every active line of both players by name, with what each is drawing. Hovering an entry highlights that line
+        /// on the board and shows its stats box, the same way as hovering a target in the Dismiss LoF menu.
         /// </summary>
         private void DrawLinesList()
         {
@@ -500,10 +527,7 @@ namespace RithmaticDuels.Presentation
                 foreach (var line in _duel.Lines)
                 {
                     if (line.Owner != player || !line.IsActive) continue;
-                    string text = "    " + TurnNarrator.LineName(line);
-                    if (line.HasDurability) text += "  " + line.Durability + "/" + line.MaxDurability;
-                    if (line.Type == LineType.Vigor) text += "  " + line.Tier + " tier";
-                    GUILayout.Label(text);
+                    GUILayout.Label("    " + TurnNarrator.LineName(line));
                     if (Event.current.type == EventType.Repaint && GUILayoutUtility.GetLastRect().Contains(Event.current.mousePosition))
                         _listHoverLineId = line.Id;
                 }
