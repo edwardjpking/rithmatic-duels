@@ -198,13 +198,7 @@ namespace RithmaticDuels.Presentation
                 foreach (var brace in preview.Braces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, PreviewColour);
             if (preview.Segment.HasValue) Line(preview.Segment.Value.A, preview.Segment.Value.B, ForbiddanceWidth, PreviewColour);
             if (preview.Point.HasValue) Diamond(preview.Point.Value, 0.25f, PreviewColour);
-            if (preview.InvalidHover.HasValue)
-            {
-                // Nothing can be placed here: a red cross under the mouse, and clicks are ignored.
-                Vec2 at = preview.InvalidHover.Value;
-                Line(at + new Vec2(-0.25f, -0.25f), at + new Vec2(0.25f, 0.25f), 0.07f, BlockedFill);
-                Line(at + new Vec2(-0.25f, 0.25f), at + new Vec2(0.25f, -0.25f), 0.07f, BlockedFill);
-            }
+            // The red cross for an invalid spot is drawn by DuelController in OnGUI, at this frame's mouse position.
             if (preview.From.HasValue)
             {
                 Square(preview.From.Value, 0.2f, PreviewColour);
