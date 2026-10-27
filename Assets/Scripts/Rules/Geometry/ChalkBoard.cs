@@ -159,6 +159,18 @@ namespace RithmaticDuels.Rules.Geometry
             return null;
         }
 
+        /// <summary>
+        /// True if a LoF from a to b would be a diameter of the player's main LoW: both ends on its outline and passing
+        /// through its centre. Not allowed (Amelia, 2026-10-27; DESIGN.md section 4.2).
+        /// </summary>
+        private bool CrossesMainWardCentre(Player player, Vec2 a, Vec2 b)
+        {
+            var main = MainWardOf(player);
+            if (main == null || !OnOutline(main, a) || !OnOutline(main, b)) return false;
+            Vec2 along = b - a;
+            return Math.Abs(Vec2.Cross(along, main.Shape.Centre - a)) < 1e-3f * along.Length;
+        }
+
         private static bool OnOutline(WardBody ward, Vec2 point)
         {
             return Vec2.Distance(ward.Shape.PointAt(ward.Shape.ParamOf(point)), point) < SameBindPoint;
@@ -267,8 +279,11 @@ namespace RithmaticDuels.Rules.Geometry
                         case PlacementKind.BetweenBindPoints:
                             if (spec.BindPoints != 2) return "A line between two bind points has 2 bind points.";
                             if (placement.BindPointA == placement.BindPointB) return "Pick two different bind points.";
-                            return ValidBindPoint(placement.BindPointA, bindPoints) ?? ValidBindPoint(placement.BindPointB, bindPoints)
-                                ?? CheckRectangle(player, ForbiddanceGeometry(player, placement).Value, halfOnly);
+                            string between = ValidBindPoint(placement.BindPointA, bindPoints) ?? ValidBindPoint(placement.BindPointB, bindPoints);
+                            if (between != null) return between;
+                            if (CrossesMainWardCentre(player, bindPoints[placement.BindPointA], bindPoints[placement.BindPointB]))
+                                return "A Line of Forbiddance can't run through the centre of your main Line of Warding.";
+                            return CheckRectangle(player, ForbiddanceGeometry(player, placement).Value, halfOnly);
                         case PlacementKind.TangentAtBindPoint:
                             if (spec.BindPoints != 1) return "A tangent at one bind point has 1 bind point.";
                             if (placement.Length != 0f) { string length = CheckLength(placement.Length); if (length != null) return length; }
