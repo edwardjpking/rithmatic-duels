@@ -135,6 +135,9 @@ namespace RithmaticDuels.Presentation
         /// <summary>What to draw on the board for the choice in progress. Null when there is nothing to show.</summary>
         public PlacementPreview Preview { get; private set; }
 
+        /// <summary>The line whose button in the dismissal list is under the mouse, to highlight on the board. -1 for none.</summary>
+        public int HoveredLineId { get; private set; } = -1;
+
         /// <summary>Where the mouse is over the board, in board units, or null when it is elsewhere.</summary>
         public void SetHover(Vec2? point)
         {
@@ -151,6 +154,7 @@ namespace RithmaticDuels.Presentation
         public LockedChoice Draw(Duel duel, ChalkBoard board, Player player, ref Vector2 scroll, float width)
         {
             Preview = null;
+            if (Event.current.type == EventType.Repaint) HoveredLineId = -1;
             // Leave room for the vertical scroll bar; button rows wrap to fit, so nothing scrolls sideways.
             _width = Mathf.Max(100f, width - ScrollBarAllowance);
             var available = duel.AvailableActions(player);
@@ -812,6 +816,7 @@ namespace RithmaticDuels.Presentation
                 var label = new GUIContent(TurnNarrator.LineName(targets[i]) + "  " + targets[i].Durability + "/" + targets[i].MaxDurability);
                 Rect rect = GUILayoutUtility.GetRect(label, GUI.skin.button);
                 bool selected = i == index;
+                if (Event.current.type == EventType.Repaint && rect.Contains(Event.current.mousePosition)) HoveredLineId = targets[i].Id;
                 if (GUI.Toggle(rect, selected, label, GUI.skin.button) != selected && !selected)
                 {
                     _targetLineId = targets[i].Id;

@@ -18,6 +18,7 @@ namespace RithmaticDuels.Presentation
         private static readonly Color Faint = new Color(1f, 1f, 1f, 0.15f);
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
+        private static readonly Color HighlightColour = new Color(1f, 0.4f, 0.85f, 0.5f);
         private static readonly Color HoverColour = new Color(0.6f, 0.9f, 1f, 1f);
         private const float HoverMarkSize = 0.22f;
         private static readonly Color BlockedFill = new Color(0.95f, 0.3f, 0.25f, 0.75f);
@@ -40,6 +41,8 @@ namespace RithmaticDuels.Presentation
         public ChalkBoard Board { get; set; }
         public Camera BoardCamera { get; set; }
         public PlacementPreview Preview { get; set; }
+        /// <summary>A line to pick out with a glow, such as one hovered in a lines list. -1 for none.</summary>
+        public int HighlightLineId { get; set; } = -1;
         /// <summary>Set from OnGUI: the LoW outline point whose durability the hover readout shows.</summary>
         public Vec2? HoverWardPoint { get; set; }
         /// <summary>Set from OnGUI: the LoV under the mouse, whose direction of travel gets an arrow.</summary>
@@ -61,6 +64,8 @@ namespace RithmaticDuels.Presentation
             // Drawings in progress go underneath finished lines: they are only a picture until complete.
             DrawSketch(Board.WorkInProgressOf(Player.A));
             DrawSketch(Board.WorkInProgressOf(Player.B));
+            var highlighted = HighlightLineId >= 0 ? Board.BodyOf(HighlightLineId) : null;
+            if (highlighted != null) DrawHighlight(highlighted);
             foreach (var body in Board.Bodies) DrawBody(body);
             if (Preview != null) DrawPreview(Preview);
             DrawHover();
@@ -80,6 +85,35 @@ namespace RithmaticDuels.Presentation
             for (float y = 0f; y < h; y += 1f) Line(new Vec2(w / 2f, y), new Vec2(w / 2f, y + 0.5f), 0.03f, Faint);
             // The centre LoF that stands for the first turns of the duel belongs to neither player.
             if (Board.CentreWallUp) Line(Board.CentreWall.A, Board.CentreWall.B, ForbiddanceWidth, CentreWallColour);
+        }
+
+        /// <summary>A wide pink glow under a line (not blue, so it can't be mistaken for a placement preview), drawn before the lines so the line itself stays readable on top.</summary>
+        private void DrawHighlight(LineBody body)
+        {
+            const float glow = 0.18f;
+            var ward = body as WardBody;
+            if (ward != null)
+            {
+                float width = (ward.Line.IsMainWard ? Board.Config.Geometry.MainWardLineWidth : Board.Config.Geometry.WardLineWidth) + glow;
+                for (int i = 0; i < ward.SampleCount; i++)
+                    Line(ward.SamplePoint(i), ward.SamplePoint((i + 1) % ward.SampleCount), width, HighlightColour);
+                foreach (var brace in ward.Braces) Line(brace.A, brace.B, ForbiddanceWidth + glow, HighlightColour);
+                return;
+            }
+            var forbiddance = body as ForbiddanceBody;
+            if (forbiddance != null)
+            {
+                Line(forbiddance.Segment.A, forbiddance.Segment.B, ForbiddanceWidth + glow, HighlightColour);
+                return;
+            }
+            var vigor = body as VigorBody;
+            if (vigor != null)
+            {
+                Disc(vigor.Position, Board.Config.Geometry.VigorDrawnLength / 2f + glow, HighlightColour);
+                return;
+            }
+            var chalkling = body as ChalklingBody;
+            if (chalkling != null) Disc(chalkling.Position, 0.25f + glow, HighlightColour);
         }
 
         private void DrawBody(LineBody body)
