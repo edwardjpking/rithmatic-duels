@@ -57,11 +57,11 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(2, DrawTimes.BaseTurns(DrawingSpec.Forbiddance(0), _config)); // 3 units
         }
 
-        [TestCase(3, 0, 0, 1)]
-        [TestCase(4, 0, 0, 1)]
+        [TestCase(3, 0, 0, 2)]
+        [TestCase(4, 0, 0, 2)]
         [TestCase(2, 2, 1, 2)]
         [TestCase(6, 3, 0, 3)]
-        [TestCase(0, 0, 0, 1)]
+        [TestCase(0, 0, 0, 2)]
         public void MakingTakesOnePerFourStatBuffs(int durability, int damage, int speed, int expected)
         {
             // The glyph is free, whichever it is.
@@ -81,7 +81,7 @@ namespace RithmaticDuels.Rules.Tests
         [TestCase(Glyph.Defend)]
         public void AnUnboundChalklingCanAttackOrDefend(Glyph glyph)
         {
-            Assert.IsNull(DrawTimes.Validate(DrawingSpec.Making(glyph: glyph), _config));
+            Assert.IsNull(DrawTimes.Validate(DrawingSpec.Making(speedBuffs: 1, glyph: glyph), _config));
         }
 
         [TestCase(VigorTier.Low, 1)]

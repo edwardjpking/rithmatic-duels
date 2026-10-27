@@ -36,7 +36,7 @@ namespace RithmaticDuels.Rules
                     break;
                 case LineType.Making:
                     int perTurn = Math.Max(1, config.Making.StatBuffsPerDrawTurn);
-                    turns = (spec.TotalStatBuffs + perTurn - 1) / perTurn;
+                    turns = Math.Max(config.Making.MinimumDrawTurns, (spec.TotalStatBuffs + perTurn - 1) / perTurn);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(spec));
@@ -82,6 +82,8 @@ namespace RithmaticDuels.Rules
                     if (spec.DurabilityBuffs < 0 || spec.DamageBuffs < 0 || spec.SpeedBuffs < 0)
                         return "Stat buffs cannot be negative.";
                     if (spec.IsBound && spec.Glyph != Glyph.Defend) return "A bound chalkling must carry the Defend glyph.";
+                    if (spec.Glyph == Glyph.Attack && config.Making.BaseSpeed + spec.SpeedBuffs * config.Making.SpeedPerBuff < 1)
+                        return "Attack needs at least 1 speed.";
                     break;
             }
             return null;

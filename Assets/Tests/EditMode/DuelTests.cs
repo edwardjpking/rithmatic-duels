@@ -443,7 +443,7 @@ namespace RithmaticDuels.Rules.Tests
             DrawMainWards(duel);
             var lof = DrawForA(duel, DrawingSpec.Forbiddance(3));
             var lov = DrawForB(duel, DrawingSpec.Vigor(VigorTier.High));
-            var chalkling = DrawForB(duel, DrawingSpec.Making(damageBuffs: 2));
+            var chalkling = DrawForB(duel, DrawingSpec.Making(damageBuffs: 2, speedBuffs: 1));
 
             // The geometry layer works out a LoV's reduced damage; the rules core applies what it reports.
             _movement.NextDamage.Add(new DamageEvent(lof.Id, 2, lov.Id));

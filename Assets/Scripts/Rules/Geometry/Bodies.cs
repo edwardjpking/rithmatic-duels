@@ -175,6 +175,10 @@ namespace RithmaticDuels.Rules.Geometry
         public Vec2 Direction { get; internal set; }
         /// <summary>Where it went during the last tick, for drawing its trail.</summary>
         public List<Vec2> LastPath { get; private set; }
+        /// <summary>Damage left after carrying through a chalkling it destroyed (DESIGN.md section 4.3); null if it hasn't.</summary>
+        public int? CarriedDamage { get; internal set; }
+        /// <summary>The damage it deals now: its line's, less whatever it spent carrying through chalklings.</summary>
+        public int Damage { get { return CarriedDamage.HasValue ? Math.Min(CarriedDamage.Value, Line.Damage) : Line.Damage; } }
 
         public VigorBody(Line line, Vec2 position, Vec2 direction) : base(line)
         {
@@ -184,17 +188,26 @@ namespace RithmaticDuels.Rules.Geometry
         }
     }
 
-    /// <summary>A chalkling. Idle until chalkling behaviour arrives (build plan step 5), but it can be hit and pushed.</summary>
+    /// <summary>A chalkling (DESIGN.md section 4.4). It moves and attacks in stage 3, after the LoV fly.</summary>
     public sealed class ChalklingBody : LineBody
     {
         public Vec2 Position { get; internal set; }
         /// <summary>The bind point a bound chalkling is tethered to.</summary>
         public Vec2? Tether { get; private set; }
+        /// <summary>What a Defend chalkling guards: its bind point if bound, otherwise the spot it was drawn.</summary>
+        public Vec2 Anchor { get; private set; }
+        /// <summary>How far it may stray from its anchor: the tether if bound, the longer guard distance if not.</summary>
+        public float GuardDistance { get; private set; }
+        /// <summary>Where it walked last tick, start first (one point if it stood still), for animation.</summary>
+        public List<Vec2> LastPath { get; private set; }
 
-        public ChalklingBody(Line line, Vec2 position, Vec2? tether) : base(line)
+        public ChalklingBody(Line line, Vec2 position, Vec2? tether, float guardDistance) : base(line)
         {
             Position = position;
             Tether = tether;
+            Anchor = tether ?? position;
+            GuardDistance = guardDistance;
+            LastPath = new List<Vec2> { position };
             if (tether.HasValue) Anchors = new[] { tether.Value };
         }
     }
