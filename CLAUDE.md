@@ -16,7 +16,7 @@ Notion is no longer used for design notes; do not sync to it.
 - Lose when your main LoW is breached. Turn limit → draw.
 - Completed drawings roll a random modifier; rush/steady change draw time and odds (section 5.2).
 - **Invalid choices can't be selected** (DESIGN.md section 1.1, applies to every feature): never let the player pick an option, spot or size the rules would refuse and only reject it at Lock in. Block it in the interface and show why visually (greyed out, red fill, a red cross under the mouse, sizes capped to what fits).
-- **Controls keep one meaning everywhere** (DESIGN.md section 1.1): scroll changes a drawing's size, Shift + scroll its shape or turn, and right-click goes back one step. When adding or changing any control, check it against the existing ones. If it would break the pattern, or an existing control already does, say so and suggest the consistent option before building.
+- **Consistency everywhere** (DESIGN.md section 1.1, applies to every feature): the same kind of thing always works and looks the same across the game, in controls, menus, visual signs, wording and rules. For example, scroll changes a drawing's size, Shift + scroll its shape or turn, and right-click goes back one step. Before adding or changing anything, check it against the patterns already in use. If it would break one, or an existing part already does, say so unprompted and suggest the consistent option before building.
 - **All numbers are placeholders.** Keep them in data (e.g. ScriptableObjects or config), never hard-coded in logic, so balancing doesn't require code changes.
 
 ## Scope
