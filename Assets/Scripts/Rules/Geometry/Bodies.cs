@@ -23,6 +23,8 @@ namespace RithmaticDuels.Rules.Geometry
     public sealed class WardBody : LineBody
     {
         private readonly float[] _params;
+        // The sample points themselves, worked out once: the placement checks look at them many times a frame.
+        private readonly Vec2[] _points;
         private readonly float[] _arc;
         private readonly int[] _max;
         private readonly int[] _durability;
@@ -66,6 +68,7 @@ namespace RithmaticDuels.Rules.Geometry
             BindPoints = bindPoints;
             int samples = Math.Max(8, config.Geometry.WardSamples);
             _params = new float[samples];
+            _points = new Vec2[samples];
             _arc = new float[samples];
             _max = new int[samples];
             _durability = new int[samples];
@@ -76,6 +79,7 @@ namespace RithmaticDuels.Rules.Geometry
                 float t = (float)(2.0 * Math.PI * i / samples);
                 Vec2 point = shape.PointAt(t);
                 _params[i] = t;
+                _points[i] = point;
                 _arc[i] = i == 0 ? 0f : _arc[i - 1] + Vec2.Distance(previous, point);
                 previous = point;
 
@@ -109,7 +113,7 @@ namespace RithmaticDuels.Rules.Geometry
             return weakest;
         }
 
-        public Vec2 SamplePoint(int index) { return Shape.PointAt(_params[index]); }
+        public Vec2 SamplePoint(int index) { return _points[index]; }
         public int SampleDurability(int index) { return _durability[index]; }
         public int SampleMax(int index) { return _max[index]; }
 

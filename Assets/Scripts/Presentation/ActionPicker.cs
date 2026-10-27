@@ -20,6 +20,8 @@ namespace RithmaticDuels.Presentation
         public IReadOnlyList<Segment> Braces;
         /// <summary>Bind points that can't be picked for this drawing, filled in red.</summary>
         public IReadOnlyList<Vec2> BlockedBindPoints;
+        /// <summary>Where the mouse is, if a click there would be ignored because nothing can be placed there: marked with a red cross.</summary>
+        public Vec2? InvalidHover;
         /// <summary>Preset spots for the main LoW, drawn as markers that can be clicked.</summary>
         public IReadOnlyList<Vec2> Presets;
         /// <summary>Show the midline of the player's half, which the main LoW snaps to.</summary>
@@ -270,14 +272,15 @@ namespace RithmaticDuels.Presentation
                     return PickBindPoint(board, player, point, false);
                 case LineType.Forbiddance:
                     if (!_forbiddanceMode.HasValue) return false;
-                    if (_forbiddanceMode == ForbiddanceMode.Free) return PickPoints(point);
+                    if (_forbiddanceMode == ForbiddanceMode.Free) return ClickAllowed(board, player, point) && PickPoints(point);
                     return PickBindPoint(board, player, point, _forbiddanceMode == ForbiddanceMode.Between);
                 case LineType.Vigor:
-                    return _tier.HasValue && PickPoints(point);
+                    return _tier.HasValue && ClickAllowed(board, player, point) && PickPoints(point);
                 case LineType.Making:
                     if (!_chalklingMode.HasValue) return false;
                     if (_chalklingMode == ChalklingMode.Free)
                     {
+                        if (!ClickAllowed(board, player, point)) return false;
                         _pointA = point;
                         return true;
                     }
@@ -524,6 +527,7 @@ namespace RithmaticDuels.Presentation
                                 else hint = "No Line of Forbiddance fits here. Start it somewhere else.";
                             }
                             preview.From = _pointA;
+                            preview.InvalidHover = InvalidHover(board, player);
                             break;
                         default:
                             hint = "Choose how to place it.";
@@ -551,6 +555,7 @@ namespace RithmaticDuels.Presentation
                     if (_pointA.HasValue && _pointB.HasValue) placement = Placement.Aimed(_pointA.Value, _pointB.Value);
                     preview.From = _pointA;
                     preview.To = _pointB ?? (_pointA.HasValue ? _hover : null);
+                    preview.InvalidHover = InvalidHover(board, player);
                     break;
 
                 case LineType.Making:
@@ -561,6 +566,7 @@ namespace RithmaticDuels.Presentation
                     if (bound && _bindA >= 0) placement = Placement.AtBindPoint(_bindA);
                     if (!bound && _pointA.HasValue) placement = Placement.At(_pointA.Value);
                     preview.Point = bound ? null : _pointA;
+                    if (!bound) preview.InvalidHover = InvalidHover(board, player);
                     break;
             }
             if (_bindA >= 0) preview.BindPoints.Add(_bindA);
@@ -873,7 +879,7 @@ namespace RithmaticDuels.Presentation
         private bool[] Blocked(ChalkBoard board, Player player)
         {
             int count = board.BindPointsOf(player).Count;
-            string key = _lineType + "/" + _forbiddanceMode + "/" + _bindA + "/" + _bindB + "/" + count;
+            string key = _lineType + "/" + _forbiddanceMode + "/" + _attachedWardChoice + "/" + _bindA + "/" + _bindB + "/" + count;
             if (_blocked == null || key != _blockedKey)
             {
                 _blocked = new bool[count];
@@ -896,7 +902,14 @@ namespace RithmaticDuels.Presentation
             switch (_lineType)
             {
                 case LineType.Warding:
-                    return board.BindPointFull(player, index);
+                    if (board.BindPointFull(player, index)) return true;
+                    if (_attachedWardChoice < 0) return false;
+                    // Blocked if even the smallest LoW of the chosen kind wouldn't fit there (it would overlap another line).
+                    int bindPoints = AttachedWardBindPoints[_attachedWardChoice];
+                    var ward = bindPoints == 0 ? DrawingSpec.MarksCross(board.Config) : DrawingSpec.Warding(bindPoints);
+                    float min = 0f, max, start;
+                    if (bindPoints > 0) board.AttachedSizeRange(ward, out min, out max, out start);
+                    return !Fits(board, player, ward, Placement.AtBindPoint(index, min));
                 case LineType.Forbiddance:
                     if (_forbiddanceMode == ForbiddanceMode.Tangent)
                         return !ForbiddanceFits(board, player, DrawingSpec.Forbiddance(1),
@@ -916,7 +929,49 @@ namespace RithmaticDuels.Presentation
 
         private static bool ForbiddanceFits(ChalkBoard board, Player player, DrawingSpec spec, Placement placement)
         {
+            return Fits(board, player, spec, placement);
+        }
+
+        private static bool Fits(ChalkBoard board, Player player, DrawingSpec spec, Placement placement)
+        {
             return board.ValidatePlacement(player, board.Measure(player, spec, placement), placement) == null;
+        }
+
+        /// <summary>
+        /// Whether a click on the board at this point can be taken as the next pick (DESIGN.md section 1.1: anything that
+        /// isn't allowed can't be picked). Only the starting point of a free LoF or a LoV, and an unbound chalkling's
+        /// spot, are checked here: bind points that can't be used are blocked instead, and a LoV may aim anywhere.
+        /// </summary>
+        private bool ClickAllowed(ChalkBoard board, Player player, Vec2 point)
+        {
+            switch (_lineType)
+            {
+                case LineType.Forbiddance:
+                    if (_pointA.HasValue && !_pointB.HasValue) return true; // the second click sets the direction
+                    // A start is allowed if the shortest line fits in some direction from it.
+                    float length = board.Config.Geometry.MinForbiddanceLength;
+                    const int directions = 16;
+                    for (int i = 0; i < directions; i++)
+                    {
+                        float angle = 2f * Mathf.PI * i / directions;
+                        var end = point + new Vec2(Mathf.Cos(angle), Mathf.Sin(angle)) * length;
+                        if (Fits(board, player, DrawingSpec.Forbiddance(0), Placement.Segment(point, end))) return true;
+                    }
+                    return false;
+                case LineType.Vigor:
+                    if (_pointA.HasValue && !_pointB.HasValue) return true; // aiming
+                    return Fits(board, player, DrawingSpec.Vigor(_tier ?? VigorTier.Low), Placement.Aimed(point, point + board.Facing(player)));
+                case LineType.Making:
+                    return Fits(board, player, DrawingSpec.Making(), Placement.At(point));
+                default:
+                    return true;
+            }
+        }
+
+        /// <summary>The mouse position, if a click there would be ignored (see <see cref="ClickAllowed"/>).</summary>
+        private Vec2? InvalidHover(ChalkBoard board, Player player)
+        {
+            return _hover.HasValue && !ClickAllowed(board, player, _hover.Value) ? _hover : null;
         }
 
         /// <summary>First click sets the start, second the end; a third starts over.</summary>

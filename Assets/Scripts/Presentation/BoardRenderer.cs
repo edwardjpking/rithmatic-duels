@@ -82,7 +82,8 @@ namespace RithmaticDuels.Presentation
             var ward = body as WardBody;
             if (ward != null)
             {
-                float width = ward.Line.IsMainWard ? MainWardWidth : WardWidth;
+                // As thick as the rules say, since they keep other lines clear of this thickness.
+                float width = ward.Line.IsMainWard ? Board.Config.Geometry.MainWardLineWidth : Board.Config.Geometry.WardLineWidth;
                 int count = ward.SampleCount;
                 for (int i = 0; i < count; i++)
                 {
@@ -197,6 +198,13 @@ namespace RithmaticDuels.Presentation
                 foreach (var brace in preview.Braces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, PreviewColour);
             if (preview.Segment.HasValue) Line(preview.Segment.Value.A, preview.Segment.Value.B, ForbiddanceWidth, PreviewColour);
             if (preview.Point.HasValue) Diamond(preview.Point.Value, 0.25f, PreviewColour);
+            if (preview.InvalidHover.HasValue)
+            {
+                // Nothing can be placed here: a red cross under the mouse, and clicks are ignored.
+                Vec2 at = preview.InvalidHover.Value;
+                Line(at + new Vec2(-0.25f, -0.25f), at + new Vec2(0.25f, 0.25f), 0.07f, BlockedFill);
+                Line(at + new Vec2(-0.25f, 0.25f), at + new Vec2(0.25f, -0.25f), 0.07f, BlockedFill);
+            }
             if (preview.From.HasValue)
             {
                 Square(preview.From.Value, 0.2f, PreviewColour);
