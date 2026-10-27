@@ -1105,6 +1105,41 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void AMarksCrossCutsAHitToAQuarterForAllThreeParts()
+        {
+            // High tier with damage 8: a quarter is 2 (half would be 4).
+            _config.Vigor.High.Damage = 8;
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var braces = _duel.Lines.Where(l => l.BraceOf == cross.Id).ToList();
+            Assert.IsTrue(braces.All(b => b.ModifierSteps == cross.ModifierSteps), "one modifier for all three");
+            int crossBefore = cross.Durability;
+            var bracesBefore = braces.Select(b => b.Durability).ToList();
+            Draw(Player.B, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(17f, 10.4f), V(0f, 10.4f)));
+            for (int turn = 0; turn < 3; turn++) PassTurn();
+            Assert.AreEqual(crossBefore - 2, cross.Durability);
+            for (int i = 0; i < braces.Count; i++) Assert.AreEqual(bracesBefore[i] - 2, braces[i].Durability);
+        }
+
+        [Test]
+        public void AChordThroughTheCentreToughensTheBackToo()
+        {
+            // A circle on the front bind point, centre (10.5, 10), with a LoF across it from its top to its bottom.
+            _config.Vigor.High.Damage = 4;
+            var circle = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
+            var points = _board.BindPointsOf(Player.A);
+            int top = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(10.5f, 11.5f)) < 1e-3f);
+            int bottom = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(10.5f, 8.5f)) < 1e-3f);
+            var chord = Draw(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(top, bottom));
+            int before = circle.Durability;
+            // Hit it from straight above, left of the LoF, on the half that doesn't face the opponent. (A's own LoV, since
+            // B can't start one on A's half; LoV hit their owner's lines too.)
+            Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10.2f, 19f), V(10.2f, 0f)));
+            for (int turn = 0; turn < 3 && chord.Durability == chord.MaxDurability; turn++) PassTurn();
+            Assert.AreEqual(before - 2, circle.Durability);
+            Assert.AreEqual(chord.MaxDurability - 2, chord.Durability);
+        }
+
+        [Test]
         public void TheAimPreviewReflectsOffForbiddanceLikeTheLoV()
         {
             // A slanted free LoF at x=12 turns a LoV heading right at y=6 up the board, where it stops at the edge.

@@ -293,8 +293,9 @@ namespace RithmaticDuels.Rules
         /// <summary>A LoV hitting a LoF reflects and deals this share of its damage to it, rounded up (DESIGN.md section 4.2).</summary>
         public float VigorDamageMultiplier = 0.5f;
         /// <summary>
-        /// A LoF joining two bind points of one LoW toughens the smaller arc it cuts off: a LoV hitting that
-        /// arc deals this share of its damage, rounded up (decided 2026-10-25; the share is a placeholder).
+        /// A LoF joining two bind points of one LoW toughens the smaller arc it cuts off (all of the LoW if it runs
+        /// through the centre): a LoV hitting there deals this share of its damage, once per toughening LoF, rounded
+        /// up at the end (decided 2026-10-25 and 2026-10-27; the share is a placeholder).
         /// </summary>
         public float ChordArcDamageMultiplier = 0.5f;
     }
