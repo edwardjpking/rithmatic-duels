@@ -980,8 +980,21 @@ namespace RithmaticDuels.Presentation
         /// <summary>The mouse position, if a click there would be ignored (see <see cref="ClickAllowed"/>).</summary>
         private Vec2? InvalidHover(ChalkBoard board, Player player)
         {
-            return _hover.HasValue && !ClickAllowed(board, player, _hover.Value) ? _hover : null;
+            if (!_hover.HasValue) return null;
+            // The menu is laid out several times a frame and the free LoF check tries 16 directions, so keep the answer
+            // until the mouse moves or the choice changes.
+            Vec2 at = _hover.Value;
+            string key = _lineType + "/" + _forbiddanceMode + "/" + _tier + "/" + _pointA + "/" + _pointB + "/" + player + "/" + at.X + "," + at.Y;
+            if (key != _invalidHoverKey)
+            {
+                _invalidHoverKey = key;
+                _invalidHoverCached = !ClickAllowed(board, player, at);
+            }
+            return _invalidHoverCached ? _hover : null;
         }
+
+        private string _invalidHoverKey;
+        private bool _invalidHoverCached;
 
         /// <summary>First click sets the start, second the end; a third starts over.</summary>
         private bool PickPoints(Vec2 point)
