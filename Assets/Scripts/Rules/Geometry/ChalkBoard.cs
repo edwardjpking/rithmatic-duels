@@ -19,7 +19,7 @@ namespace RithmaticDuels.Rules.Geometry
     /// collisions through <see cref="MovementResult"/>. Where each drawing goes is chosen when it is
     /// started (<see cref="SetPendingPlacement"/>) and kept here until the line completes.
     /// </summary>
-    public sealed class ChalkBoard : IMovementResolver
+    public sealed partial class ChalkBoard : IMovementResolver
     {
         private const int MaxEventsPerTick = 1000;
 
@@ -746,7 +746,8 @@ namespace RithmaticDuels.Rules.Geometry
             CentreWallUp = CentreWallStandsOn(duel.Turn);
             if (wasUp && !CentreWallUp) _notes.Add("The centre Line of Forbiddance is gone.");
             Sync(duel, result);
-            FlyVigor(result);
+            var used = FlyVigor(result);
+            ActChalklings(result, used);
         }
 
         public void PlaceNewLines(Duel duel, MovementResult result)
@@ -965,7 +966,7 @@ namespace RithmaticDuels.Rules.Geometry
                 default:
                     Vec2? tether;
                     Vec2 spot = ChalklingSpot(owner, line.Spec, placement, out tether);
-                    return new ChalklingBody(line, spot, tether);
+                    return new ChalklingBody(line, spot, tether, tether.HasValue ? _config.Making.TetherDistance : _config.Making.GuardDistance);
             }
         }
 
@@ -1157,7 +1158,8 @@ namespace RithmaticDuels.Rules.Geometry
             public Vec2 Normal;
         }
 
-        private void FlyVigor(MovementResult result)
+        /// <summary>Flies every LoV for the tick. Returns the chalkling and LoF durability used up, which the chalklings see next.</summary>
+        private Dictionary<int, int> FlyVigor(MovementResult result)
         {
             var flying = new List<VigorBody>();
             var trails = new Dictionary<int, VigorTrail>();
@@ -1208,8 +1210,18 @@ namespace RithmaticDuels.Rules.Geometry
                         break;
 
                     case HitKind.Chalkling:
-                        HitChalkling(hit.Vigor, (ChalklingBody)hit.Other, now, chalklingDamage, result);
-                        Absorb(hit.Vigor, flying, result);
+                        // A LoV that destroys a chalkling carries on with what damage is left (DESIGN.md section 4.3).
+                        int carried = HitChalkling(hit.Vigor, (ChalklingBody)hit.Other, now, chalklingDamage, result);
+                        if (carried > 0)
+                        {
+                            hit.Vigor.CarriedDamage = carried;
+                            _notes.Add(Name(hit.Vigor) + " carried on with " + carried + " damage.");
+                        }
+                        else
+                        {
+                            if (carried == 0) _notes.Add(Name(hit.Vigor) + " fizzled out.");
+                            Absorb(hit.Vigor, flying, result);
+                        }
                         break;
 
                     case HitKind.Edge:
@@ -1226,6 +1238,7 @@ namespace RithmaticDuels.Rules.Geometry
             }
             Advance(flying, 1f - now);
             foreach (var vigor in flying) trails[vigor.LineId].Points.Add(vigor.Position);
+            return chalklingDamage;
         }
 
         /// <summary>
@@ -1395,7 +1408,7 @@ namespace RithmaticDuels.Rules.Geometry
 
         private void HitWard(VigorBody vigor, WardBody ward, float time, MovementResult result)
         {
-            HitWard(vigor, ward, vigor.Line.Damage, time, result, "");
+            HitWard(vigor, ward, vigor.Damage, time, result, "");
         }
 
         private void HitWard(VigorBody vigor, WardBody ward, int damage, float time, MovementResult result, string because)
@@ -1409,14 +1422,18 @@ namespace RithmaticDuels.Rules.Geometry
             _notes.Add(Name(vigor) + " hit " + Name(ward) + " for " + damage + because + (drop == damage ? "." : " at a point stronger than its weakest."));
         }
 
-        private void HitChalkling(VigorBody vigor, ChalklingBody chalkling, float time, Dictionary<int, int> used, MovementResult result)
+        /// <summary>
+        /// Deals the LoV's damage to the chalkling. Returns the damage the LoV carries on with if the chalkling was destroyed
+        /// (0 if that leaves nothing), or -1 if the chalkling survived and the LoV is absorbed.
+        /// </summary>
+        private int HitChalkling(VigorBody vigor, ChalklingBody chalkling, float time, Dictionary<int, int> used, MovementResult result)
         {
-            int damage = vigor.Line.Damage;
+            int damage = vigor.Damage;
             int left = RemainingDurability(chalkling, used) - damage;
             used[chalkling.LineId] = (used.ContainsKey(chalkling.LineId) ? used[chalkling.LineId] : 0) + damage;
             result.Damage.Add(new DamageEvent(chalkling.LineId, damage, vigor.LineId, time));
             _notes.Add(Name(vigor) + " hit " + Name(chalkling) + " for " + damage + ".");
-            if (left <= 0) return;
+            if (left <= 0) return -left;
 
             // A chalkling that survives is pushed along the LoV's direction, but never past its tether.
             float push = VigorRules.PushDistance(damage, chalkling.Line.MaxDurability, _config);
@@ -1428,6 +1445,7 @@ namespace RithmaticDuels.Rules.Geometry
                 if (fromTether.Length > tether) moved = chalkling.Tether.Value + fromTether.Normalized * tether;
             }
             chalkling.Position = moved;
+            return -1;
         }
 
         private void CollideVigor(VigorBody a, VigorBody b, List<VigorBody> flying)
@@ -1458,7 +1476,7 @@ namespace RithmaticDuels.Rules.Geometry
         {
             vigor.Direction = Vec2.Reflect(vigor.Direction, normal).Normalized;
             vigor.Position += vigor.Direction * Intersect.Epsilon;
-            int damage = ReflectDamage(vigor.Line.Damage);
+            int damage = ReflectDamage(vigor.Damage);
             if (damage <= 0)
             {
                 _notes.Add(Name(vigor) + " was reflected by " + Name(forbiddance) + ".");
@@ -1505,7 +1523,7 @@ namespace RithmaticDuels.Rules.Geometry
         /// </summary>
         private void HitShieldedArc(VigorBody vigor, List<ForbiddanceBody> shields, WardBody ward, float time, Dictionary<int, int> used, MovementResult result)
         {
-            int damage = ToughenedArcDamage(vigor.Line.Damage, shields.Count);
+            int damage = ToughenedArcDamage(vigor.Damage, shields.Count);
             var names = new List<string>();
             foreach (var shield in shields) names.Add(Name(shield));
             HitWard(vigor, ward, damage, time, result, " (reduced by " + string.Join(" and ", names) + ")");

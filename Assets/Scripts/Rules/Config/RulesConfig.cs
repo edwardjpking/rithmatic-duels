@@ -345,6 +345,8 @@ namespace RithmaticDuels.Rules
         public int DurabilityPerBoundBindPoint = 2;
         // Geometry-layer placeholders (DESIGN.md section 4.4), kept here so all numbers live in one place.
         public float TetherDistance = 2f;
+        /// <summary>How far an unbound Defend chalkling strays from the spot it was drawn (longer than a bound tether).</summary>
+        public float GuardDistance = 3f;
         public float Radius = 0.25f;
         public float AttackRange = 0.5f;
         public int AttacksPerTick = 1;
@@ -352,6 +354,8 @@ namespace RithmaticDuels.Rules
         public int StatPerModifierStep = 1;
         /// <summary>Draw time is ceil(stat buffs / StatBuffsPerDrawTurn), at least the minimum. The one glyph is free.</summary>
         public int StatBuffsPerDrawTurn = 4;
+        /// <summary>No chalkling takes fewer turns than this at normal pace; rushing can still bring it lower.</summary>
+        public int MinimumDrawTurns = 2;
     }
 
     public enum RoundingMode
