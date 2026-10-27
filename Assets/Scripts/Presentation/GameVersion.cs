@@ -9,7 +9,7 @@ namespace RithmaticDuels.Presentation
         public const string Number = "0.16.1";
         public const string Date = "2026-10-26";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "faster Play, frame rate cap, faster log";
+        public const string Summary = "faster Play, frame rate cap, faster log, unfinished bind points dashed";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }
