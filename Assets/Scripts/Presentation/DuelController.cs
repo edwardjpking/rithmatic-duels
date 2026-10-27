@@ -177,7 +177,7 @@ namespace RithmaticDuels.Presentation
                     changed = picker.HandleRightClick();
                 else if (boardPoint.HasValue && current.type == EventType.ScrollWheel)
                 {
-                    // Shift + scroll scales an attached ellipse overall. Some platforms turn Shift + scroll into
+                    // Shift + scroll changes an attached ellipse's roundness or turns a circle. Some platforms turn Shift + scroll into
                     // a sideways scroll, so fall back to the horizontal delta.
                     float delta = current.shift && Mathf.Abs(current.delta.y) < 1e-6f ? current.delta.x : current.delta.y;
                     changed = picker.HandleScroll(_board, _chooser, _rules, delta, current.shift);
