@@ -50,6 +50,8 @@ A single-player sandbox for practising manoeuvres, like the training modes in fi
 - **Combine the three stat models.** Long term, mix point buy (current rule), fixed archetypes and extra stats.
 - **Archetypes** (for example Guard, Raider, Decoy) with fixed stats and draw times: useful for teaching new players and for speed in faster duels.
 - **More stats** such as range, vision or attack speed, if the chalkling mechanic feels lacking in depth.
+- **Looks that follow the stats (Amelia, 2026-10-27).** Chalkling designs that match how their stats were spent: a blob for high durability with low damage and speed, a knight for high durability and damage with low speed, and so on. For now every chalkling is a filled circle with its glyph on its back (DESIGN.md 4.4).
+- **Tether length by scroll (Amelia, 2026-10-27).** Let scroll set a defender's tether or guard distance, as scroll sets size elsewhere. It needs a trade-off or everyone picks the longest: for example, a longer tether gives up some of the binding's free durability, or costs draw time. Possibly too much choice; the tether is fixed for now.
 
 ## 4. Player archetypes
 
@@ -100,6 +102,13 @@ A player picks an archetype before the duel. Each gives one strength and one cos
 
 **Removed from the base game (2026-10-25):** Go (arrow, travel in its direction), Wait (horizontal line) and Turn (acute angle with arrow). The base game keeps only Attack and Defend, one per chalkling; these could come back here, along with the old glyph cap (1 free glyph plus 1 per 3 stat buffs, +1 draw turn per extra glyph).
 
+**Ideas from the chalkling design discussion (Amelia, 2026-10-27).** The base Attack chalkling heads straight for the opponent's main LoW (DESIGN.md 4.4). These could become glyphs:
+
+- **Seek:** goes for the nearest enemy thing, chalkling or line, instead of the main LoW.
+- **Aimed:** aimed when drawn, like a LoV, at a point or line of the player's choice.
+- **Pathfinder:** finds a way round obstacles instead of chewing through them.
+- **Hunter:** seeks out enemy chalklings on its own half (compare Hunt below).
+
 **Candidates for review**
 
 | Glyph | Suggested shape | Effect |
@@ -144,7 +153,11 @@ Separate from the tutorial, and the lowest priority. It shares the tutorial's se
 
 ### Line of Vigor
 
-- **Excess damage carry-through.** Today a LoV is absorbed by the first non-LoF line it hits and any damage beyond what that line had left is ignored. Try letting the excess carry on (for example, a LoV that destroys a chalkling continues with the leftover damage).
+- **Excess damage carry-through.** A LoV that destroys a chalkling now carries on with the leftover damage (DESIGN.md 4.3, 2026-10-27). A LoW still absorbs it completely and ignores the excess; letting excess carry through a LoW too is still an idea to try.
+
+### Visuals
+
+- **Damage shown as wear (Amelia, 2026-10-27).** As a chalkling, LoW or LoF loses durability, its art deteriorates (smudged, cracked or fading chalk), so health can be read from the board itself. Until then a chalkling's durability is in the hover stats box and a LoW's damage is shown in red. Damage shown this way must not rest on colour alone (`docs/ACCESSIBILITY.md`).
 
 ### Settings
 
