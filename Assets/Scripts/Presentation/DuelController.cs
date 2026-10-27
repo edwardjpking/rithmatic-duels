@@ -238,6 +238,7 @@ namespace RithmaticDuels.Presentation
             DrawLog(width - menuWidth - 10, height - logTop - 10);
             GUILayout.EndArea();
 
+            if (_renderer != null) { _renderer.HoverWardPoint = null; _renderer.HoverVigor = null; }
             if (boardPoint.HasValue) DrawLineStats(boardPoint.Value, mousePixels / scale, width, height);
             if (current.type == EventType.Repaint) DrawInvalidCross(mousePixels / scale, scale);
         }
@@ -285,9 +286,11 @@ namespace RithmaticDuels.Presentation
             {
                 // A LoW's durability varies around its outline, so show the point nearest the mouse.
                 int nearest = NearestSample(ward, boardPoint);
+                if (_renderer != null) _renderer.HoverWardPoint = ward.SamplePoint(nearest);
                 text += "\nDurability here " + ward.SampleDurability(nearest) + "/" + ward.SampleMax(nearest);
             }
             else if (line.HasDurability) text += "\nDurability " + line.Durability + "/" + line.MaxDurability;
+            if (_renderer != null) _renderer.HoverVigor = body as VigorBody;
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
