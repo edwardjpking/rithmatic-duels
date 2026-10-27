@@ -255,6 +255,7 @@ namespace RithmaticDuels.Rules.Geometry
                     }
                     string bindPoint = ValidBindPoint(placement.BindPointA, bindPoints);
                     if (bindPoint != null) return bindPoint;
+                    if (placement.Join < 0 || placement.Join >= JoinChoices(spec)) return "Choose which of its bind points joins.";
                     if (BindPointFull(player, placement.BindPointA))
                         return "That bind point already has a Line of Warding bound to it.";
                     IReadOnlyList<Vec2> unused;
@@ -962,8 +963,20 @@ namespace RithmaticDuels.Rules.Geometry
                 bindPoints = BindPoints.ForEllipse(shape);
                 return shape;
             }
-            bindPoints = BindPoints.ForCircle(count, centre, reach, outward);
+            // One of its bind points sits where it touches the LoW it is attached to: the player picks which.
+            int join = placement != null && placement.Kind == PlacementKind.AtBindPoint ? placement.Join : 0;
+            bindPoints = BindPoints.ForAttachedCircle(count, centre, reach, outward * -1f, join);
             return WardShape.Circle(centre, reach);
+        }
+
+        /// <summary>
+        /// How many choices there are for which of a new LoW's bind points joins the LoW it is attached to. Only a
+        /// circle whose bind points aren't symmetric (9) has more than one; a main LoW's are fixed by its preset.
+        /// </summary>
+        public int JoinChoices(DrawingSpec spec)
+        {
+            if (spec == null || spec.Type != LineType.Warding || spec.IsMarksCross || spec.BindPoints == 2) return 1;
+            return BindPoints.JoinChoices(spec.BindPoints);
         }
 
         /// <summary>

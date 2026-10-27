@@ -121,6 +121,8 @@ namespace RithmaticDuels.Presentation
         private float _length = -1f;
         private float _attachedSize = -1f;
         private float _attachedScale = -1f;
+        // Which of a new circle's bind points joins the LoW it is attached to (Shift + scroll), for sets that aren't symmetric.
+        private int _join;
 
         // Placement clicks: up to two bind points or two board points, whichever the mode uses.
         private int _bindA = -1;
@@ -334,6 +336,13 @@ namespace RithmaticDuels.Presentation
             if (_lineType == LineType.Warding && _attachedWardChoice > 0)
             {
                 var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
+                if (overall && board.JoinChoices(spec) > 1)
+                {
+                    // Turn the circle so the next of its bind points joins.
+                    int choices = board.JoinChoices(spec);
+                    _join = ((_join + (delta < 0f ? 1 : -1)) % choices + choices) % choices;
+                    return true;
+                }
                 if (overall)
                 {
                     if (spec.BindPoints != 2) return false;
@@ -473,7 +482,7 @@ namespace RithmaticDuels.Presentation
                     GUILayout.Label("Bind points:");
                     int before = _attachedWardChoice;
                     Choose(ref _attachedWardChoice, AttachedWardLabels);
-                    if (_attachedWardChoice != before) { _attachedSize = -1f; _attachedScale = -1f; }
+                    if (_attachedWardChoice != before) { _attachedSize = -1f; _attachedScale = -1f; _join = 0; }
                     if (_attachedWardChoice < 0)
                     {
                         hint = "Choose a Mark's Cross or how many bind points.";
@@ -490,13 +499,15 @@ namespace RithmaticDuels.Presentation
                         spec = DrawingSpec.Warding(count);
                         GUILayout.Label(count == 2
                             ? "An ellipse sticking out from the bind point. Scroll to make it rounder or flatter, Shift + scroll to make it bigger or smaller."
-                            : "A circle outside the bind point. Scroll to make it bigger or smaller.");
+                            : board.JoinChoices(spec) > 1
+                                ? "A circle outside the bind point. Scroll to make it bigger or smaller, Shift + scroll to turn it so a different one of its bind points joins."
+                                : "A circle outside the bind point. Scroll to make it bigger or smaller.");
                     }
                     GUILayout.Label("Click a bind point on your main Line of Warding to attach it there.");
                     if (_bindA >= 0)
                     {
                         placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : AttachedSize(board, player, spec),
-                            count == 2 ? AttachedScale(board, player, spec) : 0f);
+                            count == 2 ? AttachedScale(board, player, spec) : 0f, _join % board.JoinChoices(spec));
                         IReadOnlyList<Vec2> points;
                         preview.Ward = board.PreviewWard(player, spec, placement, out points);
                         preview.WardBindPoints = points;
@@ -918,7 +929,9 @@ namespace RithmaticDuels.Presentation
                     var ward = bindPoints == 0 ? DrawingSpec.MarksCross(board.Config) : DrawingSpec.Warding(bindPoints);
                     float min = 0f, max, start;
                     if (bindPoints > 0) board.AttachedSizeRange(ward, out min, out max, out start);
-                    return !Fits(board, player, ward, Placement.AtBindPoint(index, min));
+                    // An ellipse is smallest at its smallest overall scale (Shift + scroll) too.
+                    float scale = bindPoints == 2 ? board.Config.Geometry.AttachedEllipseMinScale : 0f;
+                    return !Fits(board, player, ward, Placement.AtBindPoint(index, min, scale));
                 case LineType.Forbiddance:
                     if (_forbiddanceMode == ForbiddanceMode.Tangent)
                         return !ForbiddanceFits(board, player, DrawingSpec.Forbiddance(1),

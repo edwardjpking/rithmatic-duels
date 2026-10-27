@@ -654,6 +654,54 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void TheSmallestAttachedEllipseFitsBehindTheMainWard()
+        {
+            // The back bind point (3, 10) is 3 from the board edge. At its default size an ellipse sticking out
+            // from it (semi-major 2) would leave the board; at its smallest scale (semi-major 1) it fits.
+            var points = _board.BindPointsOf(Player.A);
+            int back = Enumerable.Range(0, points.Count).Single(i => points[i].X < 3.1f);
+            var geometry = _config.Geometry;
+            var spec = DrawingSpec.Warding(2);
+            var smallest = Placement.AtBindPoint(back, geometry.AttachedEllipseMinSemiMinor, geometry.AttachedEllipseMinScale);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, smallest), smallest));
+            var standard = Placement.AtBindPoint(back, geometry.AttachedEllipseMinSemiMinor);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, standard), standard));
+        }
+
+        [Test]
+        public void ANinePointCircleCanTurnWhichBindPointJoins()
+        {
+            Assert.AreEqual(1, _board.JoinChoices(DrawingSpec.Warding(4)));
+            Assert.AreEqual(1, _board.JoinChoices(DrawingSpec.Warding(6)));
+            Assert.AreEqual(9, _board.JoinChoices(DrawingSpec.Warding(9)));
+
+            var points = _board.BindPointsOf(Player.A);
+            int front = Enumerable.Range(0, points.Count).Single(i => points[i].X > 8.9f);
+            var spec = DrawingSpec.Warding(9);
+            System.Collections.Generic.IReadOnlyList<Vec2> first, second;
+            _board.PreviewWard(Player.A, spec, Placement.AtBindPoint(front, 1.5f, 0f, 0), out first);
+            _board.PreviewWard(Player.A, spec, Placement.AtBindPoint(front, 1.5f, 0f, 3), out second);
+            // Either way one of its bind points sits on the front bind point (9, 10), where it touches.
+            Assert.IsTrue(first.Any(p => Vec2.Distance(p, V(9f, 10f)) < 1e-3f));
+            Assert.IsTrue(second.Any(p => Vec2.Distance(p, V(9f, 10f)) < 1e-3f));
+            // But the rest are arranged differently.
+            Assert.IsFalse(first.All(p => second.Any(q => Vec2.Distance(p, q) < 1e-3f)));
+            var turned = Placement.AtBindPoint(front, 1.5f, 0f, 3);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, turned), turned));
+            var tooFar = Placement.AtBindPoint(front, 1.5f, 0f, 9);
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, tooFar), tooFar), Does.Contain("joins"));
+        }
+
+        [Test]
+        public void AFourPointCircleCanNotTurn()
+        {
+            var points = _board.BindPointsOf(Player.A);
+            int front = Enumerable.Range(0, points.Count).Single(i => points[i].X > 8.9f);
+            var turned = Placement.AtBindPoint(front, 1.5f, 0f, 1);
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Warding(4), turned), turned), Does.Contain("joins"));
+        }
+
+        [Test]
         public void WardsCannotOverlap()
         {
             // A Mark's Cross on top (bind point facing up) and then a big circle on its side bind point would
