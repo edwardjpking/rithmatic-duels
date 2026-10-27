@@ -1003,6 +1003,23 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void ASharedBindPointHoldsATangentButNotAChordToTheBrokenWard()
+        {
+            // A circle on the main LoW's front bind point (9, 10) shares that point with it.
+            var circle = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
+            var points = _board.BindPointsOf(Player.A);
+            int shared = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(9f, 10f)) < 1e-3f);
+            int far = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(12f, 10f)) < 1e-3f);
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(shared, 1f));
+            var chord = Draw(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(shared, far));
+
+            circle.Status = LineStatus.Broken;
+            PassTurn();
+            Assert.IsTrue(tangent.IsActive, "the main LoW still passes through the shared point");
+            Assert.AreEqual(LineStatus.Destroyed, chord.Status, "its other end was only on the broken circle");
+        }
+
+        [Test]
         public void AMarksCrossHasItsCrossedForbiddanceInside()
         {
             var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
