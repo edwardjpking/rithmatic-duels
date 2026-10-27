@@ -670,6 +670,65 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void BindPointsOfDifferentWardsMayNotOverlapUnlessShared()
+        {
+            // A small nine-point circle on the front bind point, then another nine-point circle on one of its points.
+            var nine = DrawingSpec.Warding(9);
+            Draw(Player.A, nine, Placement.AtBindPoint(0, 1f));
+            var points = _board.BindPointsOf(Player.A);
+            float spacing = _config.Geometry.BindPointSize;
+            int crowded = 0;
+            for (int bindPoint = 0; bindPoint < points.Count; bindPoint++)
+            {
+                if (!_board.CanAttachAt(Player.A, nine, bindPoint)) continue;
+                for (int join = 0; join < 9; join++)
+                {
+                    var sizes = _board.AttachedSizes(Player.A, nine, bindPoint, 0f, join);
+                    float min, max, start;
+                    _board.AttachedSizeRange(nine, out min, out max, out start);
+                    for (float size = min; size <= max; size += 0.05f)
+                    {
+                        var placement = Placement.AtBindPoint(bindPoint, size, 0f, join);
+                        System.Collections.Generic.IReadOnlyList<Vec2> mine;
+                        if (_board.PreviewWard(Player.A, nine, placement, out mine) == null) continue;
+                        // An existing point it doesn't share is drawn overlapping one of its new ones.
+                        bool overlaps = points.Any(q => !mine.Any(p => Vec2.Distance(p, q) < 0.02f)
+                            && mine.Any(p => Vec2.Distance(p, q) < spacing));
+                        if (!overlaps) continue;
+                        crowded++;
+                        // Refused, and never offered as a size.
+                        Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, nine, placement), placement));
+                        Assert.IsFalse(sizes.Any(s => Math.Abs(s - size) < 1e-4f));
+                    }
+                    foreach (float size in sizes)
+                        Assert.IsFalse(_board.CrowdsBindPoints(Player.A, nine, Placement.AtBindPoint(bindPoint, size, 0f, join)));
+                }
+            }
+            Assert.Greater(crowded, 0, "the setup should have some overlapping placements to refuse");
+        }
+
+        [Test]
+        public void WardsThatTouchAtABindPointOfEachShareIt()
+        {
+            // Three six-point circles of the same size in a triangle: B on the main LoW's front bind point, C and D
+            // on two neighbouring points of B, its far one and the one 60 degrees round from it. C and D then touch
+            // exactly at a bind point of each.
+            var six = DrawingSpec.Warding(6);
+            var b = (WardBody)_board.BodyOf(Draw(Player.A, six, Placement.AtBindPoint(0, 1.5f)).Id);
+            var points = _board.BindPointsOf(Player.A);
+            var far = b.Shape.Centre + Vec2.FromAngle(0f) * 1.5f;
+            var round = b.Shape.Centre + Vec2.FromAngle((float)Math.PI / 3f) * 1.5f;
+            var sides = new[] { far, round }.Select(at => Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], at) < 1e-3f)).ToList();
+            Draw(Player.A, six, Placement.AtBindPoint(sides[0], 1.5f));
+            var second = Placement.AtBindPoint(sides[1], 1.5f);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, six, second), second));
+            int before = _board.BindPointsOf(Player.A).Count;
+            Draw(Player.A, six, second);
+            // Six new points, less the one it joins at and the one it shares with C.
+            Assert.AreEqual(before + 4, _board.BindPointsOf(Player.A).Count);
+        }
+
+        [Test]
         public void TheSmallestAttachedEllipseFitsBehindTheMainWard()
         {
             // The back bind point (3, 10) is 3 from the board edge. At its default size an ellipse sticking out

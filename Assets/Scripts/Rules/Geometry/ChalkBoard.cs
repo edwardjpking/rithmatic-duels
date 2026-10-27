@@ -258,8 +258,12 @@ namespace RithmaticDuels.Rules.Geometry
                     if (placement.Join < 0 || placement.Join >= JoinChoices(spec)) return "Choose which of its bind points joins.";
                     if (BindPointFull(player, placement.BindPointA))
                         return "That bind point already has a Line of Warding bound to it.";
-                    IReadOnlyList<Vec2> unused;
-                    return CheckOutline(player, WardGeometry(player, spec, placement, out unused), halfOnly);
+                    IReadOnlyList<Vec2> newPoints;
+                    string outline = CheckOutline(player, WardGeometry(player, spec, placement, out newPoints), halfOnly);
+                    if (outline != null) return outline;
+                    if (CrowdsBindPoints(player, newPoints))
+                        return "Its bind points would overlap another Line of Warding's. Bind points may only meet where the lines touch.";
+                    return null;
 
                 case LineType.Forbiddance:
                     switch (placement.Kind)
@@ -417,11 +421,14 @@ namespace RithmaticDuels.Rules.Geometry
             var geometry = _config.Geometry;
             float max = bindPoint >= 0 ? MaxAttachedScale(player, spec, bindPoint, size) : geometry.AttachedEllipseMaxScale;
             int at = Math.Max(0, bindPoint);
-            return HealthSteps(geometry.AttachedEllipseMinScale, max, scale =>
+            var scales = HealthSteps(geometry.AttachedEllipseMinScale, max, scale =>
             {
                 IReadOnlyList<Vec2> unused;
                 return WardGeometry(player, spec, Placement.AtBindPoint(at, size, scale), out unused);
             });
+            // Leave out scales that would put its far bind point over another LoW's.
+            if (bindPoint >= 0) scales.RemoveAll(scale => CrowdsBindPoints(player, spec, Placement.AtBindPoint(bindPoint, size, scale)));
+            return scales;
         }
 
         private bool AttachedFits(Player player, DrawingSpec spec, Placement placement)
@@ -467,8 +474,18 @@ namespace RithmaticDuels.Rules.Geometry
         /// <summary>
         /// The sizes an attached LoW at this bind point can be given (radius, or an ellipse's semi-minor axis),
         /// one for each whole-number durability of its weakest point, as far as it fits on the player's half.
+        /// Sizes whose bind points would overlap another LoW's are left out, for this choice of joining point.
         /// </summary>
-        public List<float> AttachedSizes(Player player, DrawingSpec spec, int bindPoint, float scale = 0f)
+        public List<float> AttachedSizes(Player player, DrawingSpec spec, int bindPoint, float scale = 0f, int join = 0)
+        {
+            var sizes = AllAttachedSizes(player, spec, bindPoint, scale);
+            // An ellipse's bind points don't move with its roundness, only with its scale (see AttachedScales).
+            if (bindPoint >= 0 && spec.BindPoints != 2)
+                sizes.RemoveAll(size => CrowdsBindPoints(player, spec, Placement.AtBindPoint(bindPoint, size, scale, join)));
+            return sizes;
+        }
+
+        private List<float> AllAttachedSizes(Player player, DrawingSpec spec, int bindPoint, float scale)
         {
             float min, max, start;
             AttachedSizeRange(spec, out min, out max, out start);
@@ -479,6 +496,66 @@ namespace RithmaticDuels.Rules.Geometry
                 IReadOnlyList<Vec2> unused;
                 return WardGeometry(player, spec, Placement.AtBindPoint(at, size, scale), out unused);
             });
+        }
+
+        /// <summary>
+        /// True if some LoW of this kind can be attached at this bind point: the point isn't full, the smallest one
+        /// fits, and at least one size (and, for a nine-point circle, one way of turning it) keeps its bind points
+        /// clear of other LoW's (DESIGN.md section 4.1).
+        /// </summary>
+        public bool CanAttachAt(Player player, DrawingSpec spec, int bindPoint)
+        {
+            if (BindPointFull(player, bindPoint)) return false;
+            if (spec.IsMarksCross)
+            {
+                var cross = Placement.AtBindPoint(bindPoint);
+                return ValidatePlacement(player, Measure(player, spec, cross), cross) == null;
+            }
+            float min, max, start;
+            AttachedSizeRange(spec, out min, out max, out start);
+            var geometry = _config.Geometry;
+            if (spec.BindPoints == 2)
+                return AttachedFits(player, spec, Placement.AtBindPoint(bindPoint, min, geometry.AttachedEllipseMinScale))
+                    && AttachedScales(player, spec, bindPoint, min).Count > 0;
+            if (!AttachedFits(player, spec, Placement.AtBindPoint(bindPoint, min))) return false;
+            // The smallest one usually keeps clear; only if it doesn't, try the bigger sizes.
+            for (int join = 0; join < JoinChoices(spec); join++)
+                if (!CrowdsBindPoints(player, spec, Placement.AtBindPoint(bindPoint, min, 0f, join))) return true;
+            var sizes = AllAttachedSizes(player, spec, bindPoint, 0f);
+            for (int join = 0; join < JoinChoices(spec); join++)
+                foreach (float size in sizes)
+                    if (!CrowdsBindPoints(player, spec, Placement.AtBindPoint(bindPoint, size, 0f, join))) return true;
+            return false;
+        }
+
+        /// <summary>True if a new LoW with this placement would have a bind point overlapping one of another LoW's.</summary>
+        public bool CrowdsBindPoints(Player player, DrawingSpec spec, Placement placement)
+        {
+            IReadOnlyList<Vec2> newPoints;
+            return WardGeometry(player, spec, placement, out newPoints) != null && CrowdsBindPoints(player, newPoints);
+        }
+
+        /// <summary>
+        /// True if one of these new bind points would be drawn overlapping one of the player's existing bind points.
+        /// A new point exactly on an existing one is that point, shared where the LoW touch, so it is fine; and the
+        /// spacing of the new LoW's own points (the one it joins at included) is down to its kind and size.
+        /// </summary>
+        private bool CrowdsBindPoints(Player player, IReadOnlyList<Vec2> newPoints)
+        {
+            if (newPoints == null) return false;
+            float spacing = _config.Geometry.BindPointSize;
+            foreach (var other in BindPointsOf(player))
+            {
+                bool shared = false, close = false;
+                foreach (var point in newPoints)
+                {
+                    float distance = Vec2.Distance(point, other);
+                    if (distance < SameBindPoint) shared = true;
+                    else if (distance < spacing) close = true;
+                }
+                if (close && !shared) return true;
+            }
+            return false;
         }
 
         /// <summary>The durability the weakest point of a LoW with this shape would have, before any modifier.</summary>
