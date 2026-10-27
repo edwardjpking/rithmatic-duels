@@ -19,7 +19,8 @@ namespace RithmaticDuels.Presentation
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
         private static readonly Color HighlightColour = new Color(1f, 0.4f, 0.85f, 0.5f);
-        private static readonly Color HoverColour = new Color(0.6f, 0.9f, 1f, 1f);
+        // Hover marks use magenta so they never look like the light-blue placement preview.
+        private static readonly Color HoverColour = new Color(1f, 0.35f, 0.85f, 1f);
         private const float HoverMarkSize = 0.22f;
         private static readonly Color BlockedFill = new Color(0.95f, 0.3f, 0.25f, 0.75f);
 
@@ -45,8 +46,9 @@ namespace RithmaticDuels.Presentation
         public int HighlightLineId { get; set; } = -1;
         /// <summary>Set from OnGUI: the LoW outline point whose durability the hover readout shows.</summary>
         public Vec2? HoverWardPoint { get; set; }
-        /// <summary>Set from OnGUI: the LoV under the mouse, whose direction of travel gets an arrow.</summary>
-        public VigorBody HoverVigor { get; set; }
+        /// <summary>Set from OnGUI: the start and direction of the LoV under the mouse, whose aim line is shown.</summary>
+        public Vec2? HoverAimFrom { get; set; }
+        public Vec2? HoverAimDirection { get; set; }
 
         private void OnRenderObject()
         {
@@ -219,19 +221,41 @@ namespace RithmaticDuels.Presentation
                 Disc(HoverWardPoint.Value, HoverMarkSize / 2f + 0.03f, Color.black);
                 Disc(HoverWardPoint.Value, HoverMarkSize / 2f, HoverColour);
             }
-            if (HoverVigor != null && HoverVigor.Line.IsActive) Arrowhead(HoverVigor.Position, HoverVigor.Direction, HoverColour);
+            if (HoverAimFrom.HasValue && HoverAimDirection.HasValue) AimLine(HoverAimFrom.Value, HoverAimDirection.Value, HoverColour);
         }
 
-        /// <summary>An arrowhead whose tip is just ahead of <paramref name="tip"/>, pointing along <paramref name="direction"/>.</summary>
-        private static void Arrowhead(Vec2 tip, Vec2 direction, Color colour)
+        private const float AimDash = 0.3f;
+        private const float AimGap = 0.2f;
+
+        /// <summary>
+        /// Where a LoV would go, dashed, reflecting off LoF as it would until it reaches a LoW, chalkling or the edge.
+        /// Dashes run on around each reflection point, bending there, so the bounce reads as one continuous line.
+        /// </summary>
+        private void AimLine(Vec2 from, Vec2 direction, Color colour)
         {
-            const float length = 0.45f;
-            const float halfWidth = 0.25f;
-            Vec2 point = tip + direction * 0.3f;
-            Vec2 back = point - direction * length;
-            Vec2 side = direction.Perp * halfWidth;
-            Line(point, back + side, 0.07f, colour);
-            Line(point, back - side, 0.07f, colour);
+            var path = Board.AimPath(from, direction);
+            bool on = true;
+            float left = AimDash;
+            for (int i = 1; i < path.Count; i++)
+            {
+                Vec2 start = path[i - 1];
+                float length = Vec2.Distance(start, path[i]);
+                if (length <= 0f) continue;
+                Vec2 step = (path[i] - start) / length;
+                float d = 0f;
+                while (d < length)
+                {
+                    float end = Math.Min(length, d + left);
+                    if (on) Line(start + step * d, start + step * end, 0.03f, colour);
+                    left -= end - d;
+                    d = end;
+                    if (left <= 1e-4f)
+                    {
+                        on = !on;
+                        left = on ? AimDash : AimGap;
+                    }
+                }
+            }
         }
 
         private void DrawPreview(PlacementPreview preview)
@@ -270,20 +294,7 @@ namespace RithmaticDuels.Presentation
                 {
                     Vec2 direction = (preview.To.Value - preview.From.Value).Normalized;
                     Wave(preview.From.Value, direction, Board.Config.Geometry.VigorDrawnLength, PreviewColour);
-                    // Aim line, dashed, reflecting off LoF as the LoV would until it reaches a LoW, chalkling or the edge.
-                    var path = Board.AimPath(preview.From.Value, direction);
-                    float skip = 1f;
-                    for (int i = 1; i < path.Count; i++)
-                    {
-                        Vec2 start = path[i - 1];
-                        Vec2 along = path[i] - start;
-                        float length = along.Length;
-                        if (length <= 0f) continue;
-                        Vec2 step = along / length;
-                        float d = skip;
-                        for (; d < length; d += 1f) Line(start + step * d, start + step * Math.Min(d + 0.5f, length), 0.03f, PreviewColour);
-                        skip = d - length;
-                    }
+                    AimLine(preview.From.Value, direction, PreviewColour);
                 }
             }
         }

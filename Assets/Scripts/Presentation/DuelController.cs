@@ -270,11 +270,16 @@ namespace RithmaticDuels.Presentation
             DrawLog(width - menuWidth - 10, height - logTop - 10);
             GUILayout.EndArea();
 
-            if (_renderer != null) { _renderer.HoverWardPoint = null; _renderer.HoverVigor = null; }
+            if (_renderer != null) { _renderer.HoverWardPoint = null; _renderer.HoverAimFrom = null; _renderer.HoverAimDirection = null; }
             if (boardPoint.HasValue)
             {
                 var hovered = _board.BodyAt(boardPoint.Value, 0.3f);
                 if (hovered != null) DrawLineStats(hovered, boardPoint, mousePixels / scale, width, height);
+                else
+                {
+                    var sketch = SketchAt(boardPoint.Value, 0.3f);
+                    if (sketch != null) DrawSketchStats(sketch, mousePixels / scale, width, height);
+                }
             }
             else if (_listHoverLineId >= 0)
             {
@@ -347,12 +352,82 @@ namespace RithmaticDuels.Presentation
                 text += "\nDurability here " + ward.SampleDurability(nearest) + "/" + ward.SampleMax(nearest);
             }
             else if (line.HasDurability) text += (ward != null ? "\nLowest durability " : "\nDurability ") + line.Durability + "/" + line.MaxDurability;
-            if (_renderer != null && boardPoint.HasValue) _renderer.HoverVigor = body as VigorBody;
+            var vigor = body as VigorBody;
+            if (_renderer != null && boardPoint.HasValue && vigor != null)
+            {
+                _renderer.HoverAimFrom = vigor.Position;
+                _renderer.HoverAimDirection = vigor.Direction;
+            }
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
             if (ward != null && ward.BindPoints.Count > 0) text += "\n" + ward.BindPoints.Count + " bind points";
+            DrawStatsBox(text, mouse, screenWidth, screenHeight);
+        }
 
+        /// <summary>
+        /// Hovering a drawing still in progress shows what its owner may see of it: everything for the player
+        /// choosing now, and for the other player only what the board shows (DESIGN.md section 2, Information).
+        /// </summary>
+        private void DrawSketchStats(WorkSketch sketch, Vector2 mouse, float screenWidth, float screenHeight)
+        {
+            string what = sketch.Kind == WorkKind.BindPoints ? "bind points" : TurnNarrator.LineTypeName(sketch.Type);
+            string text = TurnNarrator.PlayerName(sketch.Owner) + "'s " + what + " (unfinished)";
+            bool own = _phase == Phase.Choosing && sketch.Owner == _chooser;
+            text += "\n" + DescribeWork(sketch.Owner, own);
+            if (_renderer != null && sketch.Type == LineType.Vigor && sketch.Point.HasValue && sketch.Direction.HasValue)
+            {
+                _renderer.HoverAimFrom = sketch.Point.Value;
+                _renderer.HoverAimDirection = sketch.Direction.Value.Normalized;
+            }
+            DrawStatsBox(text, mouse, screenWidth, screenHeight);
+        }
+
+        /// <summary>The drawing in progress whose picture is within <paramref name="within"/> of a point, if any.</summary>
+        private WorkSketch SketchAt(Vec2 point, float within)
+        {
+            for (int p = 0; p < 2; p++)
+            {
+                var sketch = _board.WorkInProgressOf((Player)p);
+                if (sketch == null) continue;
+                float distance = float.MaxValue;
+                if (sketch.Kind == WorkKind.BindPoints || (sketch.Kind == WorkKind.Drawing && sketch.Type == LineType.Warding))
+                    if (sketch.BindPoints != null)
+                        foreach (var bind in sketch.BindPoints) distance = Mathf.Min(distance, Vec2.Distance(bind, point));
+                if (sketch.Kind == WorkKind.Drawing)
+                {
+                    if (sketch.Ward != null) distance = Mathf.Min(distance, Vec2.Distance(sketch.Ward.PointAt(sketch.Ward.ParamOf(point)), point));
+                    if (sketch.Segment.HasValue) distance = Mathf.Min(distance, DistanceToSegment(point, sketch.Segment.Value));
+                    if (sketch.Point.HasValue)
+                    {
+                        if (sketch.Type == LineType.Vigor && sketch.Direction.HasValue)
+                        {
+                            // The wave is drawn behind its start point.
+                            Vec2 back = sketch.Point.Value - sketch.Direction.Value.Normalized * _rules.Geometry.VigorDrawnLength;
+                            distance = Mathf.Min(distance, DistanceToSegment(point, new Segment(back, sketch.Point.Value)));
+                        }
+                        else distance = Mathf.Min(distance, Vec2.Distance(sketch.Point.Value, point) - 0.25f);
+                    }
+                }
+                if (distance <= within) return sketch;
+            }
+            return null;
+        }
+
+        private static float DistanceToSegment(Vec2 point, Segment segment)
+        {
+            Vec2 along = segment.B - segment.A;
+            float lengthSquared = along.LengthSquared;
+            float t = lengthSquared <= 0f ? 0f : Mathf.Clamp01(Vec2.Dot(point - segment.A, along) / lengthSquared);
+            return Vec2.Distance(segment.A + along * t, point);
+        }
+
+        /// <summary>
+        /// The hover readout: an opaque panel next to the mouse, drawn last in OnGUI so it sits on top of the menus.
+        /// Near the edge of the screen it flips to the other side of the pointer.
+        /// </summary>
+        private void DrawStatsBox(string text, Vector2 mouse, float screenWidth, float screenHeight)
+        {
             if (_statsStyle == null)
             {
                 _statsStyle = new GUIStyle(GUI.skin.label) { wordWrap = false, padding = new RectOffset(8, 8, 6, 6) };
