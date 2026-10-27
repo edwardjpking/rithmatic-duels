@@ -994,7 +994,8 @@ namespace RithmaticDuels.Presentation
         /// <summary>The mouse position, if a click there would be ignored (see <see cref="ClickAllowed"/>).</summary>
         private Vec2? InvalidHover(ChalkBoard board, Player player)
         {
-            if (!_hover.HasValue) return null;
+            // Only while the position is still being picked: once a spot is chosen the cross isn't needed.
+            if (!_hover.HasValue || _pointA.HasValue) return null;
             // The menu is laid out several times a frame and the free LoF check tries 16 directions, so keep the answer
             // until the mouse moves or the choice changes.
             Vec2 at = _hover.Value;
