@@ -1309,6 +1309,9 @@ namespace RithmaticDuels.Presentation
             // Copied afresh whenever the skin's button style changes (a new run builds a new skin).
             if (_smallButtonSource != style) { _smallButton = new GUIStyle(style); _smallButtonSource = style; }
             _smallButton.fontSize = style.fontSize;
+            // Follow the skin's hover look, which the duel controller turns off while the lines list covers the menu.
+            _smallButton.hover = style.hover;
+            _smallButton.onHover = style.onHover;
             float gap = Mathf.Max(style.margin.left, style.margin.right);
             float available = width - gap * (labels.Length - 1);
             if (TotalWidth(_smallButton, labels) > available)

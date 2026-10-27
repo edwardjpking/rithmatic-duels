@@ -135,7 +135,9 @@ namespace RithmaticDuels.Presentation
             _renderer.BoardCamera = _camera;
             _renderer.Preview = _phase == Phase.Choosing && _duel != null ? _pickers[(int)_chooser].Preview : null;
             int dismissHover = _phase == Phase.Choosing && _duel != null && !_showLines ? _pickers[(int)_chooser].HoveredLineId : -1;
-            _renderer.HighlightLineId = _listHoverLineId >= 0 ? _listHoverLineId : dismissHover;
+            // While the list is open, a line hovered on the board lights up too, as well as its entry.
+            int boardHover = _showLines ? _boardHoverLineId : -1;
+            _renderer.HighlightLineId = _listHoverLineId >= 0 ? _listHoverLineId : boardHover >= 0 ? boardHover : dismissHover;
         }
 
         /// <summary>Fit the whole board into the area right of the menus and above the log.</summary>

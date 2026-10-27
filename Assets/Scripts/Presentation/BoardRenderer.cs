@@ -18,7 +18,9 @@ namespace RithmaticDuels.Presentation
         private static readonly Color Faint = new Color(1f, 1f, 1f, 0.15f);
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
-        internal static readonly Color HighlightColour = new Color(1f, 0.4f, 0.85f, 0.5f);
+        // Colour trial (v0.22): grey glow for player A's lines, golden-yellow for player B's.
+        private static readonly Color HighlightA = new Color(0.75f, 0.75f, 0.75f, 0.55f);
+        private static readonly Color HighlightB = new Color(1f, 0.72f, 0.1f, 0.55f);
         // Lime is used for the durability dot and nothing else: one colour, one meaning (DESIGN.md section 1.1).
         private static readonly Color DurabilityDotColour = new Color(0.6f, 1f, 0.3f, 1f);
         private const float HoverMarkSize = 0.22f;
@@ -89,35 +91,36 @@ namespace RithmaticDuels.Presentation
             if (Board.CentreWallUp) Line(Board.CentreWall.A, Board.CentreWall.B, ForbiddanceWidth, CentreWallColour);
         }
 
-        /// <summary>A wide pink glow under a line (not blue, so it can't be mistaken for a placement preview), drawn before the lines so the line itself stays readable on top.</summary>
+        /// <summary>A wide glow under a line in its owner's highlight colour, drawn before the lines so the line itself stays readable on top.</summary>
         private void DrawHighlight(LineBody body)
         {
+            Color glowColour = body.Owner == Player.A ? HighlightA : HighlightB;
             const float glow = 0.18f;
             var ward = body as WardBody;
             if (ward != null)
             {
                 float width = (ward.Line.IsMainWard ? Board.Config.Geometry.MainWardLineWidth : Board.Config.Geometry.WardLineWidth) + glow;
                 for (int i = 0; i < ward.SampleCount; i++)
-                    Line(ward.SamplePoint(i), ward.SamplePoint((i + 1) % ward.SampleCount), width, HighlightColour);
-                foreach (var brace in ward.Braces) Line(brace.A, brace.B, ForbiddanceWidth + glow, HighlightColour);
+                    Line(ward.SamplePoint(i), ward.SamplePoint((i + 1) % ward.SampleCount), width, glowColour);
+                foreach (var brace in ward.Braces) Line(brace.A, brace.B, ForbiddanceWidth + glow, glowColour);
                 return;
             }
             var forbiddance = body as ForbiddanceBody;
             if (forbiddance != null)
             {
-                Line(forbiddance.Segment.A, forbiddance.Segment.B, ForbiddanceWidth + glow, HighlightColour);
+                Line(forbiddance.Segment.A, forbiddance.Segment.B, ForbiddanceWidth + glow, glowColour);
                 return;
             }
             var vigor = body as VigorBody;
             if (vigor != null)
             {
                 // A glow along the wave itself, plus its aim line in the usual aim line colour.
-                Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, HighlightColour, false, 0.06f + glow);
+                Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, glowColour, false, 0.06f + glow);
                 AimLine(vigor.Position, vigor.Direction, PreviewColour);
                 return;
             }
             var chalkling = body as ChalklingBody;
-            if (chalkling != null) Disc(chalkling.Position, 0.25f + glow, HighlightColour);
+            if (chalkling != null) Disc(chalkling.Position, 0.25f + glow, glowColour);
         }
 
         private void DrawBody(LineBody body)
