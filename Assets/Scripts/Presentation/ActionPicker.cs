@@ -788,7 +788,6 @@ namespace RithmaticDuels.Presentation
                 GUILayout.EndHorizontal();
                 if (attackProblem != null) GUILayout.Label("Attack: " + attackProblem);
             }
-            GUILayout.Label("Chalklings stand still until chalkling behaviour is built.");
             if (!_modifierStat.HasValue || !_chalklingMode.HasValue || (!bound && !_glyph.HasValue))
             {
                 hint = !_modifierStat.HasValue ? "Choose where a positive modifier goes."
