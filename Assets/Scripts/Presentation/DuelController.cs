@@ -64,6 +64,8 @@ namespace RithmaticDuels.Presentation
         /// <summary>Tab shows every current line of both players over the menu, at any point, until Tab or a right-click closes it.</summary>
         private bool _showLines;
         private Vector2 _linesScroll;
+        /// <summary>The line under the mouse on the board, whose entry the lines list picks out. -1 for none.</summary>
+        private int _boardHoverLineId = -1;
         /// <summary>The line whose entry in a lines list is under the mouse, highlighted on the board. -1 for none.</summary>
         private int _listHoverLineId = -1;
 
@@ -175,6 +177,8 @@ namespace RithmaticDuels.Presentation
             Vec2? boardPoint = BoardPoint(mousePixels);
             // Lists find the hovered entry while painting, so start each paint with none.
             if (current.type == EventType.Repaint) _listHoverLineId = -1;
+            var boardHovered = boardPoint.HasValue && _board != null ? _board.BodyAt(boardPoint.Value, 0.3f) : null;
+            _boardHoverLineId = boardHovered != null ? boardHovered.LineId : -1;
             if (_duel != null && current.type == EventType.KeyDown && current.keyCode == KeyCode.Tab)
             {
                 _showLines = !_showLines;
@@ -226,8 +230,15 @@ namespace RithmaticDuels.Presentation
             float height = Screen.height / scale;
 
             GUILayout.BeginArea(new Rect(10, 6, width - 20, HeaderHeight - 6));
-            DrawHeader();
-            GUILayout.EndArea();
+            // Ended in finally, like the menu below, since New duel ends the pass with ExitGUI.
+            try
+            {
+                DrawHeader();
+            }
+            finally
+            {
+                GUILayout.EndArea();
+            }
 
             if (_duel == null)
             {
@@ -242,24 +253,44 @@ namespace RithmaticDuels.Presentation
             _menuContentWidth = menuWidth - 20;
             var menuRect = new Rect(10, HeaderHeight, menuWidth - 20, height - HeaderHeight - 10);
             // Under the lines list the menu shows through but takes no mouse input, so a click can't reach a hidden button.
+            // The mouse is also moved off screen for the menu, so its buttons don't light up on hover.
             EventType realType = current.type;
-            if (_showLines && (current.isMouse || realType == EventType.ScrollWheel)) current.type = EventType.Used;
+            bool blocked = _showLines && (current.isMouse || realType == EventType.ScrollWheel);
+            if (blocked) current.type = EventType.Used;
+            Vector2 realMouse = current.mousePosition;
+            if (_showLines) current.mousePosition = new Vector2(-10000f, -10000f);
             GUILayout.BeginArea(menuRect);
-            if (_phase == Phase.Choosing)
+            // Ended in finally so a click's ExitGUI can't leave the area's clip pushed.
+            try
             {
-                // The picker scrolls its own options (only if they don't fit) and keeps Lock in at the bottom.
-                DrawChoosing();
+                if (_phase == Phase.Choosing)
+                {
+                    // The picker scrolls its own options (only if they don't fit) and keeps Lock in at the bottom.
+                    DrawChoosing();
+                }
+                else
+                {
+                    _menuScroll = GUILayout.BeginScrollView(_menuScroll);
+                    // Ended in finally: the buttons here end the pass with ExitGUI.
+                    try
+                    {
+                        if (_phase == Phase.Handover) DrawHandover();
+                        else DrawResults();
+                    }
+                    finally
+                    {
+                        GUILayout.EndScrollView();
+                    }
+                }
+                if (_error != null) GUILayout.Label(_error);
             }
-            else
+            finally
             {
-                _menuScroll = GUILayout.BeginScrollView(_menuScroll);
-                if (_phase == Phase.Handover) DrawHandover();
-                else DrawResults();
-                GUILayout.EndScrollView();
+                GUILayout.EndArea();
             }
-            if (_error != null) GUILayout.Label(_error);
-            GUILayout.EndArea();
-            if (current.type == EventType.Used && realType != EventType.Used) current.type = realType;
+            // Restore only what was blocked here: a menu button that used the click must leave it used.
+            if (blocked) current.type = realType;
+            if (_showLines) current.mousePosition = realMouse;
             if (_showLines) DrawLinesOverlay(menuRect);
 
             GUILayout.BeginArea(new Rect(menuWidth, HeaderHeight, width - menuWidth - 10, 24));
@@ -270,11 +301,16 @@ namespace RithmaticDuels.Presentation
             DrawLog(width - menuWidth - 10, height - logTop - 10);
             GUILayout.EndArea();
 
-            if (_renderer != null) { _renderer.HoverWardPoint = null; _renderer.HoverVigor = null; }
+            if (_renderer != null) { _renderer.HoverWardPoint = null; _renderer.HoverAimFrom = null; _renderer.HoverAimDirection = null; }
             if (boardPoint.HasValue)
             {
                 var hovered = _board.BodyAt(boardPoint.Value, 0.3f);
                 if (hovered != null) DrawLineStats(hovered, boardPoint, mousePixels / scale, width, height);
+                else
+                {
+                    var sketch = SketchAt(boardPoint.Value, 0.3f);
+                    if (sketch != null) DrawSketchStats(sketch, mousePixels / scale, width, height);
+                }
             }
             else if (_listHoverLineId >= 0)
             {
@@ -347,12 +383,82 @@ namespace RithmaticDuels.Presentation
                 text += "\nDurability here " + ward.SampleDurability(nearest) + "/" + ward.SampleMax(nearest);
             }
             else if (line.HasDurability) text += (ward != null ? "\nLowest durability " : "\nDurability ") + line.Durability + "/" + line.MaxDurability;
-            if (_renderer != null && boardPoint.HasValue) _renderer.HoverVigor = body as VigorBody;
+            var vigor = body as VigorBody;
+            if (_renderer != null && boardPoint.HasValue && vigor != null)
+            {
+                _renderer.HoverAimFrom = vigor.Position;
+                _renderer.HoverAimDirection = vigor.Direction;
+            }
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (line.Type == LineType.Making) text += "\nDamage " + line.Damage + ", speed " + line.Speed + ", " + line.Glyph + " glyph";
             if (line.ModifierSteps != 0) text += "\nModifier " + (line.ModifierSteps > 0 ? "+" : "") + line.ModifierSteps;
             if (ward != null && ward.BindPoints.Count > 0) text += "\n" + ward.BindPoints.Count + " bind points";
+            DrawStatsBox(text, mouse, screenWidth, screenHeight);
+        }
 
+        /// <summary>
+        /// Hovering a drawing still in progress shows what its owner may see of it: everything for the player
+        /// choosing now, and for the other player only what the board shows (DESIGN.md section 2, Information).
+        /// </summary>
+        private void DrawSketchStats(WorkSketch sketch, Vector2 mouse, float screenWidth, float screenHeight)
+        {
+            string what = sketch.Kind == WorkKind.BindPoints ? "bind points" : TurnNarrator.LineTypeName(sketch.Type);
+            string text = TurnNarrator.PlayerName(sketch.Owner) + "'s " + what + " (unfinished)";
+            bool own = _phase == Phase.Choosing && sketch.Owner == _chooser;
+            text += "\n" + DescribeWork(sketch.Owner, own);
+            if (_renderer != null && sketch.Type == LineType.Vigor && sketch.Point.HasValue && sketch.Direction.HasValue)
+            {
+                _renderer.HoverAimFrom = sketch.Point.Value;
+                _renderer.HoverAimDirection = sketch.Direction.Value.Normalized;
+            }
+            DrawStatsBox(text, mouse, screenWidth, screenHeight);
+        }
+
+        /// <summary>The drawing in progress whose picture is within <paramref name="within"/> of a point, if any.</summary>
+        private WorkSketch SketchAt(Vec2 point, float within)
+        {
+            for (int p = 0; p < 2; p++)
+            {
+                var sketch = _board.WorkInProgressOf((Player)p);
+                if (sketch == null) continue;
+                float distance = float.MaxValue;
+                if (sketch.Kind == WorkKind.BindPoints || (sketch.Kind == WorkKind.Drawing && sketch.Type == LineType.Warding))
+                    if (sketch.BindPoints != null)
+                        foreach (var bind in sketch.BindPoints) distance = Mathf.Min(distance, Vec2.Distance(bind, point));
+                if (sketch.Kind == WorkKind.Drawing)
+                {
+                    if (sketch.Ward != null) distance = Mathf.Min(distance, Vec2.Distance(sketch.Ward.PointAt(sketch.Ward.ParamOf(point)), point));
+                    if (sketch.Segment.HasValue) distance = Mathf.Min(distance, DistanceToSegment(point, sketch.Segment.Value));
+                    if (sketch.Point.HasValue)
+                    {
+                        if (sketch.Type == LineType.Vigor && sketch.Direction.HasValue)
+                        {
+                            // The wave is drawn behind its start point.
+                            Vec2 back = sketch.Point.Value - sketch.Direction.Value.Normalized * _rules.Geometry.VigorDrawnLength;
+                            distance = Mathf.Min(distance, DistanceToSegment(point, new Segment(back, sketch.Point.Value)));
+                        }
+                        else distance = Mathf.Min(distance, Vec2.Distance(sketch.Point.Value, point) - 0.25f);
+                    }
+                }
+                if (distance <= within) return sketch;
+            }
+            return null;
+        }
+
+        private static float DistanceToSegment(Vec2 point, Segment segment)
+        {
+            Vec2 along = segment.B - segment.A;
+            float lengthSquared = along.LengthSquared;
+            float t = lengthSquared <= 0f ? 0f : Mathf.Clamp01(Vec2.Dot(point - segment.A, along) / lengthSquared);
+            return Vec2.Distance(segment.A + along * t, point);
+        }
+
+        /// <summary>
+        /// The hover readout: an opaque panel next to the mouse, drawn last in OnGUI so it sits on top of the menus.
+        /// Near the edge of the screen it flips to the other side of the pointer.
+        /// </summary>
+        private void DrawStatsBox(string text, Vector2 mouse, float screenWidth, float screenHeight)
+        {
             if (_statsStyle == null)
             {
                 _statsStyle = new GUIStyle(GUI.skin.label) { wordWrap = false, padding = new RectOffset(8, 8, 6, 6) };
@@ -518,7 +624,7 @@ namespace RithmaticDuels.Presentation
         private void DrawLinesOverlay(Rect area)
         {
             Color oldColour = GUI.color;
-            GUI.color = new Color(0.05f, 0.07f, 0.06f, 0.8f);
+            GUI.color = new Color(0.05f, 0.07f, 0.06f, 0.9f);
             GUI.DrawTexture(area, Texture2D.whiteTexture);
             GUI.color = new Color(1f, 1f, 1f, 0.6f);
             DrawOutline(area);
@@ -543,7 +649,11 @@ namespace RithmaticDuels.Presentation
                 foreach (var line in _duel.Lines)
                 {
                     if (line.Owner != player || !line.IsActive) continue;
+                    // The entry for the line hovered on the board is picked out in the highlight colour, so it works both ways.
+                    Color oldColour = GUI.contentColor;
+                    if (line.Id == _boardHoverLineId) GUI.contentColor = new Color(BoardRenderer.HighlightColour.r, BoardRenderer.HighlightColour.g, BoardRenderer.HighlightColour.b, 1f);
                     GUILayout.Label("    " + TurnNarrator.LineName(line));
+                    GUI.contentColor = oldColour;
                     if (Event.current.type == EventType.Repaint && GUILayoutUtility.GetLastRect().Contains(Event.current.mousePosition))
                         _listHoverLineId = line.Id;
                 }

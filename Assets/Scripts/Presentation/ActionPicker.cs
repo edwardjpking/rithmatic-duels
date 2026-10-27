@@ -173,78 +173,87 @@ namespace RithmaticDuels.Presentation
             if (available.Count == 0) return null;
             // The scroll view fills the panel down to the footer, so Lock in sits at the bottom.
             scroll = GUILayout.BeginScrollView(scroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar, GUILayout.ExpandHeight(true));
-            if (_kind.HasValue && !available.Contains(_kind.Value)) _kind = null;
-            // Mid-drawing, carrying on is the usual choice, so it starts selected.
-            if (!_kind.HasValue && !_defaultChosen && available.Contains(ActionKind.ContinueDrawing)) _kind = ActionKind.ContinueDrawing;
-            _defaultChosen = true;
-
-            if (available.Count == 1 && available[0] == ActionKind.StartDrawing && board.MainWardOf(player) == null)
-            {
-                // Setting up the main LoW is the only thing to do, so there is no action to pick.
-                _kind = ActionKind.StartDrawing;
-            }
-            else
-            {
-                var labels = new string[available.Count];
-                for (int i = 0; i < available.Count; i++) labels[i] = ActionLabel(available[i]);
-                int index = _kind.HasValue ? available.IndexOf(_kind.Value) : -1;
-                int chosen = Buttons(index, labels, _width);
-                if (chosen != index && chosen >= 0)
-                {
-                    _kind = available[chosen];
-                    GUIUtility.ExitGUI();
-                }
-                GUILayout.Space(4);
-            }
-
-            bool cancelling = _kind == ActionKind.CancelDrawing;
-            if (cancelling)
-            {
-                GUILayout.Label("Abandon your current work (all progress is lost), then:");
-                var after = ActionsAfterCancel(duel, board, player);
-                var labels = new string[after.Count];
-                for (int i = 0; i < after.Count; i++) labels[i] = ActionLabel(after[i]);
-                int index = _afterCancel.HasValue ? after.IndexOf(_afterCancel.Value) : -1;
-                int chosen = Buttons(index, labels, _width);
-                if (chosen != index && chosen >= 0)
-                {
-                    _afterCancel = after[chosen];
-                    GUIUtility.ExitGUI();
-                }
-                GUILayout.Space(4);
-            }
-
             PlayerAction action = null;
             Placement placement = null;
-            string hint = cancelling ? "Choose what to do instead." : "Choose an action.";
-            // After a cancel the main LoW may need starting again, so check what the board has, not the menu.
-            bool needsMain = board.MainWardOf(player) == null && duel.Config.MainWardFirst;
-            switch (Effective)
+            string hint = null;
+            // A click ends the GUI pass early with GUIUtility.ExitGUI; ending the group in finally keeps
+            // Unity's clip stack balanced when it does (otherwise: "pushing more GUIClips than popping").
+            try
             {
-                case ActionKind.StartDrawing:
-                    action = needsMain
-                        ? DrawMainWardSetup(duel.Config, board, player, out placement, out hint)
-                        : DrawStart(duel.Config, board, player, out placement, out hint);
-                    break;
-                case ActionKind.ContinueDrawing:
-                    GUILayout.Label("Keep going. " + duel.GetPlayer(player).Work.TurnsRemaining + " turn(s) left, including this one.");
-                    action = PlayerAction.Continue();
-                    break;
-                case ActionKind.DismissForbiddance:
-                    action = DrawDismiss(duel, board, player, out hint);
-                    break;
-                case ActionKind.DrawBindPoints:
-                    action = DrawBindPointsMenu(duel, board, player, out hint);
-                    break;
-                case ActionKind.Pass:
-                    if (!cancelling) GUILayout.Label("Do nothing this turn.");
-                    action = PlayerAction.Pass();
-                    break;
-            }
-            if (cancelling && action != null)
-                action = action.Kind == ActionKind.Pass ? PlayerAction.Cancel() : action.AfterCancelling();
+                if (_kind.HasValue && !available.Contains(_kind.Value)) _kind = null;
+                // Mid-drawing, carrying on is the usual choice, so it starts selected.
+                if (!_kind.HasValue && !_defaultChosen && available.Contains(ActionKind.ContinueDrawing)) _kind = ActionKind.ContinueDrawing;
+                _defaultChosen = true;
 
-            GUILayout.EndScrollView();
+                if (available.Count == 1 && available[0] == ActionKind.StartDrawing && board.MainWardOf(player) == null)
+                {
+                    // Setting up the main LoW is the only thing to do, so there is no action to pick.
+                    _kind = ActionKind.StartDrawing;
+                }
+                else
+                {
+                    var labels = new string[available.Count];
+                    for (int i = 0; i < available.Count; i++) labels[i] = ActionLabel(available[i]);
+                    int index = _kind.HasValue ? available.IndexOf(_kind.Value) : -1;
+                    int chosen = Buttons(index, labels, _width);
+                    if (chosen != index && chosen >= 0)
+                    {
+                        _kind = available[chosen];
+                        GUIUtility.ExitGUI();
+                    }
+                    GUILayout.Space(4);
+                }
+
+                bool cancelling = _kind == ActionKind.CancelDrawing;
+                if (cancelling)
+                {
+                    GUILayout.Label("Abandon your current work (all progress is lost), then:");
+                    var after = ActionsAfterCancel(duel, board, player);
+                    var labels = new string[after.Count];
+                    for (int i = 0; i < after.Count; i++) labels[i] = ActionLabel(after[i]);
+                    int index = _afterCancel.HasValue ? after.IndexOf(_afterCancel.Value) : -1;
+                    int chosen = Buttons(index, labels, _width);
+                    if (chosen != index && chosen >= 0)
+                    {
+                        _afterCancel = after[chosen];
+                        GUIUtility.ExitGUI();
+                    }
+                    GUILayout.Space(4);
+                }
+
+                hint = cancelling ? "Choose what to do instead." : "Choose an action.";
+                // After a cancel the main LoW may need starting again, so check what the board has, not the menu.
+                bool needsMain = board.MainWardOf(player) == null && duel.Config.MainWardFirst;
+                switch (Effective)
+                {
+                    case ActionKind.StartDrawing:
+                        action = needsMain
+                            ? DrawMainWardSetup(duel.Config, board, player, out placement, out hint)
+                            : DrawStart(duel.Config, board, player, out placement, out hint);
+                        break;
+                    case ActionKind.ContinueDrawing:
+                        GUILayout.Label("Keep going. " + duel.GetPlayer(player).Work.TurnsRemaining + " turn(s) left, including this one.");
+                        action = PlayerAction.Continue();
+                        break;
+                    case ActionKind.DismissForbiddance:
+                        action = DrawDismiss(duel, board, player, out hint);
+                        break;
+                    case ActionKind.DrawBindPoints:
+                        action = DrawBindPointsMenu(duel, board, player, out hint);
+                        break;
+                    case ActionKind.Pass:
+                        if (!cancelling) GUILayout.Label("Do nothing this turn.");
+                        action = PlayerAction.Pass();
+                        break;
+                }
+                if (cancelling && action != null)
+                    action = action.Kind == ActionKind.Pass ? PlayerAction.Cancel() : action.AfterCancelling();
+
+            }
+            finally
+            {
+                GUILayout.EndScrollView();
+            }
             string problem = action == null ? hint : duel.Validate(player, action);
             if (problem == null && action.Kind == ActionKind.StartDrawing)
                 problem = placement == null ? "Finish placing it on the board." : board.ValidatePlacement(player, action.Spec, placement);
