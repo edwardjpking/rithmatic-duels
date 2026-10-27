@@ -377,6 +377,33 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void AnAttachedEllipseCanBeScaledOverall()
+        {
+            var ward = Draw(Player.A, DrawingSpec.Warding(2), Placement.AtBindPoint(0, 1f, 1.25f));
+            var body = (WardBody)_board.BodyOf(ward.Id);
+            float semiMajor = _config.Geometry.AttachedEllipseSemiMajor * 1.25f;
+            Assert.AreEqual(semiMajor, body.Shape.A, 1e-4);
+            Assert.AreEqual(1.25f, body.Shape.B, 1e-4);
+            Assert.AreEqual(9f + semiMajor, body.Shape.Centre.X, 1e-3);
+        }
+
+        [Test]
+        public void AttachedEllipseScalesStayInTheirRange()
+        {
+            var geometry = _config.Geometry;
+            var spec = DrawingSpec.Warding(2);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, 1f, geometry.AttachedEllipseMaxScale + 0.5f)));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, 1f, geometry.AttachedEllipseMinScale / 2f)));
+            var scales = _board.AttachedScales(Player.A, spec, 0, 1f);
+            Assert.Greater(scales.Count, 1);
+            foreach (float scale in scales)
+            {
+                var placement = Placement.AtBindPoint(0, 1f, scale);
+                Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, placement), placement));
+            }
+        }
+
+        [Test]
         public void AnAttachedCircleCanBeSized()
         {
             var ward = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 2f));
@@ -583,15 +610,47 @@ namespace RithmaticDuels.Rules.Tests
         {
             // Through the main LoW (centre (6, 10), radius 3), from outside to inside.
             var through = Placement.Segment(V(1f, 10f), V(7f, 10f));
-            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), through), through), Does.Contain("cross"));
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), through), through), Does.Contain("overlap"));
             // Wholly inside, or wholly outside, is fine; so is a tangent.
             var inside = Placement.Segment(V(5f, 9f), V(7f, 9f));
             Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), inside), inside));
             var tangent = Placement.TangentAt(0, 4f);
             Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(1), tangent), tangent));
-            // A free line touching the circle from outside, along its top.
+            // A free line touching the circle from outside, along its top, is not: a free LoF can't touch a LoW,
+            // even at a bind point (the top of the circle is one). Only a tangent at the bind point may.
             var along = Placement.Segment(V(4f, 13f), V(8f, 13f));
-            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), along), along));
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), along), along), Does.Contain("touch"));
+        }
+
+        [Test]
+        public void AFreeLoFKeepsClearOfALoWAsDrawn()
+        {
+            // Just outside the main LoW (centre (6, 10), radius 3), across its outline at 45 degrees, away from any bind point.
+            Vec2 normal = new Vec2(1f, 1f).Normalized;
+            Vec2 along = normal.Perp;
+            Placement At(float distance)
+            {
+                Vec2 middle = V(6f, 10f) + normal * distance;
+                return Placement.Segment(middle - along, middle + along);
+            }
+            // The LoF is drawn 0.07 either side and the main LoW 0.06, so a gap of 0.08 would overlap them; 0.2 is clear.
+            var close = At(3.08f);
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), close), close), Does.Contain("overlap"));
+            var clear = At(3.2f);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(0), clear), clear));
+        }
+
+        [Test]
+        public void ALoWKeepsClearOfALoFAsDrawn()
+        {
+            Draw(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(12.6f, 8f), V(12.6f, 12f)));
+            var points = _board.BindPointsOf(Player.A);
+            int front = Enumerable.Range(0, points.Count).Single(i => points[i].X > 8.9f);
+            // A circle on the front bind point (9, 10) reaches x = 9 + 2r: 12.5 would leave too small a gap to the LoF.
+            var big = Placement.AtBindPoint(front, 1.75f);
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Warding(4), big), big), Does.Contain("overlap"));
+            var small = Placement.AtBindPoint(front, 1.5f);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Warding(4), small), small));
         }
 
         [Test]

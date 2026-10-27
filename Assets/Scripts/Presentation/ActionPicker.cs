@@ -20,6 +20,8 @@ namespace RithmaticDuels.Presentation
         public IReadOnlyList<Segment> Braces;
         /// <summary>Bind points that can't be picked for this drawing, filled in red.</summary>
         public IReadOnlyList<Vec2> BlockedBindPoints;
+        /// <summary>Where the mouse is, if a click there would be ignored because nothing can be placed there: marked with a red cross.</summary>
+        public Vec2? InvalidHover;
         /// <summary>Preset spots for the main LoW, drawn as markers that can be clicked.</summary>
         public IReadOnlyList<Vec2> Presets;
         /// <summary>Show the midline of the player's half, which the main LoW snaps to.</summary>
@@ -73,6 +75,14 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>How wide the label in front of a row of buttons is, in GUI pixels.</summary>
         private const float RowLabelWidth = 100f;
+        /// <summary>Room kept free for the menu's vertical scroll bar and its margins.</summary>
+        private const float ScrollBarAllowance = 24f;
+
+        /// <summary>The width the menu's contents have this frame, set at the start of Draw.</summary>
+        private static float _width = 400f;
+
+        /// <summary>The width left for buttons after a row's label.</summary>
+        private static float RowWidth { get { return Mathf.Max(60f, _width - RowLabelWidth - 4f); } }
 
         /// <summary>How close a click must be to a bind point, or a LoF to dismiss, to pick it.</summary>
         private const float PickRadius = 0.75f;
@@ -110,6 +120,7 @@ namespace RithmaticDuels.Presentation
         private float _semiMinor = -1f;
         private float _length = -1f;
         private float _attachedSize = -1f;
+        private float _attachedScale = -1f;
 
         // Placement clicks: up to two bind points or two board points, whichever the mode uses.
         private int _bindA = -1;
@@ -135,13 +146,15 @@ namespace RithmaticDuels.Presentation
         /// Draws the menu. Returns the choice once the player locks it in, otherwise null. The options scroll
         /// with <paramref name="scroll"/> if they don't fit; Lock in stays at the bottom either way.
         /// </summary>
-        public LockedChoice Draw(Duel duel, ChalkBoard board, Player player, ref Vector2 scroll)
+        public LockedChoice Draw(Duel duel, ChalkBoard board, Player player, ref Vector2 scroll, float width)
         {
             Preview = null;
+            // Leave room for the vertical scroll bar; button rows wrap to fit, so nothing scrolls sideways.
+            _width = Mathf.Max(100f, width - ScrollBarAllowance);
             var available = duel.AvailableActions(player);
             if (available.Count == 0) return null;
             // The scroll view fills the panel down to the footer, so Lock in sits at the bottom.
-            scroll = GUILayout.BeginScrollView(scroll, GUILayout.ExpandHeight(true));
+            scroll = GUILayout.BeginScrollView(scroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar, GUILayout.ExpandHeight(true));
             if (_kind.HasValue && !available.Contains(_kind.Value)) _kind = null;
             // Mid-drawing, carrying on is the usual choice, so it starts selected.
             if (!_kind.HasValue && !_defaultChosen && available.Contains(ActionKind.ContinueDrawing)) _kind = ActionKind.ContinueDrawing;
@@ -157,8 +170,7 @@ namespace RithmaticDuels.Presentation
                 var labels = new string[available.Count];
                 for (int i = 0; i < available.Count; i++) labels[i] = ActionLabel(available[i]);
                 int index = _kind.HasValue ? available.IndexOf(_kind.Value) : -1;
-                // One row of up to four buttons.
-                int chosen = GUILayout.SelectionGrid(index, labels, Mathf.Min(labels.Length, 4));
+                int chosen = Buttons(index, labels, _width);
                 if (chosen != index && chosen >= 0)
                 {
                     _kind = available[chosen];
@@ -175,7 +187,7 @@ namespace RithmaticDuels.Presentation
                 var labels = new string[after.Count];
                 for (int i = 0; i < after.Count; i++) labels[i] = ActionLabel(after[i]);
                 int index = _afterCancel.HasValue ? after.IndexOf(_afterCancel.Value) : -1;
-                int chosen = GUILayout.Toolbar(index, labels);
+                int chosen = Buttons(index, labels, _width);
                 if (chosen != index && chosen >= 0)
                 {
                     _afterCancel = after[chosen];
@@ -269,14 +281,15 @@ namespace RithmaticDuels.Presentation
                     return PickBindPoint(board, player, point, false);
                 case LineType.Forbiddance:
                     if (!_forbiddanceMode.HasValue) return false;
-                    if (_forbiddanceMode == ForbiddanceMode.Free) return PickPoints(point);
+                    if (_forbiddanceMode == ForbiddanceMode.Free) return ClickAllowed(board, player, point) && PickPoints(point);
                     return PickBindPoint(board, player, point, _forbiddanceMode == ForbiddanceMode.Between);
                 case LineType.Vigor:
-                    return _tier.HasValue && PickPoints(point);
+                    return _tier.HasValue && ClickAllowed(board, player, point) && PickPoints(point);
                 case LineType.Making:
                     if (!_chalklingMode.HasValue) return false;
                     if (_chalklingMode == ChalklingMode.Free)
                     {
+                        if (!ClickAllowed(board, player, point)) return false;
                         _pointA = point;
                         return true;
                     }
@@ -300,9 +313,10 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// The scroll wheel over the board: makes a LoW ellipse flatter or rounder, an attached LoW circle
-        /// bigger or smaller, or a LoF not bound at two points shorter or longer. Returns true if it changed the choice.
+        /// bigger or smaller, or a LoF not bound at two points shorter or longer. With <paramref name="overall"/>
+        /// (Shift held), it scales an attached LoW ellipse's overall size instead. Returns true if it changed the choice.
         /// </summary>
-        public bool HandleScroll(ChalkBoard board, Player player, RulesConfig config, float delta)
+        public bool HandleScroll(ChalkBoard board, Player player, RulesConfig config, float delta, bool overall = false)
         {
             if (Effective != ActionKind.StartDrawing || Mathf.Abs(delta) < 1e-6f) return false;
             var geometry = config.Geometry;
@@ -320,6 +334,13 @@ namespace RithmaticDuels.Presentation
             if (_lineType == LineType.Warding && _attachedWardChoice > 0)
             {
                 var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
+                if (overall)
+                {
+                    if (spec.BindPoints != 2) return false;
+                    // Each notch moves to the next whole-number durability, never bigger than fits on the player's half.
+                    _attachedScale = StepAlong(AttachedScaleSteps(board, player, spec), AttachedScale(board, player, spec), delta < 0f ? 1 : -1);
+                    return true;
+                }
                 // Each notch moves to the next whole-number durability, never bigger than fits on the player's half.
                 _attachedSize = StepAlong(AttachedSteps(board, player, spec), AttachedSize(board, player, spec), delta < 0f ? 1 : -1);
                 return true;
@@ -452,7 +473,7 @@ namespace RithmaticDuels.Presentation
                     GUILayout.Label("Bind points:");
                     int before = _attachedWardChoice;
                     Choose(ref _attachedWardChoice, AttachedWardLabels);
-                    if (_attachedWardChoice != before) _attachedSize = -1f;
+                    if (_attachedWardChoice != before) { _attachedSize = -1f; _attachedScale = -1f; }
                     if (_attachedWardChoice < 0)
                     {
                         hint = "Choose a Mark's Cross or how many bind points.";
@@ -468,13 +489,14 @@ namespace RithmaticDuels.Presentation
                     {
                         spec = DrawingSpec.Warding(count);
                         GUILayout.Label(count == 2
-                            ? "An ellipse sticking out from the bind point. Scroll to make it rounder or flatter."
+                            ? "An ellipse sticking out from the bind point. Scroll to make it rounder or flatter, Shift + scroll to make it bigger or smaller."
                             : "A circle outside the bind point. Scroll to make it bigger or smaller.");
                     }
                     GUILayout.Label("Click a bind point on your main Line of Warding to attach it there.");
                     if (_bindA >= 0)
                     {
-                        placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : AttachedSize(board, player, spec));
+                        placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : AttachedSize(board, player, spec),
+                            count == 2 ? AttachedScale(board, player, spec) : 0f);
                         IReadOnlyList<Vec2> points;
                         preview.Ward = board.PreviewWard(player, spec, placement, out points);
                         preview.WardBindPoints = points;
@@ -514,6 +536,7 @@ namespace RithmaticDuels.Presentation
                                 else hint = "No Line of Forbiddance fits here. Start it somewhere else.";
                             }
                             preview.From = _pointA;
+                            preview.InvalidHover = InvalidHover(board, player);
                             break;
                         default:
                             hint = "Choose how to place it.";
@@ -541,6 +564,7 @@ namespace RithmaticDuels.Presentation
                     if (_pointA.HasValue && _pointB.HasValue) placement = Placement.Aimed(_pointA.Value, _pointB.Value);
                     preview.From = _pointA;
                     preview.To = _pointB ?? (_pointA.HasValue ? _hover : null);
+                    preview.InvalidHover = InvalidHover(board, player);
                     break;
 
                 case LineType.Making:
@@ -551,6 +575,7 @@ namespace RithmaticDuels.Presentation
                     if (bound && _bindA >= 0) placement = Placement.AtBindPoint(_bindA);
                     if (!bound && _pointA.HasValue) placement = Placement.At(_pointA.Value);
                     preview.Point = bound ? null : _pointA;
+                    if (!bound) preview.InvalidHover = InvalidHover(board, player);
                     break;
             }
             if (_bindA >= 0) preview.BindPoints.Add(_bindA);
@@ -718,6 +743,8 @@ namespace RithmaticDuels.Presentation
         private List<float> _mainSteps;
         private List<float> _attachedSteps;
         private string _attachedStepsKey;
+        private List<float> _scaleSteps;
+        private string _scaleStepsKey;
         private bool[] _blocked;
         private string _blockedKey;
 
@@ -729,13 +756,41 @@ namespace RithmaticDuels.Presentation
 
         private List<float> AttachedSteps(ChalkBoard board, Player player, DrawingSpec spec)
         {
-            string key = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count;
+            float scale = spec.BindPoints == 2 ? ChosenScale(board) : 0f;
+            string key = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count + "/" + scale;
             if (_attachedSteps == null || key != _attachedStepsKey)
             {
-                _attachedSteps = board.AttachedSizes(player, spec, _bindA);
+                _attachedSteps = board.AttachedSizes(player, spec, _bindA, scale);
                 _attachedStepsKey = key;
             }
             return _attachedSteps;
+        }
+
+        private List<float> AttachedScaleSteps(ChalkBoard board, Player player, DrawingSpec spec)
+        {
+            float size = AttachedSize(board, player, spec);
+            string key = _bindA + "/" + board.BindPointsOf(player).Count + "/" + size;
+            if (_scaleSteps == null || key != _scaleStepsKey)
+            {
+                _scaleSteps = board.AttachedScales(player, spec, _bindA, size);
+                _scaleStepsKey = key;
+            }
+            return _scaleSteps;
+        }
+
+        // The scale as last set, before snapping to a step (the steps themselves depend on the flatness).
+        private float ChosenScale(ChalkBoard board)
+        {
+            return board.AttachedScale(Placement.AtBindPoint(0, 0f, _attachedScale));
+        }
+
+        /// <summary>
+        /// The chosen overall scale of an attached ellipse, on one of its whole-number durability steps and cut
+        /// back if it would reach off the player's half.
+        /// </summary>
+        private float AttachedScale(ChalkBoard board, Player player, DrawingSpec spec)
+        {
+            return Nearest(AttachedScaleSteps(board, player, spec), ChosenScale(board));
         }
 
         private static float Nearest(List<float> steps, float value)
@@ -833,7 +888,7 @@ namespace RithmaticDuels.Presentation
         private bool[] Blocked(ChalkBoard board, Player player)
         {
             int count = board.BindPointsOf(player).Count;
-            string key = _lineType + "/" + _forbiddanceMode + "/" + _bindA + "/" + _bindB + "/" + count;
+            string key = _lineType + "/" + _forbiddanceMode + "/" + _attachedWardChoice + "/" + _bindA + "/" + _bindB + "/" + count;
             if (_blocked == null || key != _blockedKey)
             {
                 _blocked = new bool[count];
@@ -856,7 +911,14 @@ namespace RithmaticDuels.Presentation
             switch (_lineType)
             {
                 case LineType.Warding:
-                    return board.BindPointFull(player, index);
+                    if (board.BindPointFull(player, index)) return true;
+                    if (_attachedWardChoice < 0) return false;
+                    // Blocked if even the smallest LoW of the chosen kind wouldn't fit there (it would overlap another line).
+                    int bindPoints = AttachedWardBindPoints[_attachedWardChoice];
+                    var ward = bindPoints == 0 ? DrawingSpec.MarksCross(board.Config) : DrawingSpec.Warding(bindPoints);
+                    float min = 0f, max, start;
+                    if (bindPoints > 0) board.AttachedSizeRange(ward, out min, out max, out start);
+                    return !Fits(board, player, ward, Placement.AtBindPoint(index, min));
                 case LineType.Forbiddance:
                     if (_forbiddanceMode == ForbiddanceMode.Tangent)
                         return !ForbiddanceFits(board, player, DrawingSpec.Forbiddance(1),
@@ -876,7 +938,49 @@ namespace RithmaticDuels.Presentation
 
         private static bool ForbiddanceFits(ChalkBoard board, Player player, DrawingSpec spec, Placement placement)
         {
+            return Fits(board, player, spec, placement);
+        }
+
+        private static bool Fits(ChalkBoard board, Player player, DrawingSpec spec, Placement placement)
+        {
             return board.ValidatePlacement(player, board.Measure(player, spec, placement), placement) == null;
+        }
+
+        /// <summary>
+        /// Whether a click on the board at this point can be taken as the next pick (DESIGN.md section 1.1: anything that
+        /// isn't allowed can't be picked). Only the starting point of a free LoF or a LoV, and an unbound chalkling's
+        /// spot, are checked here: bind points that can't be used are blocked instead, and a LoV may aim anywhere.
+        /// </summary>
+        private bool ClickAllowed(ChalkBoard board, Player player, Vec2 point)
+        {
+            switch (_lineType)
+            {
+                case LineType.Forbiddance:
+                    if (_pointA.HasValue && !_pointB.HasValue) return true; // the second click sets the direction
+                    // A start is allowed if the shortest line fits in some direction from it.
+                    float length = board.Config.Geometry.MinForbiddanceLength;
+                    const int directions = 16;
+                    for (int i = 0; i < directions; i++)
+                    {
+                        float angle = 2f * Mathf.PI * i / directions;
+                        var end = point + new Vec2(Mathf.Cos(angle), Mathf.Sin(angle)) * length;
+                        if (Fits(board, player, DrawingSpec.Forbiddance(0), Placement.Segment(point, end))) return true;
+                    }
+                    return false;
+                case LineType.Vigor:
+                    if (_pointA.HasValue && !_pointB.HasValue) return true; // aiming
+                    return Fits(board, player, DrawingSpec.Vigor(_tier ?? VigorTier.Low), Placement.Aimed(point, point + board.Facing(player)));
+                case LineType.Making:
+                    return Fits(board, player, DrawingSpec.Making(), Placement.At(point));
+                default:
+                    return true;
+            }
+        }
+
+        /// <summary>The mouse position, if a click there would be ignored (see <see cref="ClickAllowed"/>).</summary>
+        private Vec2? InvalidHover(ChalkBoard board, Player player)
+        {
+            return _hover.HasValue && !ClickAllowed(board, player, _hover.Value) ? _hover : null;
         }
 
         /// <summary>First click sets the start, second the end; a third starts over.</summary>
@@ -1038,7 +1142,7 @@ namespace RithmaticDuels.Presentation
         private static void Choose<T>(ref T value, string[] labels) where T : struct, System.Enum
         {
             int index = System.Convert.ToInt32(value);
-            int chosen = GUILayout.Toolbar(index, labels);
+            int chosen = Buttons(index, labels, RowWidth);
             if (chosen == index) return;
             value = (T)System.Enum.ToObject(typeof(T), chosen);
             GUIUtility.ExitGUI();
@@ -1048,7 +1152,7 @@ namespace RithmaticDuels.Presentation
         private static void Choose<T>(ref T? value, string[] labels) where T : struct, System.Enum
         {
             int index = value.HasValue ? System.Convert.ToInt32(value.Value) : -1;
-            int chosen = GUILayout.Toolbar(index, labels);
+            int chosen = Buttons(index, labels, RowWidth);
             if (chosen == index || chosen < 0) return;
             value = (T)System.Enum.ToObject(typeof(T), chosen);
             GUIUtility.ExitGUI();
@@ -1056,10 +1160,24 @@ namespace RithmaticDuels.Presentation
 
         private static void Choose(ref int value, string[] labels)
         {
-            int chosen = GUILayout.Toolbar(value, labels);
+            int chosen = Buttons(value, labels, RowWidth);
             if (chosen == value || chosen < 0) return;
             value = chosen;
             GUIUtility.ExitGUI();
+        }
+
+        /// <summary>
+        /// A set of buttons, one selected. They share rows of equal-width buttons, as many to a row as fit in
+        /// <paramref name="width"/>, and wrap onto more rows rather than running off the side.
+        /// </summary>
+        private static int Buttons(int selected, string[] labels, float width)
+        {
+            var style = GUI.skin.button;
+            float widest = 0f;
+            foreach (var label in labels) widest = Mathf.Max(widest, style.CalcSize(new GUIContent(label)).x);
+            float spacing = Mathf.Max(style.margin.left, style.margin.right);
+            int perRow = Mathf.Clamp(Mathf.FloorToInt((width + spacing) / (widest + spacing)), 1, labels.Length);
+            return GUILayout.SelectionGrid(selected, labels, perRow, GUILayout.MaxWidth(width));
         }
 
         private static string ActionLabel(ActionKind kind)

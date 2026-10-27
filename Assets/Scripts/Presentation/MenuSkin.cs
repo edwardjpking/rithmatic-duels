@@ -28,6 +28,16 @@ namespace RithmaticDuels.Presentation
 
         private static GUISkin _skin;
 
+        /// <summary>
+        /// Play Mode starts without reloading scripts (Enter Play Mode Options, for faster loading), so statics keep
+        /// their values from the last run. Start each run with no skin, so it is built afresh.
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetOnPlay()
+        {
+            _skin = null;
+        }
+
         /// <summary>The menu skin, built the first time it is asked for. Only call this from inside OnGUI.</summary>
         public static GUISkin Get()
         {

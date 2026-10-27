@@ -39,6 +39,8 @@ namespace RithmaticDuels.Rules.Geometry
         public float SemiMinor;
         public float Length;
         public float Size;
+        /// <summary>Overall scale of an attached ellipse (both axes). 0 means 1.</summary>
+        public float Scale;
         /// <summary>Where BindPointA and BindPointB were when the drawing was started (set by the board).</summary>
         public Vec2? BindPositionA;
         public Vec2? BindPositionB;
@@ -50,9 +52,9 @@ namespace RithmaticDuels.Rules.Geometry
             return new Placement { Kind = PlacementKind.MainWard, PointA = centre, SemiMinor = semiMinor };
         }
 
-        public static Placement AtBindPoint(int bindPoint, float size = 0f)
+        public static Placement AtBindPoint(int bindPoint, float size = 0f, float scale = 0f)
         {
-            return new Placement { Kind = PlacementKind.AtBindPoint, BindPointA = bindPoint, Size = size };
+            return new Placement { Kind = PlacementKind.AtBindPoint, BindPointA = bindPoint, Size = size, Scale = scale };
         }
 
         public static Placement BetweenBindPoints(int a, int b)
