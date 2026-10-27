@@ -173,6 +173,9 @@ namespace RithmaticDuels.Presentation
             if (available.Count == 0) return null;
             // The scroll view fills the panel down to the footer, so Lock in sits at the bottom.
             scroll = GUILayout.BeginScrollView(scroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar, GUILayout.ExpandHeight(true));
+            PlayerAction action = null;
+            Placement placement = null;
+            string hint = null;
             // A click ends the GUI pass early with GUIUtility.ExitGUI; ending the group in finally keeps
             // Unity's clip stack balanced when it does (otherwise: "pushing more GUIClips than popping").
             try
@@ -218,9 +221,7 @@ namespace RithmaticDuels.Presentation
                     GUILayout.Space(4);
                 }
 
-                PlayerAction action = null;
-                Placement placement = null;
-                string hint = cancelling ? "Choose what to do instead." : "Choose an action.";
+                hint = cancelling ? "Choose what to do instead." : "Choose an action.";
                 // After a cancel the main LoW may need starting again, so check what the board has, not the menu.
                 bool needsMain = board.MainWardOf(player) == null && duel.Config.MainWardFirst;
                 switch (Effective)
