@@ -151,10 +151,17 @@ namespace RithmaticDuels.Rules.Geometry
         public int ChordOf { get; private set; }
         public bool IsChord { get { return ChordOf >= 0; } }
 
-        public ForbiddanceBody(Line line, Segment segment, int chordOf = -1) : base(line)
+        /// <summary>
+        /// The bind points the LoF is bound at: both ends of one joining two bind points, the touching point of a
+        /// tangent, none for a free LoF. Once no LoW passes through one of them any more, the LoF is destroyed.
+        /// </summary>
+        public IReadOnlyList<Vec2> Anchors { get; private set; }
+
+        public ForbiddanceBody(Line line, Segment segment, int chordOf = -1, IReadOnlyList<Vec2> anchors = null) : base(line)
         {
             Segment = segment;
             ChordOf = chordOf;
+            Anchors = anchors ?? new Vec2[0];
         }
     }
 

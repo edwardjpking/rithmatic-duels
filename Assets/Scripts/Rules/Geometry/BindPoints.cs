@@ -62,6 +62,57 @@ namespace RithmaticDuels.Rules.Geometry
             return FaceAndSort(points, centre, facing);
         }
 
+        /// <summary>
+        /// The bind points of a circle attached to another LoW, with one of its own bind points where it touches,
+        /// in the direction <paramref name="toward"/>. <paramref name="join"/> picks which of its points that is
+        /// (DESIGN.md section 4.1): 0 is the default, and each further choice turns the set to a different-looking
+        /// arrangement. Choices wrap round; a symmetric set (4 or 6 points) has only one.
+        /// </summary>
+        public static List<Vec2> ForAttachedCircle(int count, Vec2 centre, float radius, Vec2 toward, int join)
+        {
+            var options = JoinOptions(count, centre, radius, toward);
+            if (options.Count == 0) return new List<Vec2>();
+            int index = ((join % options.Count) + options.Count) % options.Count;
+            return options[index];
+        }
+
+        /// <summary>How many different arrangements an attached circle with this many bind points can be turned to.</summary>
+        public static int JoinChoices(int count)
+        {
+            return Math.Max(1, JoinOptions(count, Vec2.Zero, 1f, new Vec2(1f, 0f)).Count);
+        }
+
+        /// <summary>Each of the set's points turned to the joining spot in turn, leaving out arrangements that look the same.</summary>
+        private static List<List<Vec2>> JoinOptions(int count, Vec2 centre, float radius, Vec2 toward)
+        {
+            var basic = ForCircle(count, centre, radius, toward);
+            var options = new List<List<Vec2>>();
+            float target = toward.Angle;
+            foreach (var point in basic)
+            {
+                float turn = WrapAngle(target - (point - centre).Angle);
+                var turned = new List<Vec2>();
+                foreach (var other in basic) turned.Add(centre + (other - centre).Rotated(turn));
+                turned = FaceAndSort(turned, centre, toward);
+                bool seen = false;
+                foreach (var option in options) seen |= SameSet(option, turned, radius * 1e-3f);
+                if (!seen) options.Add(turned);
+            }
+            return options;
+        }
+
+        private static bool SameSet(List<Vec2> a, List<Vec2> b, float tolerance)
+        {
+            if (a.Count != b.Count) return false;
+            foreach (var p in a)
+            {
+                bool found = false;
+                foreach (var q in b) found |= Vec2.Distance(p, q) < tolerance;
+                if (!found) return false;
+            }
+            return true;
+        }
+
         /// <summary>An ellipse's two bind points: the ends of its major axis, where curvature is greatest.</summary>
         public static List<Vec2> ForEllipse(WardShape ellipse)
         {

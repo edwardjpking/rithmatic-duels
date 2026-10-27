@@ -255,6 +255,7 @@ namespace RithmaticDuels.Rules.Geometry
                     }
                     string bindPoint = ValidBindPoint(placement.BindPointA, bindPoints);
                     if (bindPoint != null) return bindPoint;
+                    if (placement.Join < 0 || placement.Join >= JoinChoices(spec)) return "Choose which of its bind points joins.";
                     if (BindPointFull(player, placement.BindPointA))
                         return "That bind point already has a Line of Warding bound to it.";
                     IReadOnlyList<Vec2> unused;
@@ -800,7 +801,8 @@ namespace RithmaticDuels.Rules.Geometry
                 LineBody body;
                 if (!_bodies.TryGetValue(line.Id, out body))
                 {
-                    body = CreateBody(line, TakePending(line));
+                    // A Mark's Cross's crossed LoF go where its bind points are, so they have no placement of their own.
+                    body = CreateBody(line, line.BraceOf >= 0 ? Placement.Default() : TakePending(line));
                     _bodies[line.Id] = body;
                     var newWard = body as WardBody;
                     if (newWard != null)
@@ -817,6 +819,33 @@ namespace RithmaticDuels.Rules.Geometry
                 if (delta != 0) ward.ApplyEverywhere(delta);
                 if (ward.Weakest != line.Durability || ward.WeakestMax != line.MaxDurability)
                     result.DurabilityOverrides.Add(new DurabilityOverride(line.Id, ward.Weakest, ward.WeakestMax));
+            }
+            DestroyUnboundForbiddance(result);
+        }
+
+        /// <summary>
+        /// A LoF bound at a bind point is destroyed once no LoW passes through that point any more: when the LoW it
+        /// is bound to breaks, unless another LoW still shares the point (DESIGN.md section 4.2).
+        /// </summary>
+        private void DestroyUnboundForbiddance(MovementResult result)
+        {
+            var lost = new List<LineBody>();
+            foreach (var body in _bodies.Values)
+            {
+                var forbiddance = body as ForbiddanceBody;
+                if (forbiddance == null) continue;
+                foreach (var anchor in forbiddance.Anchors)
+                {
+                    bool held = false;
+                    foreach (var ward in WardsOf(forbiddance.Owner)) held |= OnOutline(ward, anchor);
+                    if (!held) { lost.Add(forbiddance); break; }
+                }
+            }
+            foreach (var body in lost)
+            {
+                _bodies.Remove(body.LineId);
+                result.DestroyedLineIds.Add(body.LineId);
+                _notes.Add(Name(body) + " is destroyed: the Line of Warding it was bound to is gone.");
             }
         }
 
@@ -854,17 +883,40 @@ namespace RithmaticDuels.Rules.Geometry
                     IReadOnlyList<Vec2> bindPoints;
                     var shape = WardGeometry(owner, line.Spec, placement, out bindPoints, line.IsMainWard);
                     var wardBody = new WardBody(line, shape, bindPoints, _config);
-                    if (line.Spec.IsMarksCross) wardBody.Braces = MarksCrossBraces(shape, bindPoints);
                     if (line.IsMainWard) wardBody.BindPoints = MainBindPoints(owner, shape, line.BindPointsDrawn);
                     return wardBody;
 
                 case LineType.Forbiddance:
+                    if (line.BraceOf >= 0)
+                    {
+                        // One of a Mark's Cross's crossed LoF: a chord of its circle like any LoF joining two bind points
+                        // (decided 2026-10-27, on the balancing watchlist).
+                        var cross = BodyOf(line.BraceOf) as WardBody;
+                        if (cross != null)
+                        {
+                            var braces = MarksCrossBraces(cross.Shape, cross.BindPoints);
+                            if (line.BraceIndex < braces.Length)
+                            {
+                                var brace = braces[line.BraceIndex];
+                                return new ForbiddanceBody(line, brace, cross.LineId, new[] { brace.A, brace.B });
+                            }
+                        }
+                    }
                     var segment = ForbiddanceGeometry(owner, placement) ?? ForbiddanceGeometry(owner, Placement.Default()).Value;
                     int chordOf = -1;
+                    Vec2[] anchors = null;
                     if (placement.Kind == PlacementKind.BetweenBindPoints)
+                    {
+                        anchors = new[] { segment.A, segment.B };
                         foreach (var ward in WardsOf(owner))
                             if (chordOf < 0 && OnOutline(ward, segment.A) && OnOutline(ward, segment.B)) chordOf = ward.LineId;
-                    return new ForbiddanceBody(line, segment, chordOf);
+                    }
+                    else if (placement.Kind == PlacementKind.TangentAtBindPoint)
+                    {
+                        var points = BindPointsOf(owner);
+                        if (InRange(placement.BindPointA, points)) anchors = new[] { points[placement.BindPointA] };
+                    }
+                    return new ForbiddanceBody(line, segment, chordOf, anchors);
 
                 case LineType.Vigor:
                     Vec2 direction;
@@ -962,8 +1014,20 @@ namespace RithmaticDuels.Rules.Geometry
                 bindPoints = BindPoints.ForEllipse(shape);
                 return shape;
             }
-            bindPoints = BindPoints.ForCircle(count, centre, reach, outward);
+            // One of its bind points sits where it touches the LoW it is attached to: the player picks which.
+            int join = placement != null && placement.Kind == PlacementKind.AtBindPoint ? placement.Join : 0;
+            bindPoints = BindPoints.ForAttachedCircle(count, centre, reach, outward * -1f, join);
             return WardShape.Circle(centre, reach);
+        }
+
+        /// <summary>
+        /// How many choices there are for which of a new LoW's bind points joins the LoW it is attached to. Only a
+        /// circle whose bind points aren't symmetric (9) has more than one; a main LoW's are fixed by its preset.
+        /// </summary>
+        public int JoinChoices(DrawingSpec spec)
+        {
+            if (spec == null || spec.Type != LineType.Warding || spec.IsMarksCross || spec.BindPoints == 2) return 1;
+            return BindPoints.JoinChoices(spec.BindPoints);
         }
 
         /// <summary>
