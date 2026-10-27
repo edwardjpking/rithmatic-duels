@@ -756,7 +756,7 @@ namespace RithmaticDuels.Presentation
         {
             var making = config.Making;
             GUILayout.Label("Type each stat or use - and +. Every " + making.StatBuffsPerDrawTurn + " points take a turn, and a chalkling takes at least "
-                + making.MinimumDrawTurns + " turns, even rushed.");
+                + making.MinimumDrawTurns + " turns unless rushed.");
             StatEntry("Durability", _durabilityEntry, ref _durabilityBuffs, making.BaseDurability, making.DurabilityPerBuff);
             StatEntry("Damage", _damageEntry, ref _damageBuffs, making.BaseDamage, making.DamagePerBuff);
             StatEntry("Speed", _speedEntry, ref _speedBuffs, making.BaseSpeed, making.SpeedPerBuff);
