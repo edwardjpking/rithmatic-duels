@@ -1173,7 +1173,8 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// A row of buttons, one selected. The row always stays on one line: when the labels don't fit in
-        /// <paramref name="width"/>, the font and padding shrink until they do (down to MinButtonFontSize).
+        /// <paramref name="width"/>, the font and padding shrink until they do (down to MinButtonFontSize),
+        /// and only past that does the row wrap onto more lines.
         /// </summary>
         private static int Buttons(int selected, string[] labels, float width)
         {
@@ -1190,7 +1191,16 @@ namespace RithmaticDuels.Presentation
                     style.padding.top, style.padding.bottom);
                 if (NeededWidth(_smallButton, labels) <= width) break;
             }
-            return GUILayout.Toolbar(selected, labels, _smallButton, GUILayout.MaxWidth(width));
+            // Still too wide at the smallest size: wrap onto more rows, as many buttons to a row as fit.
+            float needed = NeededWidth(_smallButton, labels);
+            int perRow = labels.Length;
+            if (needed > width)
+            {
+                float gap = Mathf.Max(_smallButton.margin.left, _smallButton.margin.right);
+                float button = (needed + gap) / labels.Length;
+                perRow = Mathf.Clamp(Mathf.FloorToInt((width + gap) / button), 1, labels.Length);
+            }
+            return GUILayout.SelectionGrid(selected, labels, perRow, _smallButton, GUILayout.MaxWidth(width));
         }
 
         /// <summary>
