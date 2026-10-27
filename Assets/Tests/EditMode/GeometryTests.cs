@@ -1121,6 +1121,20 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void ALineOfForbiddanceMayNotCrossTheMainWardThroughItsCentre()
+        {
+            var main = (WardBody)_board.BodyOf(MainWard(Player.A).Id);
+            var points = _board.BindPointsOf(Player.A);
+            int a = 0;
+            int opposite = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], main.Shape.Centre * 2f - points[a]) < 1e-3f);
+            var diameter = Placement.BetweenBindPoints(a, opposite);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(2), diameter), diameter));
+            int neighbour = Enumerable.Range(0, points.Count).First(i => i != a && i != opposite);
+            var chord = Placement.BetweenBindPoints(a, neighbour);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Forbiddance(2), chord), chord));
+        }
+
+        [Test]
         public void AChordThroughTheCentreToughensTheBackToo()
         {
             // A circle on the front bind point, centre (10.5, 10), with a LoF across it from its top to its bottom.
