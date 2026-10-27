@@ -259,7 +259,7 @@ namespace RithmaticDuels.Rules.Geometry
                     if (BindPointFull(player, placement.BindPointA))
                         return "That bind point already has a Line of Warding bound to it.";
                     IReadOnlyList<Vec2> unused;
-                    return CheckOutline(player, WardGeometry(player, spec, placement, out unused), halfOnly);
+                    return CheckOutline(player, WardGeometry(player, spec, placement, out unused), halfOnly, bindPoints[placement.BindPointA]);
 
                 case LineType.Forbiddance:
                     switch (placement.Kind)
@@ -428,7 +428,9 @@ namespace RithmaticDuels.Rules.Geometry
         {
             IReadOnlyList<Vec2> unused;
             var shape = WardGeometry(player, spec, placement, out unused);
-            return shape != null && CheckOutline(player, shape, _config.Geometry.DrawOnOwnHalfOnly) == null;
+            var points = BindPointsOf(player);
+            return shape != null && InRange(placement.BindPointA, points)
+                && CheckOutline(player, shape, _config.Geometry.DrawOnOwnHalfOnly, points[placement.BindPointA]) == null;
         }
 
         /// <summary>
@@ -1456,8 +1458,11 @@ namespace RithmaticDuels.Rules.Geometry
             return null;
         }
 
-        /// <summary>Null if the whole outline is on the board (and the player's half), otherwise why not.</summary>
-        private string CheckOutline(Player player, WardShape shape, bool halfOnly)
+        /// <summary>
+        /// Null if the whole outline is on the board (and the player's half) and clear of the player's other lines,
+        /// touching only the LoW through the bind point it is bound at, otherwise why not.
+        /// </summary>
+        private string CheckOutline(Player player, WardShape shape, bool halfOnly, Vec2 boundAt)
         {
             if (shape == null) return "Pick a bind point on your main Line of Warding.";
             const int steps = 64;
@@ -1467,7 +1472,7 @@ namespace RithmaticDuels.Rules.Geometry
                 if (!OnBoard(point)) return "It must fit on the board.";
                 if (halfOnly && !OnOwnHalf(player, point)) return "It must fit on your own half of the board.";
             }
-            if (OverlapsLines(player, shape)) return "It can't overlap your other lines. It may only touch them.";
+            if (OverlapsLines(player, shape, boundAt)) return "It can't overlap or touch your other lines, except at the bind point it is bound to.";
             return null;
         }
 
@@ -1576,10 +1581,11 @@ namespace RithmaticDuels.Rules.Geometry
         }
 
         /// <summary>
-        /// True if the shape overlaps one of the player's LoW or crosses one of their LoF. Touching at a
-        /// point, as a LoW bound at a bind point does, is fine (DESIGN.md section 4.1).
+        /// True if the shape overlaps one of the player's LoW or crosses one of their LoF. It may touch the LoW
+        /// through the bind point it is bound at, there; every other LoW it must keep clear of, even where a bind
+        /// point of each would meet (decided 2026-10-27, DESIGN.md section 4.1).
         /// </summary>
-        private bool OverlapsLines(Player player, WardShape shape)
+        private bool OverlapsLines(Player player, WardShape shape, Vec2 boundAt)
         {
             const int steps = 64;
             foreach (var ward in WardsOf(player))
@@ -1589,7 +1595,8 @@ namespace RithmaticDuels.Rules.Geometry
                     float t = 2f * (float)Math.PI * i / steps;
                     if (Side(ward.Shape, shape.PointAt(t)) < 0 || Side(shape, ward.Shape.PointAt(t)) < 0) return true;
                 }
-                if (!TouchesAtABindPoint(shape, ward.BindPoints) && TooClose(shape, ward, LineHalfWidth(ward))) return true;
+                bool boundToIt = OnOutline(ward, boundAt) && Side(shape, boundAt) == 0;
+                if (!boundToIt && TooClose(shape, ward, LineHalfWidth(ward))) return true;
             }
             foreach (var body in _bodies.Values)
             {
@@ -1609,13 +1616,6 @@ namespace RithmaticDuels.Rules.Geometry
                     if (SegmentDistance(forbiddance.Segment.A, forbiddance.Segment.B, shape.PointAt(2f * (float)Math.PI * i / steps),
                         shape.PointAt(2f * (float)Math.PI * (i + 1) / steps)) < clearance - 1e-4f) return true;
             }
-            return false;
-        }
-
-        /// <summary>True if one of these bind points lies on the shape's outline: the two LoW meet there.</summary>
-        private static bool TouchesAtABindPoint(WardShape shape, IReadOnlyList<Vec2> bindPoints)
-        {
-            foreach (var point in bindPoints) if (Side(shape, point) == 0) return true;
             return false;
         }
 

@@ -670,6 +670,27 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void AWardMayOnlyTouchOthersWhereItIsBound()
+        {
+            // Three six-point circles of the same size in a triangle: B on the main LoW's front bind point, C and D
+            // on two neighbouring points of B, its far one and the one 60 degrees round from it. D would touch C
+            // exactly at a bind point of each, but it isn't bound to C, so it can't go there.
+            var six = DrawingSpec.Warding(6);
+            var b = (WardBody)_board.BodyOf(Draw(Player.A, six, Placement.AtBindPoint(0, 1.5f)).Id);
+            var points = _board.BindPointsOf(Player.A);
+            var far = b.Shape.Centre + Vec2.FromAngle(0f) * 1.5f;
+            var round = b.Shape.Centre + Vec2.FromAngle((float)Math.PI / 3f) * 1.5f;
+            var sides = new[] { far, round }.Select(at => Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], at) < 1e-3f)).ToList();
+            Draw(Player.A, six, Placement.AtBindPoint(sides[0], 1.5f));
+            var touching = Placement.AtBindPoint(sides[1], 1.5f);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, six, touching), touching));
+            // A smaller one there keeps clear of C, so it can go, and the sizes on offer stop short of C.
+            var smaller = Placement.AtBindPoint(sides[1], 1f);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, six, smaller), smaller));
+            Assert.Less(_board.MaxAttachedSize(Player.A, six, sides[1]), 1.5f - 1e-3f);
+        }
+
+        [Test]
         public void TheSmallestAttachedEllipseFitsBehindTheMainWard()
         {
             // The back bind point (3, 10) is 3 from the board edge. At its default size an ellipse sticking out
