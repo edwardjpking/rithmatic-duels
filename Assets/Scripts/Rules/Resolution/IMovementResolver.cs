@@ -67,11 +67,18 @@ namespace RithmaticDuels.Rules
         /// can place them. Only <see cref="MovementResult.DurabilityOverrides"/> is read from the result.
         /// </summary>
         void PlaceNewLines(Duel duel, MovementResult result);
+
+        /// <summary>
+        /// Adds to <paramref name="lost"/> every line bound at a bind point that is gone now that lines have broken,
+        /// parents before children. The rules core destroys them (DESIGN.md section 4.1).
+        /// </summary>
+        void FindUnboundLines(Duel duel, List<int> lost);
     }
 
     public sealed class NoMovementResolver : IMovementResolver
     {
         public void ResolveMovementAndAttacks(Duel duel, MovementResult result) { }
         public void PlaceNewLines(Duel duel, MovementResult result) { }
+        public void FindUnboundLines(Duel duel, List<int> lost) { }
     }
 }

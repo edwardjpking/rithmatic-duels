@@ -50,7 +50,6 @@ namespace RithmaticDuels.Rules
         {
             if (line == null) return "a line that is gone";
             string kind = line.IsMainWard ? "main Line of Warding"
-                : line.Spec.IsMarksCross ? "Mark's Cross"
                 : line.Type == LineType.Making ? "chalkling"
                 : LineTypeName(line.Type);
             return line.Owner + "'s " + kind + " #" + line.Id;
@@ -124,7 +123,9 @@ namespace RithmaticDuels.Rules
                     return LineName(line) + " broke.";
                 case TurnEventType.LineDestroyed:
                     // A LoV that hit or was reflected is already covered by the movement notes.
-                    return line != null && line.Type == LineType.Vigor ? null : LineName(line) + " was destroyed.";
+                    if (line != null && line.Type == LineType.Vigor) return null;
+                    return LineName(line) + " was destroyed" + (e.Value == TurnEvent.BindPointGone
+                        ? ": the Line of Warding it was bound to is gone." : ".");
                 case TurnEventType.VigorFizzled:
                     return LineName(line) + " fizzled out with 0 damage.";
                 case TurnEventType.MainWardBreached:
