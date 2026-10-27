@@ -377,6 +377,33 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void AnAttachedEllipseCanBeScaledOverall()
+        {
+            var ward = Draw(Player.A, DrawingSpec.Warding(2), Placement.AtBindPoint(0, 1f, 1.25f));
+            var body = (WardBody)_board.BodyOf(ward.Id);
+            float semiMajor = _config.Geometry.AttachedEllipseSemiMajor * 1.25f;
+            Assert.AreEqual(semiMajor, body.Shape.A, 1e-4);
+            Assert.AreEqual(1.25f, body.Shape.B, 1e-4);
+            Assert.AreEqual(9f + semiMajor, body.Shape.Centre.X, 1e-3);
+        }
+
+        [Test]
+        public void AttachedEllipseScalesStayInTheirRange()
+        {
+            var geometry = _config.Geometry;
+            var spec = DrawingSpec.Warding(2);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, 1f, geometry.AttachedEllipseMaxScale + 0.5f)));
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, spec, Placement.AtBindPoint(0, 1f, geometry.AttachedEllipseMinScale / 2f)));
+            var scales = _board.AttachedScales(Player.A, spec, 0, 1f);
+            Assert.Greater(scales.Count, 1);
+            foreach (float scale in scales)
+            {
+                var placement = Placement.AtBindPoint(0, 1f, scale);
+                Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, placement), placement));
+            }
+        }
+
+        [Test]
         public void AnAttachedCircleCanBeSized()
         {
             var ward = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 2f));

@@ -165,6 +165,12 @@ namespace RithmaticDuels.Rules
         public float AttachedEllipseSemiMinor = 1.25f;
         public float AttachedEllipseMinSemiMinor = 0.75f;
         public float AttachedEllipseMaxSemiMinor = 1.75f;
+        /// <summary>
+        /// Shift + scroll scales an attached ellipse's overall size (both axes) by a factor in this range,
+        /// starting at 1, without changing how round it is. Placeholder (v0.16.1).
+        /// </summary>
+        public float AttachedEllipseMinScale = 0.75f;
+        public float AttachedEllipseMaxScale = 1.5f;
         /// <summary>Starting length of a LoF that is not bound at two points (tangent or free). The scroll wheel changes it within the range below.</summary>
         public float TangentForbiddanceLength = 3f;
         /// <summary>A LoF is a rectangle this wide. All of it must be on the player's half (DESIGN.md section 1.1).</summary>

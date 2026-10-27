@@ -110,6 +110,7 @@ namespace RithmaticDuels.Presentation
         private float _semiMinor = -1f;
         private float _length = -1f;
         private float _attachedSize = -1f;
+        private float _attachedScale = -1f;
 
         // Placement clicks: up to two bind points or two board points, whichever the mode uses.
         private int _bindA = -1;
@@ -300,9 +301,10 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// The scroll wheel over the board: makes a LoW ellipse flatter or rounder, an attached LoW circle
-        /// bigger or smaller, or a LoF not bound at two points shorter or longer. Returns true if it changed the choice.
+        /// bigger or smaller, or a LoF not bound at two points shorter or longer. With <paramref name="overall"/>
+        /// (Shift held), it scales an attached LoW ellipse's overall size instead. Returns true if it changed the choice.
         /// </summary>
-        public bool HandleScroll(ChalkBoard board, Player player, RulesConfig config, float delta)
+        public bool HandleScroll(ChalkBoard board, Player player, RulesConfig config, float delta, bool overall = false)
         {
             if (Effective != ActionKind.StartDrawing || Mathf.Abs(delta) < 1e-6f) return false;
             var geometry = config.Geometry;
@@ -320,6 +322,13 @@ namespace RithmaticDuels.Presentation
             if (_lineType == LineType.Warding && _attachedWardChoice > 0)
             {
                 var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
+                if (overall)
+                {
+                    if (spec.BindPoints != 2) return false;
+                    // Each notch moves to the next whole-number durability, never bigger than fits on the player's half.
+                    _attachedScale = StepAlong(AttachedScaleSteps(board, player, spec), AttachedScale(board, player, spec), delta < 0f ? 1 : -1);
+                    return true;
+                }
                 // Each notch moves to the next whole-number durability, never bigger than fits on the player's half.
                 _attachedSize = StepAlong(AttachedSteps(board, player, spec), AttachedSize(board, player, spec), delta < 0f ? 1 : -1);
                 return true;
@@ -452,7 +461,7 @@ namespace RithmaticDuels.Presentation
                     GUILayout.Label("Bind points:");
                     int before = _attachedWardChoice;
                     Choose(ref _attachedWardChoice, AttachedWardLabels);
-                    if (_attachedWardChoice != before) _attachedSize = -1f;
+                    if (_attachedWardChoice != before) { _attachedSize = -1f; _attachedScale = -1f; }
                     if (_attachedWardChoice < 0)
                     {
                         hint = "Choose a Mark's Cross or how many bind points.";
@@ -468,13 +477,14 @@ namespace RithmaticDuels.Presentation
                     {
                         spec = DrawingSpec.Warding(count);
                         GUILayout.Label(count == 2
-                            ? "An ellipse sticking out from the bind point. Scroll to make it rounder or flatter."
+                            ? "An ellipse sticking out from the bind point. Scroll to make it rounder or flatter, Shift + scroll to make it bigger or smaller."
                             : "A circle outside the bind point. Scroll to make it bigger or smaller.");
                     }
                     GUILayout.Label("Click a bind point on your main Line of Warding to attach it there.");
                     if (_bindA >= 0)
                     {
-                        placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : AttachedSize(board, player, spec));
+                        placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : AttachedSize(board, player, spec),
+                            count == 2 ? AttachedScale(board, player, spec) : 0f);
                         IReadOnlyList<Vec2> points;
                         preview.Ward = board.PreviewWard(player, spec, placement, out points);
                         preview.WardBindPoints = points;
@@ -718,6 +728,8 @@ namespace RithmaticDuels.Presentation
         private List<float> _mainSteps;
         private List<float> _attachedSteps;
         private string _attachedStepsKey;
+        private List<float> _scaleSteps;
+        private string _scaleStepsKey;
         private bool[] _blocked;
         private string _blockedKey;
 
@@ -729,13 +741,41 @@ namespace RithmaticDuels.Presentation
 
         private List<float> AttachedSteps(ChalkBoard board, Player player, DrawingSpec spec)
         {
-            string key = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count;
+            float scale = spec.BindPoints == 2 ? ChosenScale(board) : 0f;
+            string key = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count + "/" + scale;
             if (_attachedSteps == null || key != _attachedStepsKey)
             {
-                _attachedSteps = board.AttachedSizes(player, spec, _bindA);
+                _attachedSteps = board.AttachedSizes(player, spec, _bindA, scale);
                 _attachedStepsKey = key;
             }
             return _attachedSteps;
+        }
+
+        private List<float> AttachedScaleSteps(ChalkBoard board, Player player, DrawingSpec spec)
+        {
+            float size = AttachedSize(board, player, spec);
+            string key = _bindA + "/" + board.BindPointsOf(player).Count + "/" + size;
+            if (_scaleSteps == null || key != _scaleStepsKey)
+            {
+                _scaleSteps = board.AttachedScales(player, spec, _bindA, size);
+                _scaleStepsKey = key;
+            }
+            return _scaleSteps;
+        }
+
+        // The scale as last set, before snapping to a step (the steps themselves depend on the flatness).
+        private float ChosenScale(ChalkBoard board)
+        {
+            return board.AttachedScale(Placement.AtBindPoint(0, 0f, _attachedScale));
+        }
+
+        /// <summary>
+        /// The chosen overall scale of an attached ellipse, on one of its whole-number durability steps and cut
+        /// back if it would reach off the player's half.
+        /// </summary>
+        private float AttachedScale(ChalkBoard board, Player player, DrawingSpec spec)
+        {
+            return Nearest(AttachedScaleSteps(board, player, spec), ChosenScale(board));
         }
 
         private static float Nearest(List<float> steps, float value)
