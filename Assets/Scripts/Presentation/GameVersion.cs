@@ -7,9 +7,9 @@ namespace RithmaticDuels.Presentation
     public static class GameVersion
     {
         public const string Number = "0.16.1";
-        public const string Date = "2026-10-26";
+        public const string Date = "2026-10-27";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "faster Play, frame rate cap, faster log, unfinished bind points dashed";
+        public const string Summary = "faster Play, dashed unfinished bind points, no line overlap, invalid picks blocked";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }
