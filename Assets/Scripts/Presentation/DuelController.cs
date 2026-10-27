@@ -181,7 +181,7 @@ namespace RithmaticDuels.Presentation
                 }
                 else if (boardPoint.HasValue && current.type == EventType.ScrollWheel)
                 {
-                    // Shift + scroll scales an attached ellipse overall. Some platforms turn Shift + scroll into
+                    // Shift + scroll changes an attached ellipse's roundness or turns a circle. Some platforms turn Shift + scroll into
                     // a sideways scroll, so fall back to the horizontal delta.
                     float delta = current.shift && Mathf.Abs(current.delta.y) < 1e-6f ? current.delta.x : current.delta.y;
                     changed = picker.HandleScroll(_board, _chooser, _rules, delta, current.shift);
@@ -257,14 +257,15 @@ namespace RithmaticDuels.Presentation
             float length = 0.7f * unit;
             float thickness = Mathf.Max(2f, 0.07f * unit);
             Color oldColour = GUI.color;
-            Matrix4x4 oldMatrix = GUI.matrix;
             GUI.color = new Color(0.95f, 0.3f, 0.25f, 0.9f);
-            var bar = new Rect(mouse.x - length / 2f, mouse.y - thickness / 2f, length, thickness);
-            foreach (float angle in new[] { 45f, -45f })
+            // Two diagonals made of small squares. GUI rotation misplaces things under the scaled GUI.matrix, so none is used.
+            const int steps = 12;
+            for (int i = 0; i <= steps; i++)
             {
-                GUIUtility.RotateAroundPivot(angle, mouse);
-                GUI.DrawTexture(bar, Texture2D.whiteTexture);
-                GUI.matrix = oldMatrix;
+                float offset = (i / (float)steps - 0.5f) * length / 1.41421f;
+                foreach (float sign in new[] { 1f, -1f })
+                    GUI.DrawTexture(new Rect(mouse.x + offset - thickness / 2f, mouse.y + sign * offset - thickness / 2f,
+                        thickness, thickness), Texture2D.whiteTexture);
             }
             GUI.color = oldColour;
         }
