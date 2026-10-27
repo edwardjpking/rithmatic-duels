@@ -121,6 +121,8 @@ namespace RithmaticDuels.Presentation
         private float _length = -1f;
         private float _attachedSize = -1f;
         private float _attachedScale = -1f;
+        // Which of a new circle's bind points joins the LoW it is attached to (Shift + scroll), for sets that aren't symmetric.
+        private int _join;
 
         // Placement clicks: up to two bind points or two board points, whichever the mode uses.
         private int _bindA = -1;
@@ -334,6 +336,13 @@ namespace RithmaticDuels.Presentation
             if (_lineType == LineType.Warding && _attachedWardChoice > 0)
             {
                 var spec = DrawingSpec.Warding(AttachedWardBindPoints[_attachedWardChoice]);
+                if (overall && board.JoinChoices(spec) > 1)
+                {
+                    // Turn the circle so the next of its bind points joins.
+                    int choices = board.JoinChoices(spec);
+                    _join = ((_join + (delta < 0f ? 1 : -1)) % choices + choices) % choices;
+                    return true;
+                }
                 if (overall)
                 {
                     if (spec.BindPoints != 2) return false;
@@ -473,7 +482,7 @@ namespace RithmaticDuels.Presentation
                     GUILayout.Label("Bind points:");
                     int before = _attachedWardChoice;
                     Choose(ref _attachedWardChoice, AttachedWardLabels);
-                    if (_attachedWardChoice != before) { _attachedSize = -1f; _attachedScale = -1f; }
+                    if (_attachedWardChoice != before) { _attachedSize = -1f; _attachedScale = -1f; _join = 0; }
                     if (_attachedWardChoice < 0)
                     {
                         hint = "Choose a Mark's Cross or how many bind points.";
@@ -490,13 +499,15 @@ namespace RithmaticDuels.Presentation
                         spec = DrawingSpec.Warding(count);
                         GUILayout.Label(count == 2
                             ? "An ellipse sticking out from the bind point. Scroll to make it rounder or flatter, Shift + scroll to make it bigger or smaller."
-                            : "A circle outside the bind point. Scroll to make it bigger or smaller.");
+                            : board.JoinChoices(spec) > 1
+                                ? "A circle outside the bind point. Scroll to make it bigger or smaller, Shift + scroll to turn it so a different one of its bind points joins."
+                                : "A circle outside the bind point. Scroll to make it bigger or smaller.");
                     }
                     GUILayout.Label("Click a bind point on your main Line of Warding to attach it there.");
                     if (_bindA >= 0)
                     {
                         placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : AttachedSize(board, player, spec),
-                            count == 2 ? AttachedScale(board, player, spec) : 0f);
+                            count == 2 ? AttachedScale(board, player, spec) : 0f, _join % board.JoinChoices(spec));
                         IReadOnlyList<Vec2> points;
                         preview.Ward = board.PreviewWard(player, spec, placement, out points);
                         preview.WardBindPoints = points;
@@ -918,7 +929,9 @@ namespace RithmaticDuels.Presentation
                     var ward = bindPoints == 0 ? DrawingSpec.MarksCross(board.Config) : DrawingSpec.Warding(bindPoints);
                     float min = 0f, max, start;
                     if (bindPoints > 0) board.AttachedSizeRange(ward, out min, out max, out start);
-                    return !Fits(board, player, ward, Placement.AtBindPoint(index, min));
+                    // An ellipse is smallest at its smallest overall scale (Shift + scroll) too.
+                    float scale = bindPoints == 2 ? board.Config.Geometry.AttachedEllipseMinScale : 0f;
+                    return !Fits(board, player, ward, Placement.AtBindPoint(index, min, scale));
                 case LineType.Forbiddance:
                     if (_forbiddanceMode == ForbiddanceMode.Tangent)
                         return !ForbiddanceFits(board, player, DrawingSpec.Forbiddance(1),
@@ -980,8 +993,21 @@ namespace RithmaticDuels.Presentation
         /// <summary>The mouse position, if a click there would be ignored (see <see cref="ClickAllowed"/>).</summary>
         private Vec2? InvalidHover(ChalkBoard board, Player player)
         {
-            return _hover.HasValue && !ClickAllowed(board, player, _hover.Value) ? _hover : null;
+            if (!_hover.HasValue) return null;
+            // The menu is laid out several times a frame and the free LoF check tries 16 directions, so keep the answer
+            // until the mouse moves or the choice changes.
+            Vec2 at = _hover.Value;
+            string key = _lineType + "/" + _forbiddanceMode + "/" + _tier + "/" + _pointA + "/" + _pointB + "/" + player + "/" + at.X + "," + at.Y;
+            if (key != _invalidHoverKey)
+            {
+                _invalidHoverKey = key;
+                _invalidHoverCached = !ClickAllowed(board, player, at);
+            }
+            return _invalidHoverCached ? _hover : null;
         }
+
+        private string _invalidHoverKey;
+        private bool _invalidHoverCached;
 
         /// <summary>First click sets the start, second the end; a third starts over.</summary>
         private bool PickPoints(Vec2 point)
@@ -1166,18 +1192,52 @@ namespace RithmaticDuels.Presentation
             GUIUtility.ExitGUI();
         }
 
+        /// <summary>The smallest font size the button rows shrink to so that they fit on one line.</summary>
+        private const int MinButtonFontSize = 8;
+        private static GUIStyle _smallButton;
+        private static GUIStyle _smallButtonSource;
+
         /// <summary>
-        /// A set of buttons, one selected. They share rows of equal-width buttons, as many to a row as fit in
-        /// <paramref name="width"/>, and wrap onto more rows rather than running off the side.
+        /// A row of buttons, one selected. The row always stays on one line: when the labels don't fit in
+        /// <paramref name="width"/>, the font and padding shrink until they do (down to MinButtonFontSize),
+        /// and only past that does the row wrap onto more lines.
         /// </summary>
         private static int Buttons(int selected, string[] labels, float width)
         {
             var style = GUI.skin.button;
+            int baseSize = style.fontSize > 0 ? style.fontSize : (style.font != null ? style.font.fontSize : 13);
+            // Copied afresh whenever the skin's button style changes (a new run builds a new skin).
+            if (_smallButtonSource != style) { _smallButton = new GUIStyle(style); _smallButtonSource = style; }
+            for (int size = baseSize; size >= MinButtonFontSize; size--)
+            {
+                float scale = (float)size / baseSize;
+                _smallButton.fontSize = size;
+                _smallButton.padding = new RectOffset(
+                    Mathf.RoundToInt(style.padding.left * scale), Mathf.RoundToInt(style.padding.right * scale),
+                    style.padding.top, style.padding.bottom);
+                if (NeededWidth(_smallButton, labels) <= width) break;
+            }
+            // Still too wide at the smallest size: wrap onto more rows, as many buttons to a row as fit.
+            float needed = NeededWidth(_smallButton, labels);
+            int perRow = labels.Length;
+            if (needed > width)
+            {
+                float gap = Mathf.Max(_smallButton.margin.left, _smallButton.margin.right);
+                float button = (needed + gap) / labels.Length;
+                perRow = Mathf.Clamp(Mathf.FloorToInt((width + gap) / button), 1, labels.Length);
+            }
+            return GUILayout.SelectionGrid(selected, labels, perRow, _smallButton, GUILayout.MaxWidth(width));
+        }
+
+        /// <summary>
+        /// The width a row of these labels needs in this style. A toolbar gives every button the same width,
+        /// so it is the widest label times the count, plus the gaps.
+        /// </summary>
+        private static float NeededWidth(GUIStyle style, string[] labels)
+        {
             float widest = 0f;
             foreach (var label in labels) widest = Mathf.Max(widest, style.CalcSize(new GUIContent(label)).x);
-            float spacing = Mathf.Max(style.margin.left, style.margin.right);
-            int perRow = Mathf.Clamp(Mathf.FloorToInt((width + spacing) / (widest + spacing)), 1, labels.Length);
-            return GUILayout.SelectionGrid(selected, labels, perRow, GUILayout.MaxWidth(width));
+            return widest * labels.Length + Mathf.Max(style.margin.left, style.margin.right) * (labels.Length - 1);
         }
 
         private static string ActionLabel(ActionKind kind)

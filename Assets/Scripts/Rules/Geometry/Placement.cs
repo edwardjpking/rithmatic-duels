@@ -41,6 +41,11 @@ namespace RithmaticDuels.Rules.Geometry
         public float Size;
         /// <summary>Overall scale of an attached ellipse (both axes). 0 means 1.</summary>
         public float Scale;
+        /// <summary>
+        /// For a LoW attached at a bind point: which of its own bind points joins there, as a choice from
+        /// <see cref="ChalkBoard.JoinChoices"/> (0 is the default). Only sets that aren't symmetric have more than one.
+        /// </summary>
+        public int Join;
         /// <summary>Where BindPointA and BindPointB were when the drawing was started (set by the board).</summary>
         public Vec2? BindPositionA;
         public Vec2? BindPositionB;
@@ -52,9 +57,9 @@ namespace RithmaticDuels.Rules.Geometry
             return new Placement { Kind = PlacementKind.MainWard, PointA = centre, SemiMinor = semiMinor };
         }
 
-        public static Placement AtBindPoint(int bindPoint, float size = 0f, float scale = 0f)
+        public static Placement AtBindPoint(int bindPoint, float size = 0f, float scale = 0f, int join = 0)
         {
-            return new Placement { Kind = PlacementKind.AtBindPoint, BindPointA = bindPoint, Size = size, Scale = scale };
+            return new Placement { Kind = PlacementKind.AtBindPoint, BindPointA = bindPoint, Size = size, Scale = scale, Join = join };
         }
 
         public static Placement BetweenBindPoints(int a, int b)

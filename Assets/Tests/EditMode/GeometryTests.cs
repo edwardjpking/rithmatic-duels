@@ -181,7 +181,8 @@ namespace RithmaticDuels.Rules.Tests
             {
                 if (player == Player.A) _duel.ResolveTurn(Continue, Pass); else _duel.ResolveTurn(Pass, Continue);
             }
-            return _duel.Lines.Last(l => l.Owner == player);
+            // A Mark's Cross's crossed LoF come after it; return the drawing itself.
+            return _duel.Lines.Last(l => l.Owner == player && l.BraceOf < 0);
         }
 
         private TurnReport PassTurn() { return _duel.ResolveTurn(Pass, Pass); }
@@ -475,13 +476,28 @@ namespace RithmaticDuels.Rules.Tests
         {
             var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
             var body = (WardBody)_board.BodyOf(cross.Id);
-            Assert.AreEqual(2, body.Braces.Count);
-            foreach (var brace in body.Braces)
+            // The crossed LoF are lines of their own, each a chord of the Mark's Cross's circle.
+            var braces = _duel.Lines.Where(l => l.BraceOf == cross.Id).ToList();
+            Assert.AreEqual(2, braces.Count);
+            foreach (var line in braces)
             {
-                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.A) < 1e-4f));
-                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.B) < 1e-4f));
-                Assert.AreEqual(2f * _config.Warding.MarksCrossRadius, brace.Length, 1e-3);
+                Assert.AreEqual(LineType.Forbiddance, line.Type);
+                Assert.AreEqual(cross.ModifierSteps, line.ModifierSteps);
+                Assert.AreEqual(_config.Forbiddance.BaseDurability + 2 * _config.Forbiddance.DurabilityPerBindPoint, line.Durability);
+                var brace = (ForbiddanceBody)_board.BodyOf(line.Id);
+                Assert.AreEqual(cross.Id, brace.ChordOf);
+                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.Segment.A) < 1e-4f));
+                Assert.IsTrue(body.BindPoints.Any(p => Vec2.Distance(p, brace.Segment.B) < 1e-4f));
+                Assert.AreEqual(2f * _config.Warding.MarksCrossRadius, brace.Segment.Length, 1e-3);
             }
+            Assert.AreEqual(0, body.Braces.Count, "the circle no longer carries them itself");
+
+            // Each can be dismissed on its own, leaving the circle and the other one.
+            _duel.ResolveTurn(PlayerAction.Dismiss(braces[0].Id), Pass);
+            Assert.IsFalse(braces[0].IsActive);
+            Assert.IsTrue(braces[1].IsActive);
+            Assert.IsTrue(cross.IsActive);
+            Assert.IsNull(_board.BodyOf(braces[0].Id));
         }
 
         [Test]
@@ -651,6 +667,75 @@ namespace RithmaticDuels.Rules.Tests
             Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Warding(4), big), big), Does.Contain("overlap"));
             var small = Placement.AtBindPoint(front, 1.5f);
             Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Warding(4), small), small));
+        }
+
+        [Test]
+        public void AWardMayOnlyTouchOthersWhereItIsBound()
+        {
+            // Three six-point circles of the same size in a triangle: B on the main LoW's front bind point, C and D
+            // on two neighbouring points of B, its far one and the one 60 degrees round from it. D would touch C
+            // exactly at a bind point of each, but it isn't bound to C, so it can't go there.
+            var six = DrawingSpec.Warding(6);
+            var b = (WardBody)_board.BodyOf(Draw(Player.A, six, Placement.AtBindPoint(0, 1.5f)).Id);
+            var points = _board.BindPointsOf(Player.A);
+            var far = b.Shape.Centre + Vec2.FromAngle(0f) * 1.5f;
+            var round = b.Shape.Centre + Vec2.FromAngle((float)Math.PI / 3f) * 1.5f;
+            var sides = new[] { far, round }.Select(at => Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], at) < 1e-3f)).ToList();
+            Draw(Player.A, six, Placement.AtBindPoint(sides[0], 1.5f));
+            var touching = Placement.AtBindPoint(sides[1], 1.5f);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, six, touching), touching));
+            // A smaller one there keeps clear of C, so it can go, and the sizes on offer stop short of C.
+            var smaller = Placement.AtBindPoint(sides[1], 1f);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, six, smaller), smaller));
+            Assert.Less(_board.MaxAttachedSize(Player.A, six, sides[1]), 1.5f - 1e-3f);
+        }
+
+        [Test]
+        public void TheSmallestAttachedEllipseFitsBehindTheMainWard()
+        {
+            // The back bind point (3, 10) is 3 from the board edge. At its default size an ellipse sticking out
+            // from it (semi-major 2) would leave the board; at its smallest scale (semi-major 1) it fits.
+            var points = _board.BindPointsOf(Player.A);
+            int back = Enumerable.Range(0, points.Count).Single(i => points[i].X < 3.1f);
+            var geometry = _config.Geometry;
+            var spec = DrawingSpec.Warding(2);
+            var smallest = Placement.AtBindPoint(back, geometry.AttachedEllipseMinSemiMinor, geometry.AttachedEllipseMinScale);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, smallest), smallest));
+            var standard = Placement.AtBindPoint(back, geometry.AttachedEllipseMinSemiMinor);
+            Assert.IsNotNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, standard), standard));
+        }
+
+        [Test]
+        public void ANinePointCircleCanTurnWhichBindPointJoins()
+        {
+            Assert.AreEqual(1, _board.JoinChoices(DrawingSpec.Warding(4)));
+            Assert.AreEqual(1, _board.JoinChoices(DrawingSpec.Warding(6)));
+            Assert.AreEqual(9, _board.JoinChoices(DrawingSpec.Warding(9)));
+
+            var points = _board.BindPointsOf(Player.A);
+            int front = Enumerable.Range(0, points.Count).Single(i => points[i].X > 8.9f);
+            var spec = DrawingSpec.Warding(9);
+            System.Collections.Generic.IReadOnlyList<Vec2> first, second;
+            _board.PreviewWard(Player.A, spec, Placement.AtBindPoint(front, 1.5f, 0f, 0), out first);
+            _board.PreviewWard(Player.A, spec, Placement.AtBindPoint(front, 1.5f, 0f, 3), out second);
+            // Either way one of its bind points sits on the front bind point (9, 10), where it touches.
+            Assert.IsTrue(first.Any(p => Vec2.Distance(p, V(9f, 10f)) < 1e-3f));
+            Assert.IsTrue(second.Any(p => Vec2.Distance(p, V(9f, 10f)) < 1e-3f));
+            // But the rest are arranged differently.
+            Assert.IsFalse(first.All(p => second.Any(q => Vec2.Distance(p, q) < 1e-3f)));
+            var turned = Placement.AtBindPoint(front, 1.5f, 0f, 3);
+            Assert.IsNull(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, turned), turned));
+            var tooFar = Placement.AtBindPoint(front, 1.5f, 0f, 9);
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, spec, tooFar), tooFar), Does.Contain("joins"));
+        }
+
+        [Test]
+        public void AFourPointCircleCanNotTurn()
+        {
+            var points = _board.BindPointsOf(Player.A);
+            int front = Enumerable.Range(0, points.Count).Single(i => points[i].X > 8.9f);
+            var turned = Placement.AtBindPoint(front, 1.5f, 0f, 1);
+            Assert.That(_board.ValidatePlacement(Player.A, _board.Measure(Player.A, DrawingSpec.Warding(4), turned), turned), Does.Contain("joins"));
         }
 
         [Test]
@@ -919,17 +1004,55 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void BoundForbiddanceGoesWhenItsWardBreaks()
+        {
+            var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
+            var braces = _duel.Lines.Where(l => l.BraceOf == cross.Id).ToList();
+            // A tangent at the main LoW's top bind point, and a free LoF, are not bound to the Mark's Cross.
+            var points = _board.BindPointsOf(Player.A);
+            int top = Enumerable.Range(0, points.Count).Single(i => points[i].Y > 12.9f && points[i].X < 6.1f);
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(top, 2f));
+            var free = Draw(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(2f, 2f), V(5f, 2f)));
+
+            cross.Status = LineStatus.Broken;
+            var report = PassTurn();
+            Assert.IsTrue(braces.All(l => l.Status == LineStatus.Destroyed), "its crossed LoF go with it");
+            Assert.IsTrue(braces.All(l => _board.BodyOf(l.Id) == null));
+            Assert.IsTrue(report.Events.Count(e => e.Type == TurnEventType.LineDestroyed) >= 2);
+            Assert.IsTrue(tangent.IsActive);
+            Assert.IsTrue(free.IsActive);
+        }
+
+        [Test]
+        public void ASharedBindPointHoldsATangentButNotAChordToTheBrokenWard()
+        {
+            // A circle on the main LoW's front bind point (9, 10) shares that point with it.
+            var circle = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
+            var points = _board.BindPointsOf(Player.A);
+            int shared = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(9f, 10f)) < 1e-3f);
+            int far = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(12f, 10f)) < 1e-3f);
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(shared, 1f));
+            var chord = Draw(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(shared, far));
+
+            circle.Status = LineStatus.Broken;
+            PassTurn();
+            Assert.IsTrue(tangent.IsActive, "the main LoW still passes through the shared point");
+            Assert.AreEqual(LineStatus.Destroyed, chord.Status, "its other end was only on the broken circle");
+        }
+
+        [Test]
         public void AMarksCrossHasItsCrossedForbiddanceInside()
         {
             var cross = Draw(Player.A, DrawingSpec.MarksCross(_config), Placement.AtBindPoint(0));
             var body = (WardBody)_board.BodyOf(cross.Id);
-            Assert.AreEqual(2, body.Braces.Count);
-            foreach (var brace in body.Braces)
+            var braces = _duel.Lines.Where(l => l.BraceOf == cross.Id).Select(l => ((ForbiddanceBody)_board.BodyOf(l.Id)).Segment).ToList();
+            Assert.AreEqual(2, braces.Count);
+            foreach (var brace in braces)
             {
                 Assert.AreEqual(2f * _config.Warding.MarksCrossRadius, brace.Length, 1e-3);
                 Assert.AreEqual(0f, Vec2.Distance((brace.A + brace.B) / 2f, body.Shape.Centre), 1e-4);
             }
-            Assert.AreEqual(0, ((WardBody)_board.BodyOf(MainWard(Player.A).Id)).Braces.Count);
+            Assert.AreEqual(0, _duel.Lines.Count(l => l.BraceOf == MainWard(Player.A).Id));
         }
 
         [Test]

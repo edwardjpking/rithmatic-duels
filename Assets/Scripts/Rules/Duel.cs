@@ -352,6 +352,17 @@ namespace RithmaticDuels.Rules
                     line.Status = LineStatus.Destroyed;
                     report.Events.Add(new TurnEvent(TurnEventType.VigorFizzled, player, line.Id));
                 }
+                if (line.Spec.IsMarksCross)
+                {
+                    // Its crossed LoF are drawn with it, one joining each pair of opposite bind points. They share its
+                    // modifier roll (PROVISIONAL), and work like any other LoF (DESIGN.md section 4.1).
+                    int braces = line.Spec.BindPoints / 2;
+                    for (int i = 0; i < braces; i++)
+                    {
+                        var brace = new Line(_nextLineId++, player, DrawingSpec.Forbiddance(2), steps, Config) { BraceOf = line.Id, BraceIndex = i };
+                        _lines.Add(brace);
+                    }
+                }
                 if (line.Type == LineType.Warding && !line.Spec.IsMarksCross && state.MainWard == null)
                 {
                     // PROVISIONAL: a player's first completed LoW (not a Mark's Cross) becomes their main LoW.
