@@ -1198,46 +1198,58 @@ namespace RithmaticDuels.Presentation
         private static GUIStyle _smallButtonSource;
 
         /// <summary>
-        /// A row of buttons, one selected. The row always stays on one line: when the labels don't fit in
-        /// <paramref name="width"/>, the font and padding shrink until they do (down to MinButtonFontSize),
-        /// and only past that does the row wrap onto more lines.
+        /// A row of buttons, one selected. The row always stays on one line, at the largest font size that fits in
+        /// <paramref name="width"/> (never above the skin's own size). Each button is as wide as its label needs,
+        /// with the spare room shared out, so short labels don't force long ones to shrink. Only below
+        /// MinButtonFontSize does the row wrap onto more lines.
         /// </summary>
         private static int Buttons(int selected, string[] labels, float width)
         {
             var style = GUI.skin.button;
-            int baseSize = style.fontSize > 0 ? style.fontSize : (style.font != null ? style.font.fontSize : 13);
             // Copied afresh whenever the skin's button style changes (a new run builds a new skin).
             if (_smallButtonSource != style) { _smallButton = new GUIStyle(style); _smallButtonSource = style; }
-            for (int size = baseSize; size >= MinButtonFontSize; size--)
+            _smallButton.fontSize = style.fontSize;
+            float gap = Mathf.Max(style.margin.left, style.margin.right);
+            float available = width - gap * (labels.Length - 1);
+            if (TotalWidth(_smallButton, labels) > available)
             {
-                float scale = (float)size / baseSize;
+                // The skin's size doesn't fit; its line height bounds the font size from above.
+                int top = style.fontSize > 0 ? style.fontSize : Mathf.CeilToInt(style.lineHeight);
+                int size = top;
+                for (; size > MinButtonFontSize; size--)
+                {
+                    _smallButton.fontSize = size;
+                    if (TotalWidth(_smallButton, labels) <= available) break;
+                }
                 _smallButton.fontSize = size;
-                _smallButton.padding = new RectOffset(
-                    Mathf.RoundToInt(style.padding.left * scale), Mathf.RoundToInt(style.padding.right * scale),
-                    style.padding.top, style.padding.bottom);
-                if (NeededWidth(_smallButton, labels) <= width) break;
+                if (TotalWidth(_smallButton, labels) > available)
+                {
+                    float widest = 0f;
+                    foreach (var label in labels) widest = Mathf.Max(widest, _smallButton.CalcSize(new GUIContent(label)).x);
+                    int perRow = Mathf.Clamp(Mathf.FloorToInt((width + gap) / (widest + gap)), 1, labels.Length);
+                    return GUILayout.SelectionGrid(selected, labels, perRow, _smallButton, GUILayout.MaxWidth(width));
+                }
             }
-            // Still too wide at the smallest size: wrap onto more rows, as many buttons to a row as fit.
-            float needed = NeededWidth(_smallButton, labels);
-            int perRow = labels.Length;
-            if (needed > width)
+
+            float total = TotalWidth(_smallButton, labels);
+            float spare = Mathf.Max(0f, available - total) / labels.Length;
+            int chosen = selected;
+            GUILayout.BeginHorizontal(GUILayout.MaxWidth(width));
+            for (int i = 0; i < labels.Length; i++)
             {
-                float gap = Mathf.Max(_smallButton.margin.left, _smallButton.margin.right);
-                float button = (needed + gap) / labels.Length;
-                perRow = Mathf.Clamp(Mathf.FloorToInt((width + gap) / button), 1, labels.Length);
+                float w = _smallButton.CalcSize(new GUIContent(labels[i])).x + spare;
+                if (GUILayout.Toggle(i == selected, labels[i], _smallButton, GUILayout.Width(w)) && i != selected) chosen = i;
             }
-            return GUILayout.SelectionGrid(selected, labels, perRow, _smallButton, GUILayout.MaxWidth(width));
+            GUILayout.EndHorizontal();
+            return chosen;
         }
 
-        /// <summary>
-        /// The width a row of these labels needs in this style. A toolbar gives every button the same width,
-        /// so it is the widest label times the count, plus the gaps.
-        /// </summary>
-        private static float NeededWidth(GUIStyle style, string[] labels)
+        /// <summary>The width these labels need side by side in this style, gaps not included.</summary>
+        private static float TotalWidth(GUIStyle style, string[] labels)
         {
-            float widest = 0f;
-            foreach (var label in labels) widest = Mathf.Max(widest, style.CalcSize(new GUIContent(label)).x);
-            return widest * labels.Length + Mathf.Max(style.margin.left, style.margin.right) * (labels.Length - 1);
+            float total = 0f;
+            foreach (var label in labels) total += style.CalcSize(new GUIContent(label)).x;
+            return total;
         }
 
         private static string ActionLabel(ActionKind kind)
