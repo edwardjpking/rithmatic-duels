@@ -5,8 +5,8 @@ namespace RithmaticDuels.Presentation
 {
     /// <summary>
     /// The keys that work the action menu (DESIGN.md section 5.1): the number keys pick an option in the first row
-    /// with nothing chosen, Space presses the page's main button (Lock in, show my choices, Next turn), and
-    /// Backspace steps back like a right-click. The keys are defined here alone so they can be rebound in settings
+    /// with nothing chosen (or only a default), Space presses the page's main button (Lock in, show my choices, Next
+    /// turn), and Backspace or Esc steps back like a right-click. The keys are defined here alone so they can be rebound in settings
     /// later (docs/FUTURE_IDEAS.md, Settings).
     ///
     /// <see cref="DuelController"/> calls <see cref="Track"/> once per GUI event, before anything is drawn; the
@@ -40,8 +40,11 @@ namespace RithmaticDuels.Presentation
         /// <summary>Space: the page's main button.</summary>
         private static bool IsNext(KeyCode key) { return key == KeyCode.Space; }
 
-        /// <summary>Backspace: back one step, like a right-click.</summary>
-        private static bool IsBack(KeyCode key) { return key == KeyCode.Backspace; }
+        /// <summary>
+        /// Backspace or Esc: back one step, like a right-click. While the lines list is open or a LoM stat box is
+        /// being typed in, the menu takes no keys, so Esc closes the list or leaves the box first.
+        /// </summary>
+        private static bool IsBack(KeyCode key) { return key == KeyCode.Backspace || key == KeyCode.Escape; }
 
         /// <summary>The option a key picks in a row, counted from 0 (the 1 key), with the 0 key for the tenth. -1 for other keys.</summary>
         private static int OptionOf(KeyCode key)
@@ -92,7 +95,7 @@ namespace RithmaticDuels.Presentation
             return true;
         }
 
-        /// <summary>True, once, if Backspace was just pressed. The key press is used up.</summary>
+        /// <summary>True, once, if Backspace or Esc was just pressed. The key press is used up.</summary>
         public static bool TakeBack()
         {
             if (!IsBack(_pressed)) return false;

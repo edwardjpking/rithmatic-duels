@@ -73,9 +73,10 @@ namespace RithmaticDuels.Presentation
     /// options scroll, while the problem line and Lock in stay at the bottom of the panel.
     ///
     /// The keyboard works it too (<see cref="MenuKeys"/>, DESIGN.md section 5.1): the number keys pick an option in
-    /// the first row of buttons with nothing chosen (rows with a default, such as Pace, count as chosen, and steps
-    /// that need a board click are skipped), and Space locks in. A key for a greyed-out option, or Space before the
-    /// choice is complete, picks nothing: the button or the problem line flashes red and the problem line says why.
+    /// the first row of buttons with nothing chosen (a row with a default, such as Pace, counts until the player picks
+    /// in it, and steps that need a board click are skipped), and Space locks in. A key or click for a greyed-out
+    /// option, or Space before the choice is complete, picks nothing: the button or the problem line flashes red and
+    /// the problem line says why.
     /// </summary>
     public sealed class ActionPicker
     {
@@ -119,9 +120,9 @@ namespace RithmaticDuels.Presentation
         // is the one the number keys pick in.
         private static int _rowOrdinal;
         private static bool _keyRowFound;
-        // A refused key press: which option flashes red (row and option; -1 for the problem line alone), when, and why.
-        private static int _flashRow = -1;
-        private static int _flashOption = -1;
+        // A refused pick (a key or a click on something greyed out): what flashes red (null for the problem line alone),
+        // when, and why.
+        private static string _flashKey;
         private static float _flashStart = -100f;
         private static string _flashReason;
         // Whether the reason shows this frame, settled on the layout pass so every pass of a frame lays out the same lines.
@@ -134,8 +135,7 @@ namespace RithmaticDuels.Presentation
         public ActionPicker()
         {
             // A new player's menu starts with nothing flashing.
-            _flashRow = -1;
-            _flashOption = -1;
+            _flashKey = null;
             _flashStart = -100f;
             _flashReason = null;
             _reasonShown = false;
@@ -151,6 +151,15 @@ namespace RithmaticDuels.Presentation
         // Every choice starts unselected (null or -1). Pace defaults to Normal.
         private ActionKind? _kind;
         private bool _defaultChosen;
+        // Whether the action and pace were picked by the player, rather than only being the default (Continue
+        // drawing mid-drawing, Normal pace). Until then their row still takes the number keys.
+        private bool _kindPicked;
+        private bool _pacePicked;
+        /// <summary>
+        /// Set by Buttons when the player picked the option that was already selected (by its number key, or by
+        /// clicking it again), which confirms a default.
+        /// </summary>
+        private static bool _repressed;
         private ActionKind? _afterCancel;
         private LineType? _lineType;
         private DrawingPace _pace;
@@ -257,10 +266,12 @@ namespace RithmaticDuels.Presentation
                     var labels = new string[available.Count];
                     for (int i = 0; i < available.Count; i++) labels[i] = ActionLabel(available[i]);
                     int index = _kind.HasValue ? available.IndexOf(_kind.Value) : -1;
-                    int chosen = Buttons(index, labels, _width);
-                    if (chosen != index && chosen >= 0)
+                    bool isDefault = index >= 0 && !_kindPicked;
+                    int chosen = Buttons(index, labels, _width, 0, null, isDefault);
+                    if (chosen >= 0 && (chosen != index || isDefault && _repressed))
                     {
                         _kind = available[chosen];
+                        _kindPicked = true;
                         GUIUtility.ExitGUI();
                     }
                     GUILayout.Space(4);
@@ -332,13 +343,15 @@ namespace RithmaticDuels.Presentation
             GUI.enabled = problem == null;
             bool locked = GUILayout.Button("Lock in", GUILayout.Height(34));
             GUI.enabled = true;
+            // A click on Lock in while it is greyed out flashes the problem line, as Space does.
+            if (Event.current.type != EventType.Layout) RefuseClick(GUILayoutUtility.GetLastRect(), problem != null, null, null);
             // Space locks in, or, before the choice is complete, flashes the problem line.
             if (!locked && MenuKeys.TakeNext())
             {
                 if (problem == null) locked = true;
                 else
                 {
-                    Flash(-1, -1, null);
+                    Flash(null, null);
                     GUIUtility.ExitGUI();
                 }
             }
@@ -415,8 +428,8 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// A right-click anywhere while choosing: undoes the last choice made, one layer of the menu at a time,
-        /// so repeated right-clicks walk all the way back to no action. Layers, last first: pace; the placement
-        /// (positions, bind points and scroll sizes together); the placement or tier choice; for a chalkling its
+        /// so repeated right-clicks walk all the way back to no action. Layers, last first: the placement
+        /// (positions, bind points and scroll sizes together); pace; the placement or tier choice; for a chalkling its
         /// glyph, tether, + modifier stat and stat values; the line type; the action. Returns true if anything changed.
         /// </summary>
         public bool HandleRightClick(ChalkBoard board, Player player, RulesConfig config)
@@ -438,7 +451,7 @@ namespace RithmaticDuels.Presentation
             }
 
             if (_kind == ActionKind.CancelDrawing && _afterCancel.HasValue) { _afterCancel = null; return true; }
-            if (_kind.HasValue) { _kind = null; return true; }
+            if (_kind.HasValue) { _kind = null; _kindPicked = false; return true; }
             return false;
         }
 
@@ -456,8 +469,9 @@ namespace RithmaticDuels.Presentation
         /// <summary>A drawing during the duel, last first. Returns false once only the action is left to undo.</summary>
         private bool StepBackDrawing()
         {
-            if (_pace != DrawingPace.Normal) { _pace = DrawingPace.Normal; return true; }
+            // The placement is always undone first, then the pace (Amelia, 2026-10-29).
             if (HasPlacement()) { ClearPlacement(); return true; }
+            if (_pace != DrawingPace.Normal || _pacePicked) { _pace = DrawingPace.Normal; _pacePicked = false; return true; }
             switch (_lineType)
             {
                 case LineType.Warding:
@@ -873,7 +887,15 @@ namespace RithmaticDuels.Presentation
 
             GUILayout.Space(4);
             BeginRow("Pace:");
-            Choose(ref _pace, PaceLabels);
+            // Normal starts selected, but the row takes the number keys until the player picks a pace.
+            int paceIndex = (int)_pace;
+            int pickedPace = Buttons(paceIndex, PaceLabels, NextRowWidth(), 0, null, !_pacePicked);
+            if (pickedPace >= 0 && (pickedPace != paceIndex || !_pacePicked && _repressed))
+            {
+                _pace = (DrawingPace)pickedPace;
+                _pacePicked = true;
+                GUIUtility.ExitGUI();
+            }
             GUILayout.EndHorizontal();
             DrawTiming(config, spec);
             return PlayerAction.Start(spec, _pace);
@@ -1005,7 +1027,7 @@ namespace RithmaticDuels.Presentation
             if (targets.Count == 0) return null;
             int index = targets.FindIndex(line => line.Id == _targetLineId);
             bool keyRow;
-            int row = KeyRow(index, out keyRow);
+            int row = KeyRow(index, false, out keyRow);
             int keyed = keyRow ? KeyPick(row, targets.Count, 0, null) : -1;
             if (keyed >= 0)
             {
@@ -1578,8 +1600,10 @@ namespace RithmaticDuels.Presentation
             bool enabled = GUI.enabled;
             GUI.enabled = enabled && buffs > 0;
             if (GUILayout.Button("-", GUILayout.Width(30))) step = -1;
+            StatButtonDecor(control + "-", enabled && buffs <= 0, name + " can't go any lower.");
             GUI.enabled = enabled && buffs < MaxStatBuffs;
             if (GUILayout.Button("+", GUILayout.Width(30))) step = 1;
+            StatButtonDecor(control + "+", enabled && buffs >= MaxStatBuffs, name + " can't go any higher.");
             GUI.enabled = enabled;
             GUILayout.EndHorizontal();
 
@@ -1587,6 +1611,15 @@ namespace RithmaticDuels.Presentation
             bool changed = next != buffs;
             buffs = next;
             if (changed) GUIUtility.ExitGUI();
+        }
+
+        /// <summary>A stat's - or + button, just drawn: a click while it is greyed out flashes it red and says why.</summary>
+        private static void StatButtonDecor(string key, bool greyed, string why)
+        {
+            if (Event.current.type == EventType.Layout) return;
+            Rect rect = GUILayoutUtility.GetLastRect();
+            RefuseClick(rect, greyed, key, why);
+            if (Event.current.type == EventType.Repaint) FlashOver(rect, key);
         }
 
         /// <summary>
@@ -1701,12 +1734,17 @@ namespace RithmaticDuels.Presentation
         /// MinButtonFontSize does the row wrap onto more lines. Buttons whose bit is set in <paramref name="unusable"/> are greyed out,
         /// and <paramref name="why"/> says why, if a number key tries one. With nothing selected it may be the row the number keys pick in.
         /// </summary>
-        private static int Buttons(int selected, string[] labels, float width, int unusable = 0, string why = null)
+        private static int Buttons(int selected, string[] labels, float width, int unusable = 0, string why = null, bool isDefault = false)
         {
+            _repressed = false;
             bool keyRow;
-            int row = KeyRow(selected, out keyRow);
+            int row = KeyRow(selected, isDefault, out keyRow);
             int keyed = keyRow ? KeyPick(row, labels.Length, unusable, why) : -1;
-            if (keyed >= 0) return keyed;
+            if (keyed >= 0)
+            {
+                _repressed = keyed == selected;
+                return keyed;
+            }
 
             var style = GUI.skin.button;
             // Copied afresh whenever the skin's button style changes (a new run builds a new skin).
@@ -1736,6 +1774,12 @@ namespace RithmaticDuels.Presentation
                     foreach (var label in labels) widest = Mathf.Max(widest, _smallButton.CalcSize(new GUIContent(label)).x);
                     int perRow = Mathf.Clamp(Mathf.FloorToInt((width + gap) / (widest + gap)), 1, labels.Length);
                     int picked = GUILayout.SelectionGrid(selected, labels, perRow, _smallButton, GUILayout.MaxWidth(width));
+                    // The grid can't grey out single buttons, so a click on one that can't be picked is refused here.
+                    if (picked != selected && picked >= 0 && (!GUI.enabled || Unusable(unusable, picked)))
+                    {
+                        Flash(OptionKey(row, picked), why ?? CantPick);
+                        GUIUtility.ExitGUI();
+                    }
                     if (Event.current.type == EventType.Repaint)
                     {
                         Rect grid = GUILayoutUtility.GetLastRect();
@@ -1763,8 +1807,15 @@ namespace RithmaticDuels.Presentation
                 GUI.enabled = enabled && !Unusable(unusable, i);
                 bool on = GUILayout.Toggle(i == selected, labels[i], _smallButton, GUILayout.Width(w));
                 GUI.enabled = enabled;
-                if (Event.current.type == EventType.Repaint) DecorateOption(GUILayoutUtility.GetLastRect(), row, i, keyRow);
+                if (Event.current.type != EventType.Layout)
+                {
+                    Rect rect = GUILayoutUtility.GetLastRect();
+                    RefuseClick(rect, !enabled || Unusable(unusable, i), OptionKey(row, i), why ?? CantPick);
+                    if (Event.current.type == EventType.Repaint) DecorateOption(rect, row, i, keyRow);
+                }
                 if (on && i != selected) chosen = i;
+                // Clicking the selected button again keeps it, but confirms a default (see _repressed).
+                if (!on && i == selected) _repressed = true;
             }
             GUILayout.EndHorizontal();
             return chosen;
@@ -1772,11 +1823,12 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// Counts a row of options down the menu. Returns its place, and sets <paramref name="keyRow"/> if it is the
-        /// row the number keys pick in: the first one this pass with nothing <paramref name="selected"/>.
+        /// row the number keys pick in: the first one this pass with nothing <paramref name="selected"/>, or with only
+        /// a default the player hasn't confirmed (<paramref name="isDefault"/>: Continue drawing, Pace).
         /// </summary>
-        private static int KeyRow(int selected, out bool keyRow)
+        private static int KeyRow(int selected, bool isDefault, out bool keyRow)
         {
-            keyRow = !_keyRowFound && selected < 0;
+            keyRow = !_keyRowFound && (selected < 0 || isDefault);
             if (keyRow) _keyRowFound = true;
             return _rowOrdinal++;
         }
@@ -1792,16 +1844,24 @@ namespace RithmaticDuels.Presentation
             MenuKeys.Use();
             if (option >= count) return -1;
             if (GUI.enabled && !Unusable(unusable, option)) return option;
-            Flash(row, option, why ?? "That can't be picked right now.");
+            Flash(OptionKey(row, option), why ?? CantPick);
             GUIUtility.ExitGUI();
             return -1;
         }
 
-        /// <summary>Starts a red flash on an option (row -1: the problem line alone), with the reason to show, if any.</summary>
-        private static void Flash(int row, int option, string reason)
+        /// <summary>The reason shown for a greyed-out option that has no reason of its own.</summary>
+        private const string CantPick = "That can't be picked right now.";
+
+        /// <summary>The flash key of option <paramref name="option"/> in row <paramref name="row"/>.</summary>
+        private static string OptionKey(int row, int option)
         {
-            _flashRow = row;
-            _flashOption = option;
+            return row + "/" + option;
+        }
+
+        /// <summary>Starts a red flash on what <paramref name="key"/> names (null: the problem line alone), with the reason to show, if any.</summary>
+        private static void Flash(string key, string reason)
+        {
+            _flashKey = key;
             _flashStart = Time.realtimeSinceStartup;
             _flashReason = reason;
         }
@@ -1814,24 +1874,40 @@ namespace RithmaticDuels.Presentation
 
         private static GUIStyle _keyHint;
 
+        /// <summary>Paints the red flash over <paramref name="rect"/> if <paramref name="key"/> was just refused. Only call it while repainting.</summary>
+        private static void FlashOver(Rect rect, string key)
+        {
+            if (key != _flashKey) return;
+            float strength = FlashStrength();
+            if (strength <= 0f) return;
+            var colour = GUI.color;
+            var red = MenuSkin.Refused;
+            GUI.color = new Color(red.r, red.g, red.b, red.a * MenuSkin.RefusedFlashAlpha * strength);
+            MenuSkin.FlashBox.Draw(rect, false, false, false, false);
+            GUI.color = colour;
+        }
+
+        /// <summary>
+        /// A left-click on a greyed-out button picks nothing, as ever, but it flashes the button red and the problem
+        /// line says why (<paramref name="key"/> null: the problem line alone), the same as a number key would.
+        /// Call it straight after drawing the button, so its rect is the last one laid out.
+        /// </summary>
+        private static void RefuseClick(Rect rect, bool greyed, string key, string why)
+        {
+            var e = Event.current;
+            if (!greyed || e.type != EventType.MouseDown || e.button != 0 || !rect.Contains(e.mousePosition)) return;
+            Flash(key, why);
+            e.Use();
+            GUIUtility.ExitGUI();
+        }
+
         /// <summary>
         /// Paints over an option's button: its key's number in the corner if its row is the key row (while the
         /// menu takes keys), and the red flash if a key press for it was just refused. Only call it while repainting.
         /// </summary>
         private static void DecorateOption(Rect rect, int row, int option, bool keyRow)
         {
-            if (row == _flashRow && option == _flashOption)
-            {
-                float strength = FlashStrength();
-                if (strength > 0f)
-                {
-                    var colour = GUI.color;
-                    var red = MenuSkin.Refused;
-                    GUI.color = new Color(red.r, red.g, red.b, red.a * MenuSkin.RefusedFlashAlpha * strength);
-                    MenuSkin.FlashBox.Draw(rect, false, false, false, false);
-                    GUI.color = colour;
-                }
-            }
+            FlashOver(rect, OptionKey(row, option));
             string name = keyRow && MenuKeys.Enabled ? MenuKeys.OptionName(option) : null;
             if (name == null) return;
             if (_keyHint == null)
