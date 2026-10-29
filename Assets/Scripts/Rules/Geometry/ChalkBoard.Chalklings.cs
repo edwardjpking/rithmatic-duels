@@ -128,12 +128,13 @@ namespace RithmaticDuels.Rules.Geometry
             }
             if (chalkling.Line.Glyph != Glyph.Attack) return false;
 
-            // An Attack chalkling scratches at whatever blocks its way to the opponent's main LoW.
+            // An Attack chalkling scratches at whatever blocks its way to the opponent's main LoW, but never its own lines.
             Vec2 goal;
             if (!AttackTarget(chalkling.Owner, chalkling.Position, out goal)) return false;
             Vec2 direction = (goal - chalkling.Position).Normalized;
             var block = FirstChalklingBlock(chalkling.Owner, chalkling.Position, direction, chalkling, used, -1);
-            if (block.Body == null || block.Body is ChalklingBody || block.Distance > _config.Making.AttackRange) return false;
+            if (block.Body == null || block.Body is ChalklingBody || block.Body.Owner == chalkling.Owner
+                || block.Distance > _config.Making.AttackRange) return false;
             target = block;
             return true;
         }
