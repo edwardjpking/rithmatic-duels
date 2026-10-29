@@ -1198,6 +1198,13 @@ namespace RithmaticDuels.Presentation
             GUILayout.Label(name, GUILayout.Width(100));
             GUI.SetNextControlName(control);
             string typed = GUILayout.TextField(entry.Text, 3, GUILayout.Width(50));
+            // Scrolling over the box changes the stat by one step, like scroll changes a drawing's size.
+            int scrollStep = 0;
+            if (Event.current.type == EventType.ScrollWheel && GUILayoutUtility.GetLastRect().Contains(Event.current.mousePosition))
+            {
+                scrollStep = Event.current.delta.y < 0f ? 1 : Event.current.delta.y > 0f ? -1 : 0;
+                Event.current.Use();
+            }
             if (typed != entry.Text)
             {
                 entry.Text = FilterDigits(typed);
@@ -1219,7 +1226,7 @@ namespace RithmaticDuels.Presentation
             GUI.enabled = enabled;
             GUILayout.EndHorizontal();
 
-            int next = Mathf.Clamp(buffs + step, 0, MaxStatBuffs);
+            int next = Mathf.Clamp(buffs + step + scrollStep, 0, MaxStatBuffs);
             bool changed = next != buffs;
             buffs = next;
             if (changed) GUIUtility.ExitGUI();

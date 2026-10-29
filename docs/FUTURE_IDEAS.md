@@ -164,6 +164,6 @@ Separate from the tutorial, and the lowest priority. It shares the tutorial's se
 Player settings to add later (the list started 2026-10-27). Accessibility settings are also tracked in `docs/ACCESSIBILITY.md`.
 
 - **Scroll direction for turning a circle (Amelia, 2026-10-27).** Which way the scroll wheel turns a nine-point circle (Shift + scroll, DESIGN.md 4.1) should be a player setting. The default was flipped in v0.18 because the first direction felt wrong.
-- **Holding Tab for the lines list (Amelia, 2026-10-27).** As well as pressing Tab to open and close the lines list (DESIGN.md section 2, Information), let the player choose to hold Tab to show it and release it to return to the menu.
+- **Holding Ctrl for the lines list (Amelia, 2026-10-27).** As well as pressing Ctrl to open and close the lines list (DESIGN.md section 2, Information), let the player choose to hold Ctrl to show it and release it to return to the menu.
 - **Stop the log jumping to the newest entry (Amelia, 2026-10-27).** Today the log scrolls to the end whenever it changes. Not everyone wants that, so it should be possible to turn off.
 - **Configurable colours (Amelia, 2026-10-27).** Every colour that carries meaning (players, highlights, hover marks, placement preview, red for invalid) should be changeable, including colour-blind presets. See `docs/ACCESSIBILITY.md`.
