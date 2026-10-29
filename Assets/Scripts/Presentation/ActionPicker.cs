@@ -864,9 +864,9 @@ namespace RithmaticDuels.Presentation
             var making = config.Making;
             GUILayout.Label("Type each stat or use - and +. Every " + making.StatBuffsPerDrawTurn + " points take a turn, and a chalkling takes at least "
                 + making.MinimumDrawTurns + " turns unless rushed.");
-            StatEntry("Durability", _durabilityEntry, ref _durabilityBuffs, making.BaseDurability, making.DurabilityPerBuff);
-            StatEntry("Damage", _damageEntry, ref _damageBuffs, making.BaseDamage, making.DamagePerBuff);
-            StatEntry("Speed", _speedEntry, ref _speedBuffs, making.BaseSpeed, making.SpeedPerBuff);
+            StatEntry("Durability", _durabilityEntry, ref _durabilityBuffs, making.BaseDurability, making.DurabilityPerBuff, "Damage");
+            StatEntry("Damage", _damageEntry, ref _damageBuffs, making.BaseDamage, making.DamagePerBuff, "Speed");
+            StatEntry("Speed", _speedEntry, ref _speedBuffs, making.BaseSpeed, making.SpeedPerBuff, null);
             BeginRow("+ modifier to:");
             Choose(ref _modifierStat, StatLabels);
             GUILayout.EndHorizontal();
@@ -1467,7 +1467,7 @@ namespace RithmaticDuels.Presentation
         /// A typed number moves to the nearest value the point buy can make (for example 4 becomes 5 when
         /// durability goes 1, 3, 5...), and the box shows that value once the player presses Enter or clicks away.
         /// </summary>
-        private static void StatEntry(string name, TypedStat entry, ref int buffs, int baseValue, int perBuff)
+        private static void StatEntry(string name, TypedStat entry, ref int buffs, int baseValue, int perBuff, string next)
         {
             int value = baseValue + buffs * perBuff;
             string control = "stat-" + name;
@@ -1476,7 +1476,9 @@ namespace RithmaticDuels.Presentation
                 && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter
                     || Event.current.keyCode == KeyCode.Escape))
             {
-                GUI.FocusControl(null);
+                // Enter moves on to the next box; on the last box, or with Esc, it leaves keyboard entry.
+                bool enter = Event.current.keyCode != KeyCode.Escape;
+                GUI.FocusControl(enter && next != null ? "stat-" + next : null);
                 focused = false;
                 Event.current.Use();
             }
