@@ -1447,7 +1447,8 @@ namespace RithmaticDuels.Presentation
             string control = "stat-" + name;
             bool focused = GUI.GetNameOfFocusedControl() == control;
             if (focused && Event.current.type == EventType.KeyDown
-                && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter))
+                && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter
+                    || Event.current.keyCode == KeyCode.Escape))
             {
                 GUI.FocusControl(null);
                 focused = false;

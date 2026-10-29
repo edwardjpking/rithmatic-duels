@@ -348,7 +348,7 @@ namespace RithmaticDuels.Rules
         /// <summary>How far an unbound Defend chalkling strays from the spot it was drawn (longer than a bound tether).</summary>
         public float GuardDistance = 3f;
         public float Radius = 0.35f;
-        public float AttackRange = 0.5f;
+        public float AttackRange = 0.6f;
         public int AttacksPerTick = 1;
         /// <summary>"+1 to a stat of choice / -1 to the highest stat", per modifier step.</summary>
         public int StatPerModifierStep = 1;
