@@ -233,7 +233,7 @@ A chalkling has three stats: **Durability**, **Damage** and **Speed**. When the 
 
 | Value | Placeholder |
 |---|---|
-| Chalkling size | radius 0.3 units (raised 2026-10-29 to be easier to hit) |
+| Chalkling size | radius 0.35 units (raised 2026-10-29 to be easier to hit) |
 | Attack range | 0.6 units (raised 2026-10-29 so the health of its target is easier to see) |
 | Attacks | 1 attack per tick, dealing its Damage |
 | Tether distance when bound | 2 units |
