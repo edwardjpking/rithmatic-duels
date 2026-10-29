@@ -24,13 +24,13 @@ Each item says what the friction is and a likely fix. None are built yet unless 
 
 - **Scroll wheel is required.** Size, shape, turn and LoF length all use the scroll wheel or Shift + scroll. Some trackpads and mice make this awkward. Add keyboard alternatives (for example + and - for size, and Shift with them for shape or turn) and on-screen buttons, used consistently everywhere scroll is used.
 - **Right-click to go back.** Some trackpads and one-button mice make right-click awkward. Add a key for "back one step" (for example Escape or Backspace) and an on-screen Back button.
-- **Key rebinding.** Ctrl, Enter, Shift and right-click should all be rebindable.
-- **Holding instead of pressing.** Some players find holding a key easier, others find pressing easier. Holding Ctrl for the lines list is already on the settings list. Any future hold-to-act control needs a press-to-toggle option, and the other way round.
+- **Key rebinding.** Tab, Enter, Shift and right-click should all be rebindable.
+- **Holding instead of pressing.** Some players find holding a key easier, others find pressing easier. Holding Tab for the lines list is already on the settings list. Any future hold-to-act control needs a press-to-toggle option, and the other way round.
 - **Precise aiming.** Aiming a LoV and placing free lines need precise mouse control. Consider a fine-adjust option (keyboard nudging, or snapping to set angles as an option) for players with less precise movement.
 
 ## Information and reading
 
-- **Information only on hover.** Line stats appear only while hovering, which needs steady pointer control. Selecting a line in the lines list (Ctrl) could pin its stats until dismissed, so nothing important needs a held hover.
+- **Information only on hover.** Line stats appear only while hovering, which needs steady pointer control. Selecting a line in the lines list (Tab) could pin its stats until dismissed, so nothing important needs a held hover.
 - **Abbreviations.** LoW, LoF, LoV and LoM are used in the interface and log. Offer full names as an option, or show the full name on first use.
 - **The log moves on its own.** It jumps to the newest entry whenever it changes. A setting to stop this is already on the settings list. Players should also be able to scroll back without losing their place.
 - **Screen readers.** IMGUI is not read by screen readers. The log and menus could later be mirrored to a text output a screen reader can use. This is a large change, so it is noted rather than planned.

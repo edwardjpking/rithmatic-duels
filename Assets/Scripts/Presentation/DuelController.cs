@@ -61,7 +61,7 @@ namespace RithmaticDuels.Presentation
         /// <summary>The menu area's width this frame, so the picker can wrap its button rows to fit.</summary>
         private float _menuContentWidth = 400f;
         private string _error;
-        /// <summary>Ctrl shows every current line of both players over the menu, at any point, until Ctrl or a right-click closes it.</summary>
+        /// <summary>Tab shows every current line of both players over the menu, at any point, until Tab or (Tab in a LoM stat box moves between boxes instead) a right-click closes it.</summary>
         private bool _showLines;
         private Vector2 _linesScroll;
         /// <summary>The line under the mouse on the board, whose entry the lines list picks out. -1 for none.</summary>
@@ -182,13 +182,15 @@ namespace RithmaticDuels.Presentation
             if (current.type == EventType.Repaint) _listHoverLineId = -1;
             var boardHovered = boardPoint.HasValue && _board != null ? _board.BodyAt(boardPoint.Value, 0.3f) : null;
             _boardHoverLineId = boardHovered != null ? boardHovered.LineId : -1;
-            if (_duel != null && current.type == EventType.KeyDown
-                && (current.keyCode == KeyCode.LeftControl || current.keyCode == KeyCode.RightControl))
+            if (_duel != null && current.type == EventType.KeyDown && current.keyCode == KeyCode.Tab
+                && !GUI.GetNameOfFocusedControl().StartsWith("stat-"))
             {
                 _showLines = !_showLines;
                 current.Use();
                 GUIUtility.ExitGUI();
             }
+            // Clicking the board leaves a LoM stat box, so Tab goes back to opening the lines list.
+            if (boardPoint.HasValue && current.type == EventType.MouseDown && GUI.GetNameOfFocusedControl().StartsWith("stat-")) GUI.FocusControl(null);
             if (_duel != null && _showLines)
             {
                 // The list covers the menu, so board clicks and scrolls do nothing; a right-click closes the list.
@@ -614,7 +616,7 @@ namespace RithmaticDuels.Presentation
         {
             GUILayout.Label(TurnNarrator.PlayerName(_chooser) + ". " + DescribeWork(_chooser, true));
             GUILayout.Label("Opponent: " + DescribeWork(_chooser.Opponent(), false));
-            GUILayout.Label("Ctrl: show all current lines.");
+            GUILayout.Label("Tab: show all current lines.");
             var choice = _pickers[(int)_chooser].Draw(_duel, _board, _chooser, ref _menuScroll, _menuContentWidth);
             if (choice != null) Then(() => Lock(choice));
         }
@@ -670,7 +672,7 @@ namespace RithmaticDuels.Presentation
 
             GUILayout.Space(6);
             GUILayout.Label("Trails show where each Line of Vigor went this turn.");
-            GUILayout.Label("Ctrl: show all current lines.");
+            GUILayout.Label("Tab: show all current lines.");
         }
 
         /// <summary>The lines list, on a translucent panel over the menu. It scrolls like the log if it gets long.</summary>
@@ -683,7 +685,7 @@ namespace RithmaticDuels.Presentation
             DrawOutline(area);
             GUI.color = oldColour;
             GUILayout.BeginArea(new Rect(area.x + 6, area.y + 4, area.width - 12, area.height - 8));
-            GUILayout.Label("All current lines. Hover one to find it on the board. Ctrl or right-click to close.");
+            GUILayout.Label("All current lines. Hover one to find it on the board. Tab or right-click to close.");
             _linesScroll = GUILayout.BeginScrollView(_linesScroll);
             DrawLinesList();
             GUILayout.EndScrollView();
