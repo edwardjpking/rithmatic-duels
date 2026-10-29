@@ -66,6 +66,9 @@ namespace RithmaticDuels.Rules.Geometry
                 }
             }
 
+            foreach (var chalkling in chalklings)
+                ReleaseBehind(chalkling, chalkling.Position, _config.Making.Radius + _config.Geometry.ForbiddanceWidth / 2f);
+
             // Everyone picks a target from where they now stand, then all strike together, so two can destroy each other.
             var strikes = new List<KeyValuePair<ChalklingBody, ChalklingBlock>>();
             foreach (var chalkling in chalklings)
@@ -238,6 +241,14 @@ namespace RithmaticDuels.Rules.Geometry
                 var forbiddance = body as ForbiddanceBody;
                 if (forbiddance != null)
                 {
+                    float side;
+                    if (self != null && self.BehindForbiddance.TryGetValue(forbiddance.LineId, out side))
+                    {
+                        // Finished on top of it: it blocks at once if this way leads across it from its side, else not at all.
+                        if (RemainingDurability(forbiddance, used) > 0 && Vec2.Dot(direction, LeftNormal(forbiddance.Segment)) * side < 0f)
+                            Closer(ref best, 0f, forbiddance, false, ClosestOnSegment(from, forbiddance.Segment));
+                        continue;
+                    }
                     if (RemainingDurability(forbiddance, used) > 0 && Intersect.RaySegment(from, direction, forbiddance.Segment, out distance, out normal))
                         Closer(ref best, distance - radius, forbiddance, false, from + direction * distance);
                     continue;
@@ -252,6 +263,14 @@ namespace RithmaticDuels.Rules.Geometry
             best.Distance = Math.Max(0f, best.Distance - ChalklingGap);
             if (reach >= 0f && best.Distance > reach) return new ChalklingBlock { Distance = float.PositiveInfinity };
             return best;
+        }
+
+        private static Vec2 ClosestOnSegment(Vec2 point, Segment segment)
+        {
+            Vec2 along = segment.B - segment.A;
+            float lengthSquared = Vec2.Dot(along, along);
+            float t = lengthSquared < 1e-9f ? 0f : Math.Max(0f, Math.Min(1f, Vec2.Dot(point - segment.A, along) / lengthSquared));
+            return segment.A + along * t;
         }
 
         private static void Closer(ref ChalklingBlock best, float distance, LineBody body, bool centreWall, Vec2 contact)

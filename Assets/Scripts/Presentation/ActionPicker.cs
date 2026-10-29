@@ -791,7 +791,7 @@ namespace RithmaticDuels.Presentation
                     int anchorBind = _bindA;
                     Vec2? anchor = null;
                     if (_bindA < 0 && !_pointA.HasValue && (snaps || _chalklingMode == ChalklingMode.Bound)) anchorBind = HoverBindPoint(board, player);
-                    if (anchorBind >= 0 && anchorBind < bindSpots.Count) anchor = bindSpots[anchorBind];
+                    if (anchorBind >= 0 && anchorBind < bindSpots.Count) anchor = board.BoundChalklingSpot(player, anchorBind);
                     else if (_pointA.HasValue) anchor = _pointA;
                     else if (_chalklingMode != ChalklingMode.Bound && !preview.InvalidHover.HasValue) anchor = _hover;
                     bool boundAt = anchorBind >= 0;

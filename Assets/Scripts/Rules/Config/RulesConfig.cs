@@ -349,6 +349,11 @@ namespace RithmaticDuels.Rules
         public float GuardDistance = 3f;
         public float Radius = 0.35f;
         public float AttackRange = 0.6f;
+        /// <summary>
+        /// A bound chalkling stands this much further out from its bind point than its radius plus half a LoF and half a
+        /// LoW line, so it sits clear of a tangent LoF there (DESIGN.md section 4.4).
+        /// </summary>
+        public float BoundOffsetBuffer = 0.1f;
         public int AttacksPerTick = 1;
         /// <summary>"+1 to a stat of choice / -1 to the highest stat", per modifier step.</summary>
         public int StatPerModifierStep = 1;

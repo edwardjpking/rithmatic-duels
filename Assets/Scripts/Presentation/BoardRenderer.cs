@@ -170,7 +170,7 @@ namespace RithmaticDuels.Presentation
             var chalkling = body as ChalklingBody;
             if (chalkling != null)
             {
-                if (chalkling.Tether.HasValue) Line(chalkling.Tether.Value, chalkling.Position, 0.02f, WithAlpha(colour, 0.4f));
+                if (chalkling.BindPoint.HasValue) Line(chalkling.BindPoint.Value, chalkling.Position, 0.02f, WithAlpha(colour, 0.4f));
                 Chalkling(chalkling.Position, chalkling.Line.Glyph, colour);
             }
         }
