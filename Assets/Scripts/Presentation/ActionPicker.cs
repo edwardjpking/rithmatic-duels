@@ -232,6 +232,8 @@ namespace RithmaticDuels.Presentation
         /// </summary>
         public LockedChoice Draw(Duel duel, ChalkBoard board, Player player, ref Vector2 scroll, float width)
         {
+            // A pass cut short by ExitGUI (e.g. a stat change) keeps the last preview, so the board doesn't flicker.
+            var lastPreview = Preview;
             Preview = null;
             if (Event.current.type == EventType.Repaint) HoveredLineId = -1;
             // Leave room for the vertical scroll bar; button rows wrap to fit, so nothing scrolls sideways.
@@ -322,6 +324,11 @@ namespace RithmaticDuels.Presentation
                 if (cancelling && action != null)
                     action = action.Kind == ActionKind.Pass ? PlayerAction.Cancel() : action.AfterCancelling();
 
+            }
+            catch (ExitGUIException)
+            {
+                Preview = lastPreview ?? Preview;
+                throw;
             }
             finally
             {
@@ -1551,6 +1558,9 @@ namespace RithmaticDuels.Presentation
         /// A typed number moves to the nearest value the point buy can make (for example 4 becomes 5 when
         /// durability goes 1, 3, 5...), and the box shows that value once the player presses Enter or clicks away.
         /// </summary>
+        // The stat box that had keyboard focus last pass, to spot a box just arrived at.
+        private static string _focusedStat;
+
         private static void StatEntry(string name, TypedStat entry, ref int buffs, int baseValue, int perBuff, string nextBox)
         {
             int value = baseValue + buffs * perBuff;
@@ -1577,13 +1587,15 @@ namespace RithmaticDuels.Presentation
             GUILayout.Label(name, GUILayout.Width(100));
             GUI.SetNextControlName(control);
             string typed = GUILayout.TextField(entry.Text, 3, GUILayout.Width(50));
-            // Scrolling over the box changes the stat by one step, like scroll changes a drawing's size.
-            int scrollStep = 0;
-            if (Event.current.type == EventType.ScrollWheel && GUILayoutUtility.GetLastRect().Contains(Event.current.mousePosition))
+            if (focused && _focusedStat != control)
             {
-                scrollStep = Event.current.delta.y < 0f ? 1 : Event.current.delta.y > 0f ? -1 : 0;
-                Event.current.Use();
+                // Unity keeps each box's text scroll from when it was last clicked into; on arriving by Tab that stale
+                // offset drew the number outside the box for a frame. Start every visit scrolled to the start.
+                var editor = (TextEditor)GUIUtility.GetStateObject(typeof(TextEditor), GUIUtility.keyboardControl);
+                editor.scrollOffset = Vector2.zero;
             }
+            if (focused) _focusedStat = control;
+            else if (_focusedStat == control) _focusedStat = null;
             if (typed != entry.Text)
             {
                 entry.Text = FilterDigits(typed);
@@ -1606,6 +1618,13 @@ namespace RithmaticDuels.Presentation
             StatButtonDecor(control + "+", enabled && buffs >= MaxStatBuffs, name + " can't go any higher.");
             GUI.enabled = enabled;
             GUILayout.EndHorizontal();
+            // Scrolling anywhere on the row changes the stat by one step, like scroll changes a drawing's size.
+            int scrollStep = 0;
+            if (Event.current.type == EventType.ScrollWheel && GUILayoutUtility.GetLastRect().Contains(Event.current.mousePosition))
+            {
+                scrollStep = Event.current.delta.y < 0f ? 1 : Event.current.delta.y > 0f ? -1 : 0;
+                Event.current.Use();
+            }
 
             int next = Mathf.Clamp(buffs + step + scrollStep, 0, MaxStatBuffs);
             bool changed = next != buffs;
