@@ -314,13 +314,16 @@ namespace RithmaticDuels.Presentation
             if (preview.Ward != null) Outline(preview.Ward, !preview.WardChosen, PreviewColour);
             if (preview.Braces != null)
                 foreach (var brace in preview.Braces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, PreviewColour);
+            if (preview.GhostSegment.HasValue) Line(preview.GhostSegment.Value.A, preview.GhostSegment.Value.B, ForbiddanceWidth, WithAlpha(PreviewColour, 0.6f));
             if (preview.Segment.HasValue) Line(preview.Segment.Value.A, preview.Segment.Value.B, ForbiddanceWidth, PreviewColour);
-            if (preview.ChalklingGlyph.HasValue && preview.ChalklingAnchor.HasValue)
+            if (preview.ChalklingAnchor.HasValue && preview.ChalklingGlyph.HasValue)
             {
                 Vec2 spot = preview.ChalklingAnchor.Value;
                 Chalkling(spot, preview.ChalklingGlyph.Value, PreviewColour);
                 ChalklingReach(preview.Player, preview.ChalklingGlyph.Value, spot, spot, preview.ChalklingGuardDistance);
             }
+            // Before a glyph is chosen: the body alone, with no glyph, ring or path.
+            else if (preview.ChalklingAnchor.HasValue) Disc(preview.ChalklingAnchor.Value, ChalklingRadius, PreviewColour);
             else if (preview.Point.HasValue) Diamond(preview.Point.Value, 0.25f, PreviewColour);
             // The red cross for an invalid spot is drawn by DuelController in OnGUI, at this frame's mouse position.
             if (preview.From.HasValue)
