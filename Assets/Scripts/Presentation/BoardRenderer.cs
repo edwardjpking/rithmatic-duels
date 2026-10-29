@@ -408,7 +408,7 @@ namespace RithmaticDuels.Presentation
         /// A chalkling: a filled circle in its owner's chalk with its glyph on its back, a cross for Attack
         /// and a diamond for Defend (DESIGN.md section 4.4), so the glyph reads by shape, not colour.
         /// </summary>
-        private static void Chalkling(Vec2 centre, Glyph glyph, Color colour)
+        private void Chalkling(Vec2 centre, Glyph glyph, Color colour)
         {
             Disc(centre, ChalklingRadius, colour);
             float r = ChalklingRadius * 0.55f;
