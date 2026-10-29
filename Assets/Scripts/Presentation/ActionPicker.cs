@@ -745,7 +745,8 @@ namespace RithmaticDuels.Presentation
                         }
                     }
                     if (_forbiddanceMode != ForbiddanceMode.Free) preview.BlockedBindPoints = BlockedBindPoints(board, player);
-                    if (!_forbiddanceMode.HasValue && hoverBind >= 0 && hoverBind != _bindA)
+                    // The bind point a click would pick is ringed in the hover blue, whatever the mode.
+                    if (hoverBind >= 0 && hoverBind != _bindA)
                         preview.HoverBindPoint = board.BindPointsOf(player)[hoverBind];
                     if (placement != null) preview.Segment = board.PreviewForbiddance(player, placement);
                     if (spec != null && placement != null)

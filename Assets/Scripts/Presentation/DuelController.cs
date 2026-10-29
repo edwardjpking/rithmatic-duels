@@ -63,6 +63,11 @@ namespace RithmaticDuels.Presentation
         private string _error;
         /// <summary>Tab shows every current line of both players over the menu, at any point, until Tab or (Tab in a LoM stat box moves between boxes instead) a right-click closes it.</summary>
         private bool _showLines;
+        /// <summary>
+        /// Whether the free hand key (Ctrl, or Cmd on macOS) is held. Kept between events because Unity's repaint
+        /// events, where the placement preview is drawn, don't report modifier keys.
+        /// </summary>
+        private bool _freeHandHeld;
         private Vector2 _linesScroll;
         /// <summary>The line under the mouse on the board, whose entry the lines list picks out. -1 for none.</summary>
         private int _boardHoverLineId = -1;
@@ -191,8 +196,19 @@ namespace RithmaticDuels.Presentation
             }
             // Clicking the board leaves a LoM stat box, so Tab goes back to opening the lines list.
             if (boardPoint.HasValue && current.type == EventType.MouseDown && GUI.GetNameOfFocusedControl().StartsWith("stat-")) GUI.FocusControl(null);
+            if (current.type != EventType.Repaint && current.type != EventType.Layout)
+            {
+                bool mac = ActionPicker.FreeHandIsCommand;
+                bool isKey = mac ? current.keyCode == KeyCode.LeftCommand || current.keyCode == KeyCode.RightCommand
+                    : current.keyCode == KeyCode.LeftControl || current.keyCode == KeyCode.RightControl;
+                if (current.type == EventType.KeyDown && isKey) _freeHandHeld = true;
+                else if (current.type == EventType.KeyUp && isKey) _freeHandHeld = false;
+                else _freeHandHeld = mac ? current.command : current.control;
+            }
             if (_duel != null && _showLines)
             {
+                // The list covers the board's choices, so nothing follows the mouse: only placements already picked show.
+                if (_phase == Phase.Choosing) _pickers[(int)_chooser].SetHover(null);
                 // The list covers the menu, so board clicks and scrolls do nothing; a right-click closes the list.
                 if (current.type == EventType.MouseDown && current.button == 1)
                 {
@@ -206,7 +222,7 @@ namespace RithmaticDuels.Presentation
             {
                 var picker = _pickers[(int)_chooser];
                 // Holding the free hand key (Ctrl, or Cmd on macOS) stops snapping to bind points (DESIGN.md 1.1).
-                picker.SetHover(boardPoint, ActionPicker.FreeHandIsCommand ? current.command : current.control);
+                picker.SetHover(boardPoint, _freeHandHeld);
                 bool changed = false;
                 if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 0)
                     changed = picker.HandleBoardClick(_board, _chooser, _rules, boardPoint.Value);
