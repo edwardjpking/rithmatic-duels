@@ -27,13 +27,24 @@ namespace RithmaticDuels.Presentation
         /// <summary>Show the midline of the player's half, which the main LoW snaps to.</summary>
         public bool ShowMidline;
         public Segment? Segment;
+        /// <summary>Where a LoF would go if the player clicked now: follows the mouse, drawn fainter than <see cref="Segment"/>.</summary>
+        public Segment? GhostSegment;
         public Vec2? From;
+        /// <summary>True if <see cref="From"/> only follows the mouse (not yet clicked), drawn in the darker hover blue.</summary>
+        public bool FromHovered;
         public Vec2? To;
         public Vec2? Point;
-        /// <summary>A chalkling being placed: its glyph and where it will stand, for its guard ring or attack path.</summary>
+        /// <summary>
+        /// A chalkling being placed: its glyph and where it will stand, for its guard ring or attack path. With no
+        /// glyph chosen yet, it is a plain circle with no ring or path.
+        /// </summary>
         public Glyph? ChalklingGlyph;
         public Vec2? ChalklingAnchor;
         public float ChalklingGuardDistance;
+        /// <summary>True if the chalkling only follows the mouse (not yet clicked), drawn in the darker hover blue.</summary>
+        public bool ChalklingHovered;
+        /// <summary>A bind point under the mouse that a click would pick, ringed faintly.</summary>
+        public Vec2? HoverBindPoint;
         /// <summary>Bind points of the main LoW the player has picked.</summary>
         public readonly List<int> BindPoints = new List<int>();
     }
@@ -141,6 +152,8 @@ namespace RithmaticDuels.Presentation
         // Placement clicks: up to two bind points or two board points, whichever the mode uses.
         private int _bindA = -1;
         private int _bindB = -1;
+        // With no LoF mode chosen: the first bind point was clicked twice, making a tangent there.
+        private bool _tangentPicked;
         private Vec2? _pointA;
         private Vec2? _pointB;
         private Vec2? _hover;
@@ -152,11 +165,23 @@ namespace RithmaticDuels.Presentation
         /// <summary>The line whose button in the dismissal list is under the mouse, to highlight on the board. -1 for none.</summary>
         public int HoveredLineId { get; private set; } = -1;
 
-        /// <summary>Where the mouse is over the board, in board units, or null when it is elsewhere.</summary>
-        public void SetHover(Vec2? point)
+        /// <summary>
+        /// Where the mouse is over the board, in board units, or null when it is elsewhere, and whether the free hand
+        /// key (Ctrl, or Cmd on macOS) is held, which stops a LoF or chalkling with no mode chosen snapping to bind points (DESIGN.md 1.1).
+        /// </summary>
+        public void SetHover(Vec2? point, bool freeHand = false)
         {
             _hover = point;
+            _freeHand = freeHand;
         }
+
+        private bool _freeHand;
+
+        /// <summary>True on macOS, where the free hand key is Cmd (Amelia, 2026-10-29); Ctrl everywhere else.</summary>
+        public static bool FreeHandIsCommand { get { return SystemInfo.operatingSystemFamily == OperatingSystemFamily.MacOSX; } }
+
+        /// <summary>The free hand key's name, for the menu's instructions.</summary>
+        private static string FreeHandKey { get { return FreeHandIsCommand ? "Cmd" : "Ctrl"; } }
 
         /// <summary>The action being built: after Cancel, the one chosen to follow it.</summary>
         private ActionKind? Effective { get { return _kind == ActionKind.CancelDrawing ? _afterCancel : _kind; } }
@@ -310,20 +335,27 @@ namespace RithmaticDuels.Presentation
                 case LineType.Warding:
                     return PickBindPoint(board, player, point, false);
                 case LineType.Forbiddance:
-                    if (!_forbiddanceMode.HasValue) return false;
                     if (_forbiddanceMode == ForbiddanceMode.Free) return ClickAllowed(board, player, point) && PickPoints(point);
-                    return PickBindPoint(board, player, point, _forbiddanceMode == ForbiddanceMode.Between);
+                    if (_forbiddanceMode.HasValue) return PickBindPoint(board, player, point, _forbiddanceMode == ForbiddanceMode.Between);
+                    return PickForbiddance(board, player, point);
                 case LineType.Vigor:
-                    return _tier.HasValue && ClickAllowed(board, player, point) && PickPoints(point);
+                    return ClickAllowed(board, player, point) && PickPoints(point);
                 case LineType.Making:
-                    if (!_chalklingMode.HasValue) return false;
-                    if (_chalklingMode == ChalklingMode.Free)
+                    if (_chalklingMode == ChalklingMode.Bound) return PickBindPoint(board, player, point, false);
+                    if (ChalklingSnaps)
                     {
-                        if (!ClickAllowed(board, player, point)) return false;
-                        _pointA = point;
-                        return true;
+                        int near = NearBindPoint(board, player, point);
+                        if (near >= 0)
+                        {
+                            ClearClicks();
+                            _bindA = near;
+                            return true;
+                        }
                     }
-                    return PickBindPoint(board, player, point, false);
+                    if (!ClickAllowed(board, player, point)) return false;
+                    ClearClicks();
+                    _pointA = point;
+                    return true;
                 default:
                     return false;
             }
@@ -469,7 +501,8 @@ namespace RithmaticDuels.Presentation
                 return true;
             }
 
-            if (_lineType == LineType.Forbiddance && (_forbiddanceMode == ForbiddanceMode.Tangent || _forbiddanceMode == ForbiddanceMode.Free))
+            var lofMode = _lineType == LineType.Forbiddance ? ForbiddanceModeAt(board, player) : null;
+            if (lofMode == ForbiddanceMode.Tangent || lofMode == ForbiddanceMode.Free)
             {
                 _length = Mathf.Clamp(FittedLength(config, board, player) + step, geometry.MinForbiddanceLength, MaxLength(config, board, player));
                 return true;
@@ -576,8 +609,9 @@ namespace RithmaticDuels.Presentation
 
         private PlayerAction DrawStart(RulesConfig config, ChalkBoard board, Player player, out Placement placement, out string hint)
         {
-            // Clicks belong to one line type and placement mode; switching either starts placement over.
-            ResetClicksIfChanged(_lineType + "/" + _forbiddanceMode + "/" + _chalklingMode + "/" + _attachedWardChoice);
+            // Clicks belong to one line type; switching it starts placement over. Other settings can be chosen before
+            // or after placing, and a setting that wouldn't fit what is already placed is greyed out.
+            ResetClicksIfChanged(_lineType.ToString());
             placement = null;
             Choose(ref _lineType, LineTypeLabels);
             if (!_lineType.HasValue)
@@ -593,14 +627,21 @@ namespace RithmaticDuels.Presentation
             switch (_lineType)
             {
                 case LineType.Warding:
+                {
                     // Five buttons need the full width, so the label goes above them.
                     GUILayout.Label("Bind points:");
                     int before = _attachedWardChoice;
-                    Choose(ref _attachedWardChoice, AttachedWardLabels);
+                    Choose(ref _attachedWardChoice, AttachedWardLabels, WardChoiceMask(board, player));
                     if (_attachedWardChoice != before) { _attachedSize = -1f; _attachedScale = -1f; _join = 0; }
+                    int anchor = WardAnchor(board, player);
+                    var bindSpots = board.BindPointsOf(player);
                     if (_attachedWardChoice < 0)
                     {
+                        GUILayout.Label("Click a bind point on one of your Lines of Warding to attach it there.");
                         hint = "Choose a Mark's Cross or how many bind points.";
+                        // Until a kind is chosen no shape is shown, only the bind point picked or under the mouse.
+                        if (_bindA < 0 && anchor >= 0 && anchor < bindSpots.Count) preview.HoverBindPoint = bindSpots[anchor];
+                        preview.BlockedBindPoints = BlockedBindPoints(board, player);
                         break;
                     }
                     int count = AttachedWardBindPoints[_attachedWardChoice];
@@ -618,33 +659,55 @@ namespace RithmaticDuels.Presentation
                                 ? "A circle outside the bind point. Scroll to make it bigger or smaller, Shift + scroll to turn it so a different one of its bind points joins."
                                 : "A circle outside the bind point. Scroll to make it bigger or smaller.");
                     }
-                    GUILayout.Label("Click a bind point on your main Line of Warding to attach it there.");
-                    if (_bindA >= 0)
+                    GUILayout.Label("Click a bind point on one of your Lines of Warding to attach it there.");
+                    if (anchor >= 0 && anchor < bindSpots.Count)
                     {
-                        placement = Placement.AtBindPoint(_bindA, count == 0 ? 0f : AttachedSize(board, player, spec),
+                        var at = Placement.AtBindPoint(anchor, count == 0 ? 0f : AttachedSize(board, player, spec),
                             count == 2 ? AttachedScale(board, player, spec) : 0f, _join % board.JoinChoices(spec));
-                        IReadOnlyList<Vec2> points;
-                        preview.Ward = board.PreviewWard(player, spec, placement, out points);
-                        preview.WardBindPoints = points;
-                        if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
-                        if (preview.Ward != null) GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability, before its modifier.");
+                        if (anchor == _bindA)
+                        {
+                            placement = at;
+                            IReadOnlyList<Vec2> points;
+                            preview.Ward = board.PreviewWard(player, spec, placement, out points);
+                            preview.WardBindPoints = points;
+                            if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
+                            if (preview.Ward != null) GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability, before its modifier.");
+                        }
+                        else preview.GhostWard = board.PreviewWard(player, spec, at);
                     }
                     preview.BlockedBindPoints = BlockedBindPoints(board, player);
                     break;
+                }
 
                 case LineType.Forbiddance:
-                    Choose(ref _forbiddanceMode, ForbiddanceLabels);
-                    switch (_forbiddanceMode)
+                {
+                    var placed = PlacedForbiddanceMode(board, player);
+                    int chosenMode = ChooseShown(placed.HasValue ? (int)placed.Value : -1, ForbiddanceLabels, ForbiddanceModeMask(board, player));
+                    if (chosenMode >= 0)
+                    {
+                        _forbiddanceMode = (ForbiddanceMode)chosenMode;
+                        GUIUtility.ExitGUI();
+                    }
+                    // A bind point near the mouse, where a click would go (only while bind points can be clicked).
+                    int hoverBind = _forbiddanceMode == ForbiddanceMode.Free || _pointA.HasValue && !_pointB.HasValue || FreeHandLof ? -1 : HoverBindPoint(board, player);
+                    switch (placed)
                     {
                         case ForbiddanceMode.Between:
-                            GUILayout.Label("Click two bind points on your main Line of Warding.");
+                            GUILayout.Label("Click two bind points on your Lines of Warding.");
                             spec = DrawingSpec.Forbiddance(2);
                             if (_bindA >= 0 && _bindB >= 0) placement = Placement.BetweenBindPoints(_bindA, _bindB);
+                            else if (_forbiddanceMode.HasValue && _bindA >= 0 && hoverBind >= 0 && hoverBind != _bindA && CanJoin(board, player, _bindA, hoverBind))
+                                preview.GhostSegment = board.PreviewForbiddance(player, Placement.BetweenBindPoints(_bindA, hoverBind));
                             break;
                         case ForbiddanceMode.Tangent:
-                            GUILayout.Label("Click a bind point. The line lies along the circle there. Scroll to change its length.");
+                            GUILayout.Label(_forbiddanceMode.HasValue
+                                ? "Click a bind point. The line lies along the circle there. Scroll to change its length."
+                                : "A tangent: the line lies along the circle there. Scroll to change its length.");
                             spec = DrawingSpec.Forbiddance(1);
                             if (_bindA >= 0) placement = Placement.TangentAt(_bindA, FittedLength(config, board, player));
+                            // With the mode chosen, the next click on a bind point starts a tangent there.
+                            if (_forbiddanceMode.HasValue && hoverBind >= 0 && hoverBind != _bindA)
+                                preview.GhostSegment = TangentGhost(config, board, player, hoverBind);
                             break;
                         case ForbiddanceMode.Free:
                             GUILayout.Label("Click where the line starts, then click to set its direction. Scroll to change its length.");
@@ -662,51 +725,86 @@ namespace RithmaticDuels.Presentation
                                 else hint = "No Line of Forbiddance fits here. Start it somewhere else.";
                             }
                             preview.From = _pointA;
-                            preview.InvalidHover = InvalidHover(board, player);
                             break;
                         default:
-                            hint = "Choose how to place it.";
+                            // No line is shown until it is clear which: the same bind point twice for a tangent, or a second one to join them.
+                            GUILayout.Label(_bindA >= 0
+                                ? "Click the same bind point again for a tangent, or another bind point to join the two."
+                                : "Click a bind point (twice for a tangent, or then another to join the two), or anywhere else on your half to start a free line. Hold " + FreeHandKey + " to start a free line next to a bind point.");
+                            hint = "Click the board to place it.";
                             break;
                     }
-                    if (_forbiddanceMode == ForbiddanceMode.Between || _forbiddanceMode == ForbiddanceMode.Tangent)
-                        preview.BlockedBindPoints = BlockedBindPoints(board, player);
+                    if (_forbiddanceMode != ForbiddanceMode.Between && _forbiddanceMode != ForbiddanceMode.Tangent)
+                    {
+                        preview.InvalidHover = InvalidHover(board, player);
+                        // Where a free line would start: hidden over a spot where nothing can be placed.
+                        if (!_pointA.HasValue && hoverBind < 0 && !preview.InvalidHover.HasValue)
+                        {
+                            preview.From = _hover;
+                            preview.FromHovered = true;
+                        }
+                    }
+                    if (_forbiddanceMode != ForbiddanceMode.Free) preview.BlockedBindPoints = BlockedBindPoints(board, player);
+                    if (!_forbiddanceMode.HasValue && hoverBind >= 0 && hoverBind != _bindA)
+                        preview.HoverBindPoint = board.BindPointsOf(player)[hoverBind];
                     if (placement != null) preview.Segment = board.PreviewForbiddance(player, placement);
                     if (spec != null && placement != null)
                         GUILayout.Label("Length " + board.Measure(player, spec, placement).Length.ToString("0.0")
                             + ": longer lines take longer to draw.");
                     break;
+                }
 
                 case LineType.Vigor:
                     Choose(ref _tier, TierLabels);
+                    if (_tier.HasValue)
+                    {
+                        var tier = config.Vigor.Tier(_tier.Value);
+                        GUILayout.Label("Speed " + tier.Speed + ", damage " + tier.Damage + " before its modifier.");
+                    }
+                    GUILayout.Label("Click where to draw it on your half, then click where to aim.");
+                    preview.InvalidHover = InvalidHover(board, player);
+                    // Before the first click, the starting point follows the mouse, except over a spot where it can't go.
+                    preview.From = _pointA ?? (preview.InvalidHover.HasValue ? null : _hover);
+                    preview.FromHovered = !_pointA.HasValue;
+                    preview.To = _pointB ?? (_pointA.HasValue ? _hover : null);
                     if (!_tier.HasValue)
                     {
                         hint = "Choose a tier.";
                         break;
                     }
-                    var tier = config.Vigor.Tier(_tier.Value);
-                    GUILayout.Label("Speed " + tier.Speed + ", damage " + tier.Damage + " before its modifier.");
-                    GUILayout.Label("Click where to draw it on your half, then click where to aim.");
                     spec = DrawingSpec.Vigor(_tier.Value);
                     if (_pointA.HasValue && _pointB.HasValue) placement = Placement.Aimed(_pointA.Value, _pointB.Value);
-                    preview.From = _pointA;
-                    preview.To = _pointB ?? (_pointA.HasValue ? _hover : null);
-                    preview.InvalidHover = InvalidHover(board, player);
                     break;
 
                 case LineType.Making:
+                {
                     spec = DrawMakingPointBuy(config, out hint);
-                    if (spec == null) break;
-                    bool bound = _chalklingMode == ChalklingMode.Bound;
-                    GUILayout.Label(bound ? "Click a bind point to tether it there." : "Click where to draw it on your half.");
-                    if (bound && _bindA >= 0) placement = Placement.AtBindPoint(_bindA);
-                    if (!bound && _pointA.HasValue) placement = Placement.At(_pointA.Value);
-                    preview.Point = bound ? null : _pointA;
-                    preview.ChalklingGlyph = spec.Glyph;
+                    var placedTether = PlacedChalklingMode;
+                    bool snaps = ChalklingSnaps;
+                    GUILayout.Label(_chalklingMode == ChalklingMode.Bound ? "Click a bind point to tether it there."
+                        : snaps ? "Click where to draw it on your half. A click near a bind point tethers it there (hold " + FreeHandKey + " not to)."
+                        : "Click where to draw it on your half.");
                     var bindSpots = board.BindPointsOf(player);
-                    preview.ChalklingAnchor = bound ? (_bindA >= 0 && _bindA < bindSpots.Count ? bindSpots[_bindA] : (Vec2?)null) : _pointA ?? _hover;
-                    preview.ChalklingGuardDistance = bound ? config.Making.TetherDistance : config.Making.GuardDistance;
-                    if (!bound) preview.InvalidHover = InvalidHover(board, player);
+                    if (_chalklingMode != ChalklingMode.Bound) preview.InvalidHover = InvalidHover(board, player);
+                    // Where it would go: the spot placed, or else where the mouse is (snapped to a bind point near it).
+                    int anchorBind = _bindA;
+                    Vec2? anchor = null;
+                    if (_bindA < 0 && !_pointA.HasValue && (snaps || _chalklingMode == ChalklingMode.Bound)) anchorBind = HoverBindPoint(board, player);
+                    if (anchorBind >= 0 && anchorBind < bindSpots.Count) anchor = bindSpots[anchorBind];
+                    else if (_pointA.HasValue) anchor = _pointA;
+                    else if (_chalklingMode != ChalklingMode.Bound && !preview.InvalidHover.HasValue) anchor = _hover;
+                    bool boundAt = anchorBind >= 0;
+                    preview.ChalklingAnchor = anchor;
+                    preview.ChalklingHovered = _bindA < 0 && !_pointA.HasValue;
+                    // A bound chalkling always defends. Until a glyph is chosen, it shows no glyph, ring or path.
+                    preview.ChalklingGlyph = boundAt ? Glyph.Defend : placedTether == ChalklingMode.Bound ? (Glyph?)null : _glyph;
+                    preview.ChalklingGuardDistance = boundAt ? config.Making.TetherDistance : config.Making.GuardDistance;
+                    if (snaps || _chalklingMode == ChalklingMode.Bound) preview.BlockedBindPoints = BlockedBindPoints(board, player);
+                    if (spec == null) break;
+                    if (_bindA >= 0) placement = Placement.AtBindPoint(_bindA);
+                    else if (_pointA.HasValue) placement = Placement.At(_pointA.Value);
                     break;
+                }
             }
             if (_bindA >= 0) preview.BindPoints.Add(_bindA);
             if (_bindB >= 0) preview.BindPoints.Add(_bindB);
@@ -771,27 +869,36 @@ namespace RithmaticDuels.Presentation
             BeginRow("+ modifier to:");
             Choose(ref _modifierStat, StatLabels);
             GUILayout.EndHorizontal();
+            // The tether can be chosen here, or follows from where it is placed (a click near a bind point binds it).
+            // Once placed, the other choice is greyed out.
+            var placedTether = PlacedChalklingMode;
             BeginRow("Tether:");
-            Choose(ref _chalklingMode, ChalklingLabels);
+            int tetherMask = _bindA >= 0 ? 1 << (int)ChalklingMode.Free : _pointA.HasValue ? 1 << (int)ChalklingMode.Bound : 0;
+            int chosenTether = ChooseShown(placedTether.HasValue ? (int)placedTether.Value : -1, ChalklingLabels, tetherMask);
+            if (chosenTether >= 0)
+            {
+                _chalklingMode = (ChalklingMode)chosenTether;
+                GUIUtility.ExitGUI();
+            }
             GUILayout.EndHorizontal();
             // One glyph, Attack or Defend; a bound chalkling must Defend.
-            bool bound = _chalklingMode == ChalklingMode.Bound;
+            bool bound = placedTether == ChalklingMode.Bound;
             if (bound) GUILayout.Label("Glyph: Defend, since it is bound.");
-            else if (_chalklingMode.HasValue)
+            else
             {
                 // Attack is greyed out while the rules would refuse it (0 speed), and a chosen Attack is dropped.
                 string attackProblem = DrawTimes.Validate(
                     DrawingSpec.Making(_durabilityBuffs, _damageBuffs, _speedBuffs, Glyph.Attack, 0, _modifierStat ?? default), config);
                 if (attackProblem != null && _glyph == Glyph.Attack) _glyph = null;
                 BeginRow("Glyph:");
-                Choose(ref _glyph, GlyphLabels, attackProblem != null ? (int)Glyph.Attack : -1);
+                Choose(ref _glyph, GlyphLabels, attackProblem != null ? 1 << (int)Glyph.Attack : 0);
                 GUILayout.EndHorizontal();
                 if (attackProblem != null) GUILayout.Label("Attack: " + attackProblem);
             }
-            if (!_modifierStat.HasValue || !_chalklingMode.HasValue || (!bound && !_glyph.HasValue))
+            if (!_modifierStat.HasValue || !placedTether.HasValue || (!bound && !_glyph.HasValue))
             {
                 hint = !_modifierStat.HasValue ? "Choose where a positive modifier goes."
-                    : !_chalklingMode.HasValue ? "Choose whether it is bound." : "Choose its glyph.";
+                    : !bound && !_glyph.HasValue ? "Choose its glyph." : "Click the board to place it.";
                 return null;
             }
             hint = null;
@@ -885,10 +992,11 @@ namespace RithmaticDuels.Presentation
         private List<float> AttachedSteps(ChalkBoard board, Player player, DrawingSpec spec)
         {
             float scale = spec.BindPoints == 2 ? ChosenScale(board) : 0f;
-            string key = spec.BindPoints + "/" + _bindA + "/" + board.BindPointsOf(player).Count + "/" + scale;
+            int anchor = WardAnchor(board, player);
+            string key = spec.BindPoints + "/" + anchor + "/" + board.BindPointsOf(player).Count + "/" + scale;
             if (_attachedSteps == null || key != _attachedStepsKey)
             {
-                _attachedSteps = board.AttachedSizes(player, spec, _bindA, scale);
+                _attachedSteps = board.AttachedSizes(player, spec, anchor, scale);
                 _attachedStepsKey = key;
             }
             return _attachedSteps;
@@ -897,10 +1005,11 @@ namespace RithmaticDuels.Presentation
         private List<float> AttachedScaleSteps(ChalkBoard board, Player player, DrawingSpec spec)
         {
             float size = AttachedSize(board, player, spec);
-            string key = _bindA + "/" + board.BindPointsOf(player).Count + "/" + size;
+            int anchor = WardAnchor(board, player);
+            string key = anchor + "/" + board.BindPointsOf(player).Count + "/" + size;
             if (_scaleSteps == null || key != _scaleStepsKey)
             {
-                _scaleSteps = board.AttachedScales(player, spec, _bindA, size);
+                _scaleSteps = board.AttachedScales(player, spec, anchor, size);
                 _scaleStepsKey = key;
             }
             return _scaleSteps;
@@ -943,10 +1052,12 @@ namespace RithmaticDuels.Presentation
         /// <summary>The longest a tangent or free LoF being placed can be and stay on the player's half.</summary>
         private float MaxLength(RulesConfig config, ChalkBoard board, Player player)
         {
-            if (_forbiddanceMode == ForbiddanceMode.Tangent && _bindA >= 0)
-                return board.MaxForbiddanceLength(player, Placement.TangentAt(_bindA), Vec2.Zero);
+            var mode = ForbiddanceModeAt(board, player);
+            int bind = _bindA >= 0 ? _bindA : HoverBindPoint(board, player);
+            if (mode == ForbiddanceMode.Tangent && bind >= 0)
+                return board.MaxForbiddanceLength(player, Placement.TangentAt(bind), Vec2.Zero);
             Vec2? toward = _pointB ?? _hover;
-            if (_forbiddanceMode == ForbiddanceMode.Free && _pointA.HasValue && toward.HasValue && Vec2.Distance(_pointA.Value, toward.Value) > 1e-3f)
+            if (mode == ForbiddanceMode.Free && _pointA.HasValue && toward.HasValue && Vec2.Distance(_pointA.Value, toward.Value) > 1e-3f)
                 return board.MaxForbiddanceLength(player, Placement.Segment(_pointA.Value, _pointA.Value), toward.Value - _pointA.Value);
             return config.Geometry.MaxForbiddanceLength;
         }
@@ -969,16 +1080,8 @@ namespace RithmaticDuels.Presentation
         /// <summary>Select the bind point nearest the click. With <paramref name="two"/>, alternate between two picks.</summary>
         private bool PickBindPoint(ChalkBoard board, Player player, Vec2 point, bool two)
         {
-            var bindPoints = board.BindPointsOf(player);
-            int nearest = -1;
-            float best = PickRadius;
-            for (int i = 0; i < bindPoints.Count; i++)
-            {
-                // Bind points filled in red can't be picked.
-                if (Blocked(board, player)[i]) continue;
-                float distance = Vec2.Distance(bindPoints[i], point);
-                if (distance < best) { best = distance; nearest = i; }
-            }
+            // Bind points filled in red can't be picked.
+            int nearest = NearBindPoint(board, player, point);
             if (nearest < 0) return false;
 
             if (two && nearest == _bindA && _bindB < 0)
@@ -1016,7 +1119,7 @@ namespace RithmaticDuels.Presentation
         private bool[] Blocked(ChalkBoard board, Player player)
         {
             int count = board.BindPointsOf(player).Count;
-            string key = _lineType + "/" + _forbiddanceMode + "/" + _attachedWardChoice + "/" + _bindA + "/" + _bindB + "/" + count;
+            string key = _lineType + "/" + _forbiddanceMode + "/" + _attachedWardChoice + "/" + _bindA + "/" + _bindB + "/" + _tangentPicked + "/" + count + "/" + player;
             if (_blocked == null || key != _blockedKey)
             {
                 _blocked = new bool[count];
@@ -1029,10 +1132,13 @@ namespace RithmaticDuels.Presentation
         /// <summary>
         /// True if this bind point can't be picked for the drawing being placed, so it is filled in red and
         /// clicks on it are ignored:
-        /// a LoW can't bind at a point that already has its LoW;
+        /// a LoW can't bind at a point that already has its LoW, or where even the smallest LoW of the chosen kind
+        /// (of any kind, before one is chosen) wouldn't fit;
         /// a tangent LoF can't go where even the shortest one wouldn't fit (it would cross a LoW or leave your half);
         /// a LoF between two bind points can't join two points whose line wouldn't fit. Before the first pick, a
         /// point is blocked if no other point can join it; after it, a point is blocked if it can't join the first.
+        /// With no LoF mode chosen, a point is blocked if it can take neither a tangent nor a LoF to another point;
+        /// a chalkling can't be bound where the rules wouldn't allow it.
         /// </summary>
         private bool BindPointBlocked(ChalkBoard board, Player player, int index)
         {
@@ -1040,30 +1146,211 @@ namespace RithmaticDuels.Presentation
             {
                 case LineType.Warding:
                     if (board.BindPointFull(player, index)) return true;
-                    if (_attachedWardChoice < 0) return false;
-                    // Blocked if even the smallest LoW of the chosen kind wouldn't fit there (it would overlap another line).
-                    int bindPoints = AttachedWardBindPoints[_attachedWardChoice];
-                    var ward = bindPoints == 0 ? DrawingSpec.MarksCross(board.Config) : DrawingSpec.Warding(bindPoints);
-                    float min = 0f, max, start;
-                    if (bindPoints > 0) board.AttachedSizeRange(ward, out min, out max, out start);
-                    // An ellipse is smallest at its smallest overall scale (scroll) too.
-                    float scale = bindPoints == 2 ? board.Config.Geometry.AttachedEllipseMinScale : 0f;
-                    return !Fits(board, player, ward, Placement.AtBindPoint(index, min, scale));
-                case LineType.Forbiddance:
-                    if (_forbiddanceMode == ForbiddanceMode.Tangent)
-                        return !ForbiddanceFits(board, player, DrawingSpec.Forbiddance(1),
-                            Placement.TangentAt(index, board.Config.Geometry.MinForbiddanceLength));
-                    if (_forbiddanceMode != ForbiddanceMode.Between) return false;
-                    var spec = DrawingSpec.Forbiddance(2);
-                    if (_bindA >= 0 && _bindB < 0)
-                        return index != _bindA && !ForbiddanceFits(board, player, spec, Placement.BetweenBindPoints(_bindA, index));
-                    int count = board.BindPointsOf(player).Count;
-                    for (int other = 0; other < count; other++)
-                        if (other != index && ForbiddanceFits(board, player, spec, Placement.BetweenBindPoints(index, other))) return false;
+                    if (_attachedWardChoice >= 0) return !WardFits(board, player, _attachedWardChoice, index);
+                    for (int choice = 0; choice < AttachedWardBindPoints.Length; choice++)
+                        if (WardFits(board, player, choice, index)) return false;
                     return true;
+                case LineType.Forbiddance:
+                    if (_forbiddanceMode == ForbiddanceMode.Tangent) return !TangentFits(board, player, index);
+                    if (_forbiddanceMode == ForbiddanceMode.Free) return false;
+                    if (_forbiddanceMode == ForbiddanceMode.Between && _bindA >= 0 && _bindB < 0)
+                        return index != _bindA && !CanJoin(board, player, _bindA, index);
+                    if (_forbiddanceMode == ForbiddanceMode.Between) return !HasPartner(board, player, index);
+                    // No mode chosen, one bind point picked: the same one again for a tangent, or another that can join it.
+                    if (_bindA >= 0 && _bindB < 0 && !_tangentPicked)
+                        return index == _bindA ? !TangentFits(board, player, index) : !CanJoin(board, player, _bindA, index);
+                    return !TangentFits(board, player, index) && !HasPartner(board, player, index);
+                case LineType.Making:
+                    return !Fits(board, player, DrawingSpec.Making(glyph: Glyph.Defend, boundBindPoints: 1), Placement.AtBindPoint(index));
                 default:
                     return false;
             }
+        }
+
+        /// <summary>True if even the smallest LoW of this kind (an index into the bind point choices) fits at this bind point.</summary>
+        private static bool WardFits(ChalkBoard board, Player player, int choice, int index)
+        {
+            int bindPoints = AttachedWardBindPoints[choice];
+            var ward = bindPoints == 0 ? DrawingSpec.MarksCross(board.Config) : DrawingSpec.Warding(bindPoints);
+            float min = 0f, max, start;
+            if (bindPoints > 0) board.AttachedSizeRange(ward, out min, out max, out start);
+            // An ellipse is smallest at its smallest overall scale (scroll) too.
+            float scale = bindPoints == 2 ? board.Config.Geometry.AttachedEllipseMinScale : 0f;
+            return Fits(board, player, ward, Placement.AtBindPoint(index, min, scale));
+        }
+
+        /// <summary>Where a new LoW goes, or would go: the bind point picked, or else the one under the mouse. -1 for neither.</summary>
+        private int WardAnchor(ChalkBoard board, Player player)
+        {
+            return _bindA >= 0 ? _bindA : HoverBindPoint(board, player);
+        }
+
+        /// <summary>
+        /// The kinds of LoW greyed out once a bind point is picked: those that wouldn't fit there (one bit per choice).
+        /// Worked out again only when the pick changes.
+        /// </summary>
+        private int WardChoiceMask(ChalkBoard board, Player player)
+        {
+            if (_bindA < 0) return 0;
+            string key = "ward/" + _bindA + "/" + player;
+            if (key != _maskKey)
+            {
+                _mask = 0;
+                for (int choice = 0; choice < AttachedWardBindPoints.Length; choice++)
+                    if (!WardFits(board, player, choice, _bindA)) _mask |= 1 << choice;
+                _maskKey = key;
+            }
+            return _mask;
+        }
+
+        private string _maskKey;
+        private int _mask;
+
+        private static bool TangentFits(ChalkBoard board, Player player, int index)
+        {
+            return ForbiddanceFits(board, player, DrawingSpec.Forbiddance(1), Placement.TangentAt(index, board.Config.Geometry.MinForbiddanceLength));
+        }
+
+        private static bool CanJoin(ChalkBoard board, Player player, int a, int b)
+        {
+            return a != b && ForbiddanceFits(board, player, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(a, b));
+        }
+
+        /// <summary>True if a LoF could join this bind point to some other one.</summary>
+        private static bool HasPartner(ChalkBoard board, Player player, int index)
+        {
+            int count = board.BindPointsOf(player).Count;
+            for (int other = 0; other < count; other++)
+                if (CanJoin(board, player, index, other)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// How the LoF being placed is bound, as far as the clicks so far say: the mode the player chose, or else
+        /// the same bind point twice means a tangent, two bind points a LoF between them, and a spot away from bind
+        /// points a free line. Null before anything is placed, and while one bind point waits for the next click.
+        /// </summary>
+        private ForbiddanceMode? PlacedForbiddanceMode(ChalkBoard board, Player player)
+        {
+            if (_forbiddanceMode.HasValue) return _forbiddanceMode;
+            if (_pointA.HasValue) return ForbiddanceMode.Free;
+            if (_bindB >= 0) return ForbiddanceMode.Between;
+            if (_bindA >= 0 && _tangentPicked) return ForbiddanceMode.Tangent;
+            return null;
+        }
+
+        /// <summary>
+        /// <see cref="PlacedForbiddanceMode"/>, or before anything is placed, a free line where a click at the mouse
+        /// would start one (near a bind point it is not yet known).
+        /// </summary>
+        private ForbiddanceMode? ForbiddanceModeAt(ChalkBoard board, Player player)
+        {
+            var placed = PlacedForbiddanceMode(board, player);
+            if (placed.HasValue || !_hover.HasValue || _bindA >= 0) return placed;
+            return _freeHand || HoverBindPoint(board, player) < 0 ? ForbiddanceMode.Free : (ForbiddanceMode?)null;
+        }
+
+        /// <summary>
+        /// The LoF modes greyed out because they don't fit what is already placed (one bit per mode): a free line's
+        /// start can't become bound, two bind points can only be joined, and one bind point can't be free, nor a
+        /// tangent or a join where none fits there.
+        /// </summary>
+        private int ForbiddanceModeMask(ChalkBoard board, Player player)
+        {
+            const int between = 1 << (int)ForbiddanceMode.Between, tangent = 1 << (int)ForbiddanceMode.Tangent, free = 1 << (int)ForbiddanceMode.Free;
+            if (_pointA.HasValue) return between | tangent;
+            if (_bindB >= 0) return tangent | free;
+            if (_bindA < 0) return 0;
+            if (_tangentPicked && !_forbiddanceMode.HasValue) return between | free;
+            string key = "lof/" + _bindA + "/" + player;
+            if (key != _maskKey)
+            {
+                _mask = free;
+                if (!TangentFits(board, player, _bindA)) _mask |= tangent;
+                if (!HasPartner(board, player, _bindA)) _mask |= between;
+                _maskKey = key;
+            }
+            return _mask;
+        }
+
+        /// <summary>
+        /// A click for a LoF with no mode chosen (Amelia, 2026-10-29): after a first bind point, clicking it again
+        /// makes a tangent there and clicking another joins the two (bind points that can do neither are red); with
+        /// nothing picked, or a line already placed, a bind point starts over from it; a spot away from bind points
+        /// starts a free line, and once started, the next click sets its direction.
+        /// </summary>
+        private bool PickForbiddance(ChalkBoard board, Player player, Vec2 point)
+        {
+            if (_pointA.HasValue && !_pointB.HasValue) return PickPoints(point);
+            int near = _freeHand ? -1 : NearBindPoint(board, player, point);
+            if (near >= 0 && _bindA >= 0 && _bindB < 0 && !_tangentPicked)
+            {
+                if (near == _bindA) _tangentPicked = true;
+                else _bindB = near;
+                return true;
+            }
+            if (near >= 0)
+            {
+                ClearClicks();
+                _bindA = near;
+                return true;
+            }
+            if (!ClickAllowed(board, player, point)) return false;
+            ClearClicks();
+            _pointA = point;
+            return true;
+        }
+
+        /// <summary>A faint tangent at this bind point, at the chosen length, for hovering. Null where none fits.</summary>
+        private Segment? TangentGhost(RulesConfig config, ChalkBoard board, Player player, int index)
+        {
+            if (!TangentFits(board, player, index)) return null;
+            float length = Mathf.Clamp(Length(config), config.Geometry.MinForbiddanceLength,
+                board.MaxForbiddanceLength(player, Placement.TangentAt(index), Vec2.Zero));
+            return board.PreviewForbiddance(player, Placement.TangentAt(index, length));
+        }
+
+        /// <summary>How the chalkling being placed is tethered: as chosen, or else as placed (on a bind point or not). Null before either.</summary>
+        private ChalklingMode? PlacedChalklingMode
+        {
+            get
+            {
+                if (_chalklingMode.HasValue) return _chalklingMode;
+                if (_bindA >= 0) return ChalklingMode.Bound;
+                if (_pointA.HasValue) return ChalklingMode.Free;
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// True if a click near a bind point binds the chalkling there: when no tether is chosen and it isn't set to
+        /// Attack, since a bound chalkling must defend.
+        /// </summary>
+        private bool ChalklingSnaps { get { return !_chalklingMode.HasValue && _glyph != Glyph.Attack && !_freeHand; } }
+
+        /// <summary>True while the free hand key keeps a LoF with no mode chosen from snapping to bind points.</summary>
+        private bool FreeHandLof { get { return _freeHand && !_forbiddanceMode.HasValue; } }
+
+        /// <summary>The bind point that can be picked nearest the mouse, within picking distance, or -1.</summary>
+        private int HoverBindPoint(ChalkBoard board, Player player)
+        {
+            return _hover.HasValue ? NearBindPoint(board, player, _hover.Value) : -1;
+        }
+
+        /// <summary>The bind point that can be picked (not filled in red) nearest this point, within picking distance, or -1.</summary>
+        private int NearBindPoint(ChalkBoard board, Player player, Vec2 point)
+        {
+            var bindPoints = board.BindPointsOf(player);
+            var blocked = Blocked(board, player);
+            int nearest = -1;
+            float best = PickRadius;
+            for (int i = 0; i < bindPoints.Count; i++)
+            {
+                if (blocked[i]) continue;
+                float distance = Vec2.Distance(bindPoints[i], point);
+                if (distance < best) { best = distance; nearest = i; }
+            }
+            return nearest;
         }
 
         private static bool ForbiddanceFits(ChalkBoard board, Player player, DrawingSpec spec, Placement placement)
@@ -1087,6 +1374,8 @@ namespace RithmaticDuels.Presentation
             {
                 case LineType.Forbiddance:
                     if (_pointA.HasValue && !_pointB.HasValue) return true; // the second click sets the direction
+                    // With no mode chosen, a click near a bind point that can be picked starts a tangent or joins the two.
+                    if (!_forbiddanceMode.HasValue && !_freeHand && NearBindPoint(board, player, point) >= 0) return true;
                     // A start is allowed if the shortest line fits in some direction from it.
                     float length = board.Config.Geometry.MinForbiddanceLength;
                     const int directions = 16;
@@ -1101,6 +1390,7 @@ namespace RithmaticDuels.Presentation
                     if (_pointA.HasValue && !_pointB.HasValue) return true; // aiming
                     return Fits(board, player, DrawingSpec.Vigor(_tier ?? VigorTier.Low), Placement.Aimed(point, point + board.Facing(player)));
                 case LineType.Making:
+                    if (ChalklingSnaps && NearBindPoint(board, player, point) >= 0) return true;
                     return Fits(board, player, DrawingSpec.Making(), Placement.At(point));
                 default:
                     return true;
@@ -1110,12 +1400,12 @@ namespace RithmaticDuels.Presentation
         /// <summary>The mouse position, if a click there would be ignored (see <see cref="ClickAllowed"/>).</summary>
         private Vec2? InvalidHover(ChalkBoard board, Player player)
         {
-            // Only while the position is still being picked: once a spot is chosen the cross isn't needed.
-            if (!_hover.HasValue || _pointA.HasValue) return null;
+            if (!_hover.HasValue) return null;
             // The menu is laid out several times a frame and the free LoF check tries 16 directions, so keep the answer
             // until the mouse moves or the choice changes.
             Vec2 at = _hover.Value;
-            string key = _lineType + "/" + _forbiddanceMode + "/" + _tier + "/" + _pointA + "/" + _pointB + "/" + player + "/" + at.X + "," + at.Y;
+            string key = _lineType + "/" + _forbiddanceMode + "/" + _chalklingMode + "/" + _glyph + "/" + _freeHand + "/" + _tier + "/" + _pointA + "/" + _pointB
+                + "/" + _bindA + "/" + player + "/" + at.X + "," + at.Y;
             if (key != _invalidHoverKey)
             {
                 _invalidHoverKey = key;
@@ -1153,6 +1443,7 @@ namespace RithmaticDuels.Presentation
         {
             _bindA = -1;
             _bindB = -1;
+            _tangentPicked = false;
             _pointA = null;
             _pointB = null;
         }
@@ -1296,22 +1587,38 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A row of buttons with nothing selected until one is clicked.</summary>
-        private static void Choose<T>(ref T? value, string[] labels, int unusable = -1) where T : struct, System.Enum
+        private static void Choose<T>(ref T? value, string[] labels, int unusable = 0) where T : struct, System.Enum
         {
             int index = value.HasValue ? System.Convert.ToInt32(value.Value) : -1;
             int chosen = Buttons(index, labels, NextRowWidth(), unusable);
-            if (chosen == unusable) return;
-            if (chosen == index || chosen < 0) return;
+            if (chosen == index || chosen < 0 || Unusable(unusable, chosen)) return;
             value = (T)System.Enum.ToObject(typeof(T), chosen);
             GUIUtility.ExitGUI();
         }
 
-        private static void Choose(ref int value, string[] labels)
+        private static void Choose(ref int value, string[] labels, int unusable = 0)
         {
-            int chosen = Buttons(value, labels, NextRowWidth());
-            if (chosen == value || chosen < 0) return;
+            int chosen = Buttons(value, labels, NextRowWidth(), unusable);
+            if (chosen == value || chosen < 0 || Unusable(unusable, chosen)) return;
             value = chosen;
             GUIUtility.ExitGUI();
+        }
+
+        /// <summary>
+        /// A row of buttons that shows <paramref name="shown"/> as selected, which may be a choice worked out from the
+        /// placement rather than one the player made. Returns the button clicked, or -1 if none (or a greyed-out one).
+        /// The caller stores the choice and calls GUIUtility.ExitGUI.
+        /// </summary>
+        private static int ChooseShown(int shown, string[] labels, int unusable)
+        {
+            int chosen = Buttons(shown, labels, NextRowWidth(), unusable);
+            return chosen == shown || chosen < 0 || Unusable(unusable, chosen) ? -1 : chosen;
+        }
+
+        /// <summary>True if button <paramref name="index"/> is greyed out in the <paramref name="unusable"/> mask (one bit per button).</summary>
+        private static bool Unusable(int unusable, int index)
+        {
+            return (unusable & (1 << index)) != 0;
         }
 
         /// <summary>The smallest font size the button rows shrink to so that they fit on one line.</summary>
@@ -1323,9 +1630,9 @@ namespace RithmaticDuels.Presentation
         /// A row of buttons, one selected. The row always stays on one line, at the largest font size that fits in
         /// <paramref name="width"/> (never above the skin's own size). Every button in the row
         /// has the same width, and together they fill it. Only below
-        /// MinButtonFontSize does the row wrap onto more lines. The <paramref name="unusable"/> button, if any, is greyed out.
+        /// MinButtonFontSize does the row wrap onto more lines. Buttons whose bit is set in <paramref name="unusable"/> are greyed out.
         /// </summary>
-        private static int Buttons(int selected, string[] labels, float width, int unusable = -1)
+        private static int Buttons(int selected, string[] labels, float width, int unusable = 0)
         {
             var style = GUI.skin.button;
             // Copied afresh whenever the skin's button style changes (a new run builds a new skin).
@@ -1366,7 +1673,7 @@ namespace RithmaticDuels.Presentation
             {
                 float w = each;
                 bool enabled = GUI.enabled;
-                GUI.enabled = enabled && i != unusable;
+                GUI.enabled = enabled && !Unusable(unusable, i);
                 bool on = GUILayout.Toggle(i == selected, labels[i], _smallButton, GUILayout.Width(w));
                 GUI.enabled = enabled;
                 if (on && i != selected) chosen = i;
