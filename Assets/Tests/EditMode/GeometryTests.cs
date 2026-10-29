@@ -780,7 +780,7 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(12, MainWard(Player.B).Durability);
             var body = (ChalklingBody)_board.BodyOf(chalkling.Id);
             Assert.LessOrEqual(Vec2.Distance(body.Position, body.Tether.Value), _config.Making.TetherDistance + 1e-4);
-            Assert.Greater(body.Position.X, 23.25f); // pushed back toward B
+            Assert.Greater(body.Position.X, 23f - _config.Making.Radius); // pushed back toward B from where it was drawn
         }
 
         [Test]
