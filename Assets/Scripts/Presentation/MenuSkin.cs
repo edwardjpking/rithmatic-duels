@@ -37,6 +37,31 @@ namespace RithmaticDuels.Presentation
         private static readonly Color ButtonOutline = new Color(0.40f, 0.45f, 0.42f, 1f);
         private static readonly Color ButtonText = new Color(0.92f, 0.93f, 0.92f, 1f);
 
+        /// <summary>
+        /// The red of things that can't be picked (DESIGN.md 1.1), the same as blocked bind points and the cross under
+        /// the mouse on the board: a greyed-out option or the problem line flashes it when a key press is refused.
+        /// </summary>
+        public static readonly Color Refused = new Color(0.95f, 0.3f, 0.25f, 1f);
+        /// <summary>How opaque the red flash over a refused option is at its strongest.</summary>
+        public const float RefusedFlashAlpha = 0.6f;
+        /// <summary>The number in the corner of each option in the row the number keys pick in: the button text, dimmed.</summary>
+        public static readonly Color KeyHintText = new Color(ButtonText.r, ButtonText.g, ButtonText.b, 0.6f);
+
+        private static GUIStyle _flashBox;
+
+        /// <summary>A plain white box with a button's rounded corners, tinted with GUI.color to flash over a button.</summary>
+        public static GUIStyle FlashBox
+        {
+            get
+            {
+                if (_flashBox != null && _flashBox.normal.background != null) return _flashBox;
+                _flashBox = new GUIStyle();
+                _flashBox.normal.background = Rounded(ButtonRadius, Color.white, Color.white);
+                _flashBox.border = new RectOffset(ButtonRadius, ButtonRadius, ButtonRadius, ButtonRadius);
+                return _flashBox;
+            }
+        }
+
         private static GUISkin _skin;
 
         /// <summary>
@@ -47,6 +72,7 @@ namespace RithmaticDuels.Presentation
         private static void ResetOnPlay()
         {
             _skin = null;
+            _flashBox = null;
         }
 
         /// <summary>The menu skin, built the first time it is asked for. Only call this from inside OnGUI.</summary>

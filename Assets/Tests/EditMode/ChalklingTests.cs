@@ -165,6 +165,80 @@ namespace RithmaticDuels.Rules.Tests
             Assert.IsTrue(chalkling.IsActive);
         }
 
+        /// <summary>Draws a line for this player, calling <paramref name="beforeEachTurn"/> before every turn it takes.</summary>
+        private Line DrawWhile(Player player, DrawingSpec spec, Placement placement, System.Action beforeEachTurn)
+        {
+            spec = _board.Measure(player, spec, placement);
+            Assert.IsNull(_board.ValidatePlacement(player, spec, placement));
+            _board.SetPendingPlacement(player, spec, placement);
+            var action = PlayerAction.Start(spec);
+            do
+            {
+                beforeEachTurn();
+                if (player == Player.A) _duel.ResolveTurn(action, Pass); else _duel.ResolveTurn(Pass, action);
+                action = Continue;
+            } while (_duel.GetPlayer(player).HasWorkInProgress);
+            return _duel.Lines.Last(l => l.Owner == player && l.Type == spec.Type);
+        }
+
+        [Test]
+        public void BoundChalklingStandsClearOfATangentAtItsBindPoint()
+        {
+            var tangent = Draw(Player.A, DrawingSpec.Forbiddance(1), Placement.TangentAt(0));
+            var chalkling = Draw(Player.A, DrawingSpec.Making(glyph: Glyph.Defend, boundBindPoints: 1), Placement.AtBindPoint(0));
+            var body = Body(chalkling);
+            var segment = ((ForbiddanceBody)_board.BodyOf(tangent.Id)).Segment;
+            Vec2 along = (segment.B - segment.A).Normalized;
+            Vec2 offset = body.Position - segment.A;
+            float clearance = System.Math.Abs(offset.X * along.Y - offset.Y * along.X);
+            Assert.Greater(clearance, _config.Making.Radius + _config.Geometry.ForbiddanceWidth / 2f);
+            Assert.AreEqual(body.Position.X, body.Tether.Value.X, 1e-4, "its tether is centred where it stands");
+            Assert.AreEqual(body.Position.Y, body.Tether.Value.Y, 1e-4);
+            Assert.AreEqual(_board.BindPointsOf(Player.A)[0].X, body.BindPoint.Value.X, 1e-4);
+        }
+
+        [Test]
+        public void OwnForbiddanceFinishedOnAChalklingTrapsIt()
+        {
+            // Speed 1: each turn it is put back at x=12, so it ends the LoF's last tick at x=13, just past the LoF at x=12.8.
+            var attacker = Draw(Player.A, DrawingSpec.Making(damageBuffs: 1, speedBuffs: 1), Placement.At(V(11f, 10f)));
+            var lof = DrawWhile(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(V(12.8f, 8f), V(12.8f, 12f)),
+                () => Body(attacker).Position = V(12f, 10f));
+            Assert.AreEqual(13f, Body(attacker).Position.X, 0.05f);
+            int full = lof.Durability;
+            for (int i = 0; i < 3; i++) PassTurn();
+            Assert.AreEqual(13f, Body(attacker).Position.X, 0.05f, "held behind its own LoF");
+            Assert.AreEqual(full, lof.Durability, "and never attacks it");
+        }
+
+        [Test]
+        public void EnemyForbiddanceFinishedOnAChalklingMustBeAttacked()
+        {
+            var attacker = Draw(Player.A, DrawingSpec.Making(damageBuffs: 1, speedBuffs: 1), Placement.At(V(11f, 10f)));
+            var lof = DrawWhile(Player.B, DrawingSpec.Forbiddance(0), Placement.Segment(V(20.8f, 8f), V(20.8f, 12f)),
+                () => Body(attacker).Position = V(20f, 10f));
+            int full = lof.Durability;
+            PassTurn();
+            Assert.AreEqual(21f, Body(attacker).Position.X, 0.05f);
+            Assert.Less(lof.Durability, full);
+        }
+
+        [Test]
+        public void EnemyForbiddanceFinishedOnAVigorReflectsIt()
+        {
+            // A Low LoV (speed 3) is put back at x=17.5 each turn, so its head ends the LoF's last tick at x=20.5,
+            // its trailing wave across B's LoF at x=20.
+            var vigor = Draw(Player.A, DrawingSpec.Vigor(VigorTier.Low), Placement.Aimed(V(12f, 10f), V(26f, 10f)));
+            var body = (VigorBody)_board.BodyOf(vigor.Id);
+            var lof = DrawWhile(Player.B, DrawingSpec.Forbiddance(0), Placement.Segment(V(20f, 8f), V(20f, 12f)),
+                () => { body.Position = V(17.5f, 10f); body.Direction = V(1f, 0f); });
+            int ward = MainWard(Player.B).Durability;
+            PassTurn();
+            Assert.Less(body.Direction.X, 0f, "reflected back toward A");
+            Assert.Less(body.Position.X, 20f);
+            Assert.AreEqual(ward, MainWard(Player.B).Durability);
+        }
+
         [Test]
         public void ChalklingsTakeTwoTurnsUnlessRushed()
         {

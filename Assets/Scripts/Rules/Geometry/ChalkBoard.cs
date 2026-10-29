@@ -810,9 +810,9 @@ namespace RithmaticDuels.Rules.Geometry
                     sketch.Direction = direction;
                     break;
                 default:
-                    Vec2? tether;
-                    sketch.Point = ChalklingSpot(owner, spec, placement, out tether);
-                    sketch.Tether = tether;
+                    Vec2? tether, boundAt;
+                    sketch.Point = ChalklingSpot(owner, spec, placement, out tether, out boundAt);
+                    sketch.Tether = boundAt;
                     break;
             }
             return sketch;
@@ -836,6 +836,8 @@ namespace RithmaticDuels.Rules.Geometry
                     // A Mark's Cross's crossed LoF go where its bind points are, so they have no placement of their own.
                     body = CreateBody(line, line.BraceOf >= 0 ? Placement.Default() : TakePending(line));
                     _bodies[line.Id] = body;
+                    var newForbiddance = body as ForbiddanceBody;
+                    if (newForbiddance != null) PutBehind(newForbiddance);
                     var newWard = body as WardBody;
                     if (newWard != null)
                         result.DurabilityOverrides.Add(new DurabilityOverride(line.Id, newWard.Weakest, newWard.WeakestMax));
@@ -851,6 +853,72 @@ namespace RithmaticDuels.Rules.Geometry
                 if (delta != 0) ward.ApplyEverywhere(delta);
                 if (ward.Weakest != line.Durability || ward.WeakestMax != line.MaxDurability)
                     result.DurabilityOverrides.Add(new DurabilityOverride(line.Id, ward.Weakest, ward.WeakestMax));
+            }
+        }
+
+        /// <summary>
+        /// A LoF finished on top of a chalkling or LoV (DESIGN.md section 4.2): it isn't moved, but counts as behind
+        /// the LoF, on the side it came from, so it must get past the LoF (attack or reflect) to go on.
+        /// </summary>
+        private void PutBehind(ForbiddanceBody forbiddance)
+        {
+            var segment = forbiddance.Segment;
+            Vec2 normal = LeftNormal(segment);
+            float halfWidth = _config.Geometry.ForbiddanceWidth / 2f;
+            foreach (var body in _bodies.Values)
+            {
+                if (!body.Line.IsActive) continue;
+                var chalkling = body as ChalklingBody;
+                if (chalkling != null)
+                {
+                    if (DistanceToSegment(chalkling.Position, segment) >= _config.Making.Radius + halfWidth) continue;
+                    // Behind is the side away from where it is heading: its target for an Attack chalkling, its anchor's side for Defend.
+                    Vec2 target;
+                    float side = chalkling.Line.Glyph == Glyph.Attack && AttackTarget(chalkling.Owner, chalkling.Position, out target)
+                        ? -Math.Sign(Vec2.Dot(target - chalkling.Position, normal))
+                        : Math.Sign(Vec2.Dot(chalkling.Anchor - segment.A, normal));
+                    if (side == 0f) side = Math.Sign(Vec2.Dot(chalkling.Position - segment.A, normal));
+                    if (side == 0f) side = 1f;
+                    chalkling.BehindForbiddance[forbiddance.LineId] = side;
+                    continue;
+                }
+                var vigor = body as VigorBody;
+                if (vigor == null || vigor.Owner == forbiddance.Owner) continue;
+                // A LoV overlaps the LoF if the wave trailing behind its head crosses it; it is behind on its tail's side.
+                Vec2 tail = vigor.Position - vigor.Direction * _config.Geometry.VigorDrawnLength;
+                float tailSide = Vec2.Dot(tail - segment.A, normal);
+                float headSide = Vec2.Dot(vigor.Position - segment.A, normal);
+                bool crosses = Math.Sign(tailSide) != Math.Sign(headSide)
+                    && SegmentsMeet(tail, vigor.Position, segment);
+                if (crosses || DistanceToSegment(vigor.Position, segment) < halfWidth)
+                    vigor.BehindForbiddance[forbiddance.LineId] = tailSide < 0f ? -1f : 1f;
+            }
+        }
+
+        private static Vec2 LeftNormal(Segment segment)
+        {
+            Vec2 along = (segment.B - segment.A).Normalized;
+            return new Vec2(-along.Y, along.X);
+        }
+
+        private static bool SegmentsMeet(Vec2 a, Vec2 b, Segment segment)
+        {
+            float distance;
+            Vec2 normal;
+            Vec2 step = b - a;
+            return step.Length > 1e-6f && Intersect.RaySegment(a, step.Normalized, segment, out distance, out normal) && distance <= step.Length;
+        }
+
+        /// <summary>Lets go of LoF a chalkling or LoV no longer overlaps, or that are gone.</summary>
+        private void ReleaseBehind(LineBody body, Vec2 position, float clearance)
+        {
+            if (body.BehindForbiddance.Count == 0) return;
+            foreach (var id in new List<int>(body.BehindForbiddance.Keys))
+            {
+                LineBody other;
+                var forbiddance = _bodies.TryGetValue(id, out other) ? other as ForbiddanceBody : null;
+                if (forbiddance == null || !forbiddance.Line.IsActive || DistanceToSegment(position, forbiddance.Segment) >= clearance)
+                    body.BehindForbiddance.Remove(id);
             }
         }
 
@@ -975,9 +1043,9 @@ namespace RithmaticDuels.Rules.Geometry
                     return new VigorBody(line, start, direction);
 
                 default:
-                    Vec2? tether;
-                    Vec2 spot = ChalklingSpot(owner, line.Spec, placement, out tether);
-                    return new ChalklingBody(line, spot, tether, tether.HasValue ? _config.Making.TetherDistance : _config.Making.GuardDistance);
+                    Vec2? tether, boundAt;
+                    Vec2 spot = ChalklingSpot(owner, line.Spec, placement, out tether, out boundAt);
+                    return new ChalklingBody(line, spot, tether, boundAt, tether.HasValue ? _config.Making.TetherDistance : _config.Making.GuardDistance);
             }
         }
 
@@ -992,8 +1060,19 @@ namespace RithmaticDuels.Rules.Geometry
             return Home(owner) + Facing(owner) * (FrontDistance(owner) + 1f);
         }
 
-        /// <summary>Where a chalkling stands, and the bind point it is tethered to if it is bound.</summary>
-        private Vec2 ChalklingSpot(Player owner, DrawingSpec spec, Placement placement, out Vec2? tether)
+        /// <summary>Where a chalkling bound at this bind point would stand, for previews.</summary>
+        public Vec2 BoundChalklingSpot(Player owner, int bindPoint)
+        {
+            Vec2? tether, boundAt;
+            return ChalklingSpot(owner, DrawingSpec.Making(glyph: Glyph.Defend, boundBindPoints: 1), Placement.AtBindPoint(bindPoint), out tether, out boundAt);
+        }
+
+        /// <summary>
+        /// Where a chalkling stands and, if it is bound, the bind point it is bound to and the centre of its tether. A bound
+        /// chalkling stands out from its bind point along the LoW's outward normal (the line perpendicular to a tangent
+        /// there), clear of a tangent LoF and the LoW with a buffer, and its tether is centred on that spot (DESIGN.md 4.4).
+        /// </summary>
+        private Vec2 ChalklingSpot(Player owner, DrawingSpec spec, Placement placement, out Vec2? tether, out Vec2? boundAt)
         {
             var allPoints = BindPointsOf(owner);
             int bindPoint = placement.Kind == PlacementKind.AtBindPoint ? placement.BindPointA
@@ -1001,10 +1080,15 @@ namespace RithmaticDuels.Rules.Geometry
             if (bindPoint >= 0 && bindPoint < allPoints.Count)
             {
                 Vec2 point = allPoints[bindPoint];
-                tether = point;
-                return point + BindPointNormal(owner, point) * (_config.Making.Radius + 0.05f);
+                boundAt = point;
+                float offset = _config.Making.Radius + _config.Geometry.ForbiddanceWidth / 2f
+                    + _config.Geometry.WardLineWidth / 2f + _config.Making.BoundOffsetBuffer;
+                Vec2 spot = point + BindPointNormal(owner, point) * offset;
+                tether = spot;
+                return spot;
             }
             tether = null;
+            boundAt = null;
             if (placement.Kind == PlacementKind.FreePoint) return placement.PointA;
             return Home(owner) + Facing(owner) * (FrontDistance(owner) + 1f);
         }
@@ -1346,6 +1430,12 @@ namespace RithmaticDuels.Rules.Geometry
                     if (forbiddance != null)
                     {
                         if (RemainingDurability(forbiddance, chalklingDamage) <= 0) continue;
+                        if (vigor.BehindForbiddance.ContainsKey(forbiddance.LineId))
+                        {
+                            // Finished on top of it: it meets the LoF straight away, from its tail's side.
+                            Consider(ref best, HitKind.Forbiddance, now, vigor, forbiddance, LeftNormal(forbiddance.Segment));
+                            continue;
+                        }
                         Vec2 normal;
                         if (Intersect.RaySegment(from, direction, forbiddance.Segment, out distance, out normal) && distance <= reach)
                             Consider(ref best, HitKind.Forbiddance, now + distance / speed, vigor, forbiddance, normal);
@@ -1488,6 +1578,15 @@ namespace RithmaticDuels.Rules.Geometry
         private void ReflectOffForbiddance(VigorBody vigor, ForbiddanceBody forbiddance, Vec2 normal, float time, Dictionary<int, int> used, MovementResult result)
         {
             vigor.Direction = Vec2.Reflect(vigor.Direction, normal).Normalized;
+            float behind;
+            if (vigor.BehindForbiddance.TryGetValue(forbiddance.LineId, out behind))
+            {
+                // A LoV the LoF was finished on top of folds back from it, its head mirrored onto its tail's side.
+                vigor.BehindForbiddance.Remove(forbiddance.LineId);
+                Vec2 n = LeftNormal(forbiddance.Segment);
+                float past = Vec2.Dot(vigor.Position - forbiddance.Segment.A, n);
+                if (Math.Sign(past) != Math.Sign(behind)) vigor.Position -= n * (2f * past);
+            }
             vigor.Position += vigor.Direction * Intersect.Epsilon;
             int damage = ReflectDamage(vigor.Damage);
             if (damage <= 0)
@@ -1813,8 +1912,8 @@ namespace RithmaticDuels.Rules.Geometry
             foreach (var body in _bodies.Values)
             {
                 var chalkling = body as ChalklingBody;
-                if (chalkling != null && chalkling.Owner == player && chalkling.Line.IsActive && chalkling.Tether.HasValue
-                    && Vec2.Distance(chalkling.Tether.Value, bindPoint) < 1e-3f) return true;
+                if (chalkling != null && chalkling.Owner == player && chalkling.Line.IsActive && chalkling.BindPoint.HasValue
+                    && Vec2.Distance(chalkling.BindPoint.Value, bindPoint) < 1e-3f) return true;
             }
             return false;
         }

@@ -170,7 +170,7 @@ namespace RithmaticDuels.Presentation
             var chalkling = body as ChalklingBody;
             if (chalkling != null)
             {
-                if (chalkling.Tether.HasValue) Line(chalkling.Tether.Value, chalkling.Position, 0.02f, WithAlpha(colour, 0.4f));
+                if (chalkling.BindPoint.HasValue) Line(chalkling.BindPoint.Value, chalkling.Position, 0.02f, WithAlpha(colour, 0.4f));
                 Chalkling(chalkling.Position, chalkling.Line.Glyph, colour);
             }
         }
@@ -370,17 +370,36 @@ namespace RithmaticDuels.Presentation
             const float amplitude = 0.18f;
             const int steps = 16;
             Vec2 side = direction.Perp;
-            Vec2 previous = Vec2.Zero;
+            var points = new Vec2[steps + 1];
             for (int i = 0; i <= steps; i++)
             {
                 float s = (float)i / steps;
-                Vec2 point = centre + direction * ((s - 1f) * length) + side * (amplitude * Mathf.Sin(s * 4f * Mathf.PI));
-                if (i > 0 && !(dotted && i % 2 == 0)) Line(previous, point, width, colour);
-                // Round caps on the two ends only, so a see-through glow doesn't darken at every joint.
-                if (rounded && i == 1) Cap(previous, previous - point, width / 2f, colour);
-                if (rounded && i == steps) Cap(point, point - previous, width / 2f, colour);
-                previous = point;
+                points[i] = centre + direction * ((s - 1f) * length) + side * (amplitude * Mathf.Sin(s * 4f * Mathf.PI));
             }
+            if (!rounded)
+            {
+                for (int i = 1; i <= steps; i++)
+                    if (!(dotted && i % 2 == 0)) Line(points[i - 1], points[i], width, colour);
+                return;
+            }
+            // A see-through glow is drawn as one joined strip, so the segments don't overlap and darken at the
+            // joints, with round caps on the two ends so it wraps fully around the wave.
+            var offsets = new Vec2[steps + 1];
+            for (int i = 0; i <= steps; i++)
+            {
+                Vec2 along = (points[Math.Min(i + 1, steps)] - points[Math.Max(i - 1, 0)]).Normalized;
+                offsets[i] = along.Perp * (width / 2f);
+            }
+            GL.Color(colour);
+            for (int i = 1; i <= steps; i++)
+            {
+                Vertex(points[i - 1] + offsets[i - 1]);
+                Vertex(points[i - 1] - offsets[i - 1]);
+                Vertex(points[i] - offsets[i]);
+                Vertex(points[i] + offsets[i]);
+            }
+            Cap(points[0], points[0] - points[1], width / 2f, colour);
+            Cap(points[steps], points[steps] - points[steps - 1], width / 2f, colour);
         }
 
         private static void Line(Vec2 a, Vec2 b, float width, Color colour)

@@ -18,6 +18,13 @@ namespace RithmaticDuels.Rules.Geometry
         /// </summary>
         public IReadOnlyList<Vec2> Anchors { get; internal set; } = new Vec2[0];
 
+        /// <summary>
+        /// LoF that were finished on top of this chalkling or LoV (DESIGN.md section 4.2), by LoF id, with the side of
+        /// the LoF it counts as being on (+1 along the LoF's left normal, -1 against). It is behind that LoF until it
+        /// no longer overlaps it.
+        /// </summary>
+        public Dictionary<int, float> BehindForbiddance { get; } = new Dictionary<int, float>();
+
         protected LineBody(Line line)
         {
             Line = line;
@@ -192,23 +199,26 @@ namespace RithmaticDuels.Rules.Geometry
     public sealed class ChalklingBody : LineBody
     {
         public Vec2 Position { get; internal set; }
-        /// <summary>The bind point a bound chalkling is tethered to.</summary>
+        /// <summary>The centre of a bound chalkling's tether: the spot it was drawn, just out from its bind point.</summary>
         public Vec2? Tether { get; private set; }
-        /// <summary>What a Defend chalkling guards: its bind point if bound, otherwise the spot it was drawn.</summary>
+        /// <summary>The bind point a bound chalkling is bound to; it falls with the LoW holding it.</summary>
+        public Vec2? BindPoint { get; private set; }
+        /// <summary>What a Defend chalkling guards: its tether centre if bound, otherwise the spot it was drawn.</summary>
         public Vec2 Anchor { get; private set; }
         /// <summary>How far it may stray from its anchor: the tether if bound, the longer guard distance if not.</summary>
         public float GuardDistance { get; private set; }
         /// <summary>Where it walked last tick, start first (one point if it stood still), for animation.</summary>
         public List<Vec2> LastPath { get; private set; }
 
-        public ChalklingBody(Line line, Vec2 position, Vec2? tether, float guardDistance) : base(line)
+        public ChalklingBody(Line line, Vec2 position, Vec2? tether, Vec2? bindPoint, float guardDistance) : base(line)
         {
             Position = position;
             Tether = tether;
+            BindPoint = bindPoint;
             Anchor = tether ?? position;
             GuardDistance = guardDistance;
             LastPath = new List<Vec2> { position };
-            if (tether.HasValue) Anchors = new[] { tether.Value };
+            if (bindPoint.HasValue) Anchors = new[] { bindPoint.Value };
         }
     }
 
