@@ -238,7 +238,12 @@ namespace RithmaticDuels.Presentation
             }
             if (HoverAimFrom.HasValue && HoverAimDirection.HasValue) AimLine(HoverAimFrom.Value, HoverAimDirection.Value, HoverAimOwner, PreviewColour);
             if (HoverChalkling != null)
+            {
                 ChalklingReach(HoverChalkling.Owner, HoverChalkling.Line.Glyph, HoverChalkling.Anchor, HoverChalkling.Position, HoverChalkling.GuardDistance);
+                // A bound chalkling points to its bind point with a dashed line in the aim-line blue, like an Attack path.
+                if (HoverChalkling.BindPoint.HasValue)
+                    DashedPath(new[] { HoverChalkling.Position, HoverChalkling.BindPoint.Value }, PreviewColour);
+            }
         }
 
         /// <summary>
