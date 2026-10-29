@@ -159,6 +159,9 @@ Separate from the tutorial, and the lowest priority. It shares the tutorial's se
 
 - **Damage shown as wear (Amelia, 2026-10-27).** As a chalkling, LoW or LoF loses durability, its art deteriorates (smudged, cracked or fading chalk), so health can be read from the board itself. Until then a chalkling's durability is in the hover stats box and a LoW's damage is shown in red. Damage shown this way must not rest on colour alone (`docs/ACCESSIBILITY.md`).
 
+- **Mode label while a key is held (Amelia, 2026-10-29).** Show a small "Free hand" or "Line info" label in the menu while Ctrl/Cmd or Alt is held. Only if player feedback asks for it; not thought necessary for now.
+- **In-game key helper overlay (Amelia, 2026-10-29).** An overlay the player can bring up during a duel listing the controls. Keys are otherwise learnt through the tutorial, with no permanent on-screen key hints (they would be clutter).
+
 ### Settings
 
 Player settings to add later (the list started 2026-10-27). Accessibility settings are also tracked in `docs/ACCESSIBILITY.md`.
