@@ -205,8 +205,8 @@ namespace RithmaticDuels.Presentation
             else if (_duel != null && _phase == Phase.Choosing)
             {
                 var picker = _pickers[(int)_chooser];
-                // Holding Ctrl is the free hand key: no snapping to bind points (DESIGN.md 1.1).
-                picker.SetHover(boardPoint, current.control);
+                // Holding the free hand key (Ctrl, or Cmd on macOS) stops snapping to bind points (DESIGN.md 1.1).
+                picker.SetHover(boardPoint, ActionPicker.FreeHandIsCommand ? current.command : current.control);
                 bool changed = false;
                 if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 0)
                     changed = picker.HandleBoardClick(_board, _chooser, _rules, boardPoint.Value);

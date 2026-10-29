@@ -30,6 +30,8 @@ namespace RithmaticDuels.Presentation
         /// <summary>Where a LoF would go if the player clicked now: follows the mouse, drawn fainter than <see cref="Segment"/>.</summary>
         public Segment? GhostSegment;
         public Vec2? From;
+        /// <summary>True if <see cref="From"/> only follows the mouse (not yet clicked), drawn in the darker hover blue.</summary>
+        public bool FromHovered;
         public Vec2? To;
         public Vec2? Point;
         /// <summary>
@@ -39,6 +41,8 @@ namespace RithmaticDuels.Presentation
         public Glyph? ChalklingGlyph;
         public Vec2? ChalklingAnchor;
         public float ChalklingGuardDistance;
+        /// <summary>True if the chalkling only follows the mouse (not yet clicked), drawn in the darker hover blue.</summary>
+        public bool ChalklingHovered;
         /// <summary>A bind point under the mouse that a click would pick, ringed faintly.</summary>
         public Vec2? HoverBindPoint;
         /// <summary>Bind points of the main LoW the player has picked.</summary>
@@ -163,7 +167,7 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// Where the mouse is over the board, in board units, or null when it is elsewhere, and whether the free hand
-        /// key (Ctrl) is held, which stops a LoF or chalkling with no mode chosen snapping to bind points (DESIGN.md 1.1).
+        /// key (Ctrl, or Cmd on macOS) is held, which stops a LoF or chalkling with no mode chosen snapping to bind points (DESIGN.md 1.1).
         /// </summary>
         public void SetHover(Vec2? point, bool freeHand = false)
         {
@@ -172,6 +176,12 @@ namespace RithmaticDuels.Presentation
         }
 
         private bool _freeHand;
+
+        /// <summary>True on macOS, where the free hand key is Cmd (Amelia, 2026-10-29); Ctrl everywhere else.</summary>
+        public static bool FreeHandIsCommand { get { return SystemInfo.operatingSystemFamily == OperatingSystemFamily.MacOSX; } }
+
+        /// <summary>The free hand key's name, for the menu's instructions.</summary>
+        private static string FreeHandKey { get { return FreeHandIsCommand ? "Cmd" : "Ctrl"; } }
 
         /// <summary>The action being built: after Cancel, the one chosen to follow it.</summary>
         private ActionKind? Effective { get { return _kind == ActionKind.CancelDrawing ? _afterCancel : _kind; } }
@@ -720,7 +730,7 @@ namespace RithmaticDuels.Presentation
                             // No line is shown until it is clear which: the same bind point twice for a tangent, or a second one to join them.
                             GUILayout.Label(_bindA >= 0
                                 ? "Click the same bind point again for a tangent, or another bind point to join the two."
-                                : "Click a bind point (twice for a tangent, or then another to join the two), or anywhere else on your half to start a free line. Hold Ctrl to start a free line next to a bind point.");
+                                : "Click a bind point (twice for a tangent, or then another to join the two), or anywhere else on your half to start a free line. Hold " + FreeHandKey + " to start a free line next to a bind point.");
                             hint = "Click the board to place it.";
                             break;
                     }
@@ -728,7 +738,11 @@ namespace RithmaticDuels.Presentation
                     {
                         preview.InvalidHover = InvalidHover(board, player);
                         // Where a free line would start: hidden over a spot where nothing can be placed.
-                        if (!_pointA.HasValue && hoverBind < 0 && !preview.InvalidHover.HasValue) preview.From = _hover;
+                        if (!_pointA.HasValue && hoverBind < 0 && !preview.InvalidHover.HasValue)
+                        {
+                            preview.From = _hover;
+                            preview.FromHovered = true;
+                        }
                     }
                     if (_forbiddanceMode != ForbiddanceMode.Free) preview.BlockedBindPoints = BlockedBindPoints(board, player);
                     if (!_forbiddanceMode.HasValue && hoverBind >= 0 && hoverBind != _bindA)
@@ -751,6 +765,7 @@ namespace RithmaticDuels.Presentation
                     preview.InvalidHover = InvalidHover(board, player);
                     // Before the first click, the starting point follows the mouse, except over a spot where it can't go.
                     preview.From = _pointA ?? (preview.InvalidHover.HasValue ? null : _hover);
+                    preview.FromHovered = !_pointA.HasValue;
                     preview.To = _pointB ?? (_pointA.HasValue ? _hover : null);
                     if (!_tier.HasValue)
                     {
@@ -767,7 +782,7 @@ namespace RithmaticDuels.Presentation
                     var placedTether = PlacedChalklingMode;
                     bool snaps = ChalklingSnaps;
                     GUILayout.Label(_chalklingMode == ChalklingMode.Bound ? "Click a bind point to tether it there."
-                        : snaps ? "Click where to draw it on your half. A click near a bind point tethers it there (hold Ctrl not to)."
+                        : snaps ? "Click where to draw it on your half. A click near a bind point tethers it there (hold " + FreeHandKey + " not to)."
                         : "Click where to draw it on your half.");
                     var bindSpots = board.BindPointsOf(player);
                     if (_chalklingMode != ChalklingMode.Bound) preview.InvalidHover = InvalidHover(board, player);
@@ -780,6 +795,7 @@ namespace RithmaticDuels.Presentation
                     else if (_chalklingMode != ChalklingMode.Bound && !preview.InvalidHover.HasValue) anchor = _hover;
                     bool boundAt = anchorBind >= 0;
                     preview.ChalklingAnchor = anchor;
+                    preview.ChalklingHovered = _bindA < 0 && !_pointA.HasValue;
                     // A bound chalkling always defends. Until a glyph is chosen, it shows no glyph, ring or path.
                     preview.ChalklingGlyph = boundAt ? Glyph.Defend : placedTether == ChalklingMode.Bound ? (Glyph?)null : _glyph;
                     preview.ChalklingGuardDistance = boundAt ? config.Making.TetherDistance : config.Making.GuardDistance;
