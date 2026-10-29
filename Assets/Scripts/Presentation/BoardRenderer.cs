@@ -103,6 +103,7 @@ namespace RithmaticDuels.Presentation
         private void DrawHighlight(LineBody body)
         {
             Color glowColour = body.Owner == Player.A ? HighlightA : HighlightB;
+            // Every highlight reaches the same distance, glow / 2, past the edge of its line.
             const float glow = 0.18f;
             var ward = body as WardBody;
             if (ward != null)
@@ -116,19 +117,19 @@ namespace RithmaticDuels.Presentation
             var forbiddance = body as ForbiddanceBody;
             if (forbiddance != null)
             {
-                Line(forbiddance.Segment.A, forbiddance.Segment.B, ForbiddanceWidth + glow, glowColour);
+                RoundedLine(forbiddance.Segment.A, forbiddance.Segment.B, ForbiddanceWidth + glow, glowColour);
                 return;
             }
             var vigor = body as VigorBody;
             if (vigor != null)
             {
                 // A glow along the wave itself, plus its aim line in the usual aim line colour.
-                Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, glowColour, false, 0.06f + glow);
+                Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, glowColour, false, 0.06f + glow, true);
                 AimLine(vigor.Position, vigor.Direction, vigor.Owner, PreviewColour);
                 return;
             }
             var chalkling = body as ChalklingBody;
-            if (chalkling != null) Disc(chalkling.Position, ChalklingRadius + glow, glowColour);
+            if (chalkling != null) Disc(chalkling.Position, ChalklingRadius + glow / 2f, glowColour);
         }
 
         private void DrawBody(LineBody body)
@@ -364,7 +365,7 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A LoV is drawn as a short sine wave along its direction of travel; dotted while in progress.</summary>
-        private static void Wave(Vec2 centre, Vec2 direction, float length, Color colour, bool dotted = false, float width = 0.06f)
+        private static void Wave(Vec2 centre, Vec2 direction, float length, Color colour, bool dotted = false, float width = 0.06f, bool rounded = false)
         {
             const float amplitude = 0.18f;
             const int steps = 16;
@@ -375,6 +376,9 @@ namespace RithmaticDuels.Presentation
                 float s = (float)i / steps;
                 Vec2 point = centre + direction * ((s - 1f) * length) + side * (amplitude * Mathf.Sin(s * 4f * Mathf.PI));
                 if (i > 0 && !(dotted && i % 2 == 0)) Line(previous, point, width, colour);
+                // Round caps on the two ends only, so a see-through glow doesn't darken at every joint.
+                if (rounded && i == 1) Cap(previous, previous - point, width / 2f, colour);
+                if (rounded && i == steps) Cap(point, point - previous, width / 2f, colour);
                 previous = point;
             }
         }
@@ -387,6 +391,31 @@ namespace RithmaticDuels.Presentation
             Vertex(a - offset);
             Vertex(b - offset);
             Vertex(b + offset);
+        }
+
+        /// <summary>A line with round ends, so a glow wraps fully around it.</summary>
+        private static void RoundedLine(Vec2 a, Vec2 b, float width, Color colour)
+        {
+            Line(a, b, width, colour);
+            Cap(a, a - b, width / 2f, colour);
+            Cap(b, b - a, width / 2f, colour);
+        }
+
+        /// <summary>A half disc on the end of a line, bulging towards <paramref name="outward"/>. Half, not whole, so it doesn't overlap the line.</summary>
+        private static void Cap(Vec2 centre, Vec2 outward, float radius, Color colour)
+        {
+            Vec2 forward = outward.Normalized;
+            Vec2 side = forward.Perp;
+            const int steps = CircleSteps / 2;
+            GL.Color(colour);
+            for (int i = 0; i < steps; i++)
+            {
+                float t0 = Mathf.PI * i / steps, t1 = Mathf.PI * (i + 1) / steps;
+                Vertex(centre);
+                Vertex(centre + (side * Mathf.Cos(t0) + forward * Mathf.Sin(t0)) * radius);
+                Vertex(centre + (side * Mathf.Cos(t1) + forward * Mathf.Sin(t1)) * radius);
+                Vertex(centre + (side * Mathf.Cos(t1) + forward * Mathf.Sin(t1)) * radius);
+            }
         }
 
         /// <summary>A line broken into dashes, for drawings in progress.</summary>

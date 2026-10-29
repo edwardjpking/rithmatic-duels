@@ -165,5 +165,7 @@ Player settings to add later (the list started 2026-10-27). Accessibility settin
 
 - **Scroll direction for turning a circle (Amelia, 2026-10-27).** Which way the scroll wheel turns a nine-point circle (Shift + scroll, DESIGN.md 4.1) should be a player setting. The default was flipped in v0.18 because the first direction felt wrong.
 - **Holding Tab for the lines list (Amelia, 2026-10-27).** As well as pressing Tab to open and close the lines list (DESIGN.md section 2, Information), let the player choose to hold Tab to show it and release it to return to the menu.
+- **Rebind the line info key (Amelia, 2026-10-29).** Holding Alt (Option on macOS) while hovering a line shows its stats and highlight. The key should be rebindable, with a press-to-toggle option (`docs/ACCESSIBILITY.md`).
 - **Stop the log jumping to the newest entry (Amelia, 2026-10-27).** Today the log scrolls to the end whenever it changes. Not everyone wants that, so it should be possible to turn off.
+- **Line info key (Amelia, 2026-10-29).** The key held to show a hovered line's stats box and highlight (Alt by default, DESIGN.md section 2, Information) should be configurable, like the free hand key (Ctrl, or Cmd on macOS).
 - **Configurable colours (Amelia, 2026-10-27).** Every colour that carries meaning (players, highlights, hover marks, placement preview, red for invalid) should be changeable, including colour-blind presets. See `docs/ACCESSIBILITY.md`.
