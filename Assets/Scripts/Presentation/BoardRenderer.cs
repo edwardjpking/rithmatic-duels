@@ -294,6 +294,8 @@ namespace RithmaticDuels.Presentation
             foreach (int index in preview.BindPoints)
                 if (index >= 0 && index < bindPoints.Count)
                     Disc(bindPoints[index], BindPointSize / 2f + BindPointRingWidth / 2f, PreviewColour);
+            if (preview.HoverBindPoint.HasValue)
+                Disc(preview.HoverBindPoint.Value, BindPointSize / 2f + BindPointRingWidth / 2f, WithAlpha(PreviewColour, 0.6f));
             if (preview.WardBindPoints != null)
                 foreach (var point in preview.WardBindPoints) BindPoint(point, PreviewColour);
             // Bind points that can't be picked for this drawing are filled in red, inside their ring.

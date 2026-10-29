@@ -39,6 +39,8 @@ namespace RithmaticDuels.Presentation
         public Glyph? ChalklingGlyph;
         public Vec2? ChalklingAnchor;
         public float ChalklingGuardDistance;
+        /// <summary>A bind point under the mouse that a click would pick, ringed faintly.</summary>
+        public Vec2? HoverBindPoint;
         /// <summary>Bind points of the main LoW the player has picked.</summary>
         public readonly List<int> BindPoints = new List<int>();
     }
@@ -146,6 +148,8 @@ namespace RithmaticDuels.Presentation
         // Placement clicks: up to two bind points or two board points, whichever the mode uses.
         private int _bindA = -1;
         private int _bindB = -1;
+        // With no LoF mode chosen: the first bind point was clicked twice, making a tangent there.
+        private bool _tangentPicked;
         private Vec2? _pointA;
         private Vec2? _pointB;
         private Vec2? _hover;
@@ -619,14 +623,8 @@ namespace RithmaticDuels.Presentation
                     {
                         GUILayout.Label("Click a bind point on one of your Lines of Warding to attach it there.");
                         hint = "Choose a Mark's Cross or how many bind points.";
-                        // Until a kind is chosen, a four-point circle stands in for it.
-                        if (anchor >= 0 && WardFits(board, player, DefaultWardChoice, anchor))
-                        {
-                            var stand = DrawingSpec.Warding(AttachedWardBindPoints[DefaultWardChoice]);
-                            float start = 0f, min, max;
-                            board.AttachedSizeRange(stand, out min, out max, out start);
-                            preview.GhostWard = board.PreviewWard(player, stand, Placement.AtBindPoint(anchor, start));
-                        }
+                        // Until a kind is chosen no shape is shown, only the bind point picked or under the mouse.
+                        if (_bindA < 0 && anchor >= 0 && anchor < bindSpots.Count) preview.HoverBindPoint = bindSpots[anchor];
                         preview.BlockedBindPoints = BlockedBindPoints(board, player);
                         break;
                     }
@@ -679,25 +677,21 @@ namespace RithmaticDuels.Presentation
                     switch (placed)
                     {
                         case ForbiddanceMode.Between:
-                            GUILayout.Label(_forbiddanceMode.HasValue
-                                ? "Click two bind points on your Lines of Warding."
-                                : "Click another bind point to join it to.");
+                            GUILayout.Label("Click two bind points on your Lines of Warding.");
                             spec = DrawingSpec.Forbiddance(2);
                             if (_bindA >= 0 && _bindB >= 0) placement = Placement.BetweenBindPoints(_bindA, _bindB);
-                            else if (_bindA >= 0 && hoverBind >= 0 && hoverBind != _bindA && CanJoin(board, player, _bindA, hoverBind))
+                            else if (_forbiddanceMode.HasValue && _bindA >= 0 && hoverBind >= 0 && hoverBind != _bindA && CanJoin(board, player, _bindA, hoverBind))
                                 preview.GhostSegment = board.PreviewForbiddance(player, Placement.BetweenBindPoints(_bindA, hoverBind));
                             break;
                         case ForbiddanceMode.Tangent:
                             GUILayout.Label(_forbiddanceMode.HasValue
                                 ? "Click a bind point. The line lies along the circle there. Scroll to change its length."
-                                : "A tangent: the line lies along the circle there. Scroll to change its length, or click another bind point to join the two instead.");
+                                : "A tangent: the line lies along the circle there. Scroll to change its length.");
                             spec = DrawingSpec.Forbiddance(1);
                             if (_bindA >= 0) placement = Placement.TangentAt(_bindA, FittedLength(config, board, player));
-                            // The next click on a bind point starts a tangent there, or without a chosen mode, joins the two where it can.
-                            if (hoverBind >= 0 && hoverBind != _bindA)
-                                preview.GhostSegment = !_forbiddanceMode.HasValue && _bindA >= 0 && CanJoin(board, player, _bindA, hoverBind)
-                                    ? board.PreviewForbiddance(player, Placement.BetweenBindPoints(_bindA, hoverBind))
-                                    : TangentGhost(config, board, player, hoverBind);
+                            // With the mode chosen, the next click on a bind point starts a tangent there.
+                            if (_forbiddanceMode.HasValue && hoverBind >= 0 && hoverBind != _bindA)
+                                preview.GhostSegment = TangentGhost(config, board, player, hoverBind);
                             break;
                         case ForbiddanceMode.Free:
                             GUILayout.Label("Click where the line starts, then click to set its direction. Scroll to change its length.");
@@ -717,9 +711,11 @@ namespace RithmaticDuels.Presentation
                             preview.From = _pointA;
                             break;
                         default:
-                            GUILayout.Label("Click a bind point for a tangent there (then another bind point to join the two instead), or anywhere else on your half to start a free line. Scroll to change its length.");
+                            // No line is shown until it is clear which: the same bind point twice for a tangent, or a second one to join them.
+                            GUILayout.Label(_bindA >= 0
+                                ? "Click the same bind point again for a tangent, or another bind point to join the two."
+                                : "Click a bind point (twice for a tangent, or then another to join the two), or anywhere else on your half to start a free line.");
                             hint = "Click the board to place it.";
-                            if (hoverBind >= 0) preview.GhostSegment = TangentGhost(config, board, player, hoverBind);
                             break;
                     }
                     if (_forbiddanceMode != ForbiddanceMode.Between && _forbiddanceMode != ForbiddanceMode.Tangent)
@@ -729,6 +725,8 @@ namespace RithmaticDuels.Presentation
                         if (!_pointA.HasValue && hoverBind < 0 && !preview.InvalidHover.HasValue) preview.From = _hover;
                     }
                     if (_forbiddanceMode != ForbiddanceMode.Free) preview.BlockedBindPoints = BlockedBindPoints(board, player);
+                    if (!_forbiddanceMode.HasValue && hoverBind >= 0 && hoverBind != _bindA)
+                        preview.HoverBindPoint = board.BindPointsOf(player)[hoverBind];
                     if (placement != null) preview.Segment = board.PreviewForbiddance(player, placement);
                     if (spec != null && placement != null)
                         GUILayout.Label("Length " + board.Measure(player, spec, placement).Length.ToString("0.0")
@@ -1099,7 +1097,7 @@ namespace RithmaticDuels.Presentation
         private bool[] Blocked(ChalkBoard board, Player player)
         {
             int count = board.BindPointsOf(player).Count;
-            string key = _lineType + "/" + _forbiddanceMode + "/" + _attachedWardChoice + "/" + _bindA + "/" + _bindB + "/" + count + "/" + player;
+            string key = _lineType + "/" + _forbiddanceMode + "/" + _attachedWardChoice + "/" + _bindA + "/" + _bindB + "/" + _tangentPicked + "/" + count + "/" + player;
             if (_blocked == null || key != _blockedKey)
             {
                 _blocked = new bool[count];
@@ -1136,6 +1134,9 @@ namespace RithmaticDuels.Presentation
                     if (_forbiddanceMode == ForbiddanceMode.Between && _bindA >= 0 && _bindB < 0)
                         return index != _bindA && !CanJoin(board, player, _bindA, index);
                     if (_forbiddanceMode == ForbiddanceMode.Between) return !HasPartner(board, player, index);
+                    // No mode chosen, one bind point picked: the same one again for a tangent, or another that can join it.
+                    if (_bindA >= 0 && _bindB < 0 && !_tangentPicked)
+                        return index == _bindA ? !TangentFits(board, player, index) : !CanJoin(board, player, _bindA, index);
                     return !TangentFits(board, player, index) && !HasPartner(board, player, index);
                 case LineType.Making:
                     return !Fits(board, player, DrawingSpec.Making(glyph: Glyph.Defend, boundBindPoints: 1), Placement.AtBindPoint(index));
@@ -1143,9 +1144,6 @@ namespace RithmaticDuels.Presentation
                     return false;
             }
         }
-
-        /// <summary>The kind of LoW that stands in, as a faint outline, until the player chooses one: a four-point circle.</summary>
-        private const int DefaultWardChoice = 2;
 
         /// <summary>True if even the smallest LoW of this kind (an index into the bind point choices) fits at this bind point.</summary>
         private static bool WardFits(ChalkBoard board, Player player, int choice, int index)
@@ -1207,29 +1205,27 @@ namespace RithmaticDuels.Presentation
 
         /// <summary>
         /// How the LoF being placed is bound, as far as the clicks so far say: the mode the player chose, or else
-        /// one bind point means a tangent (or a LoF to a second bind point, where no tangent fits), two mean a LoF
-        /// between them, and a spot away from bind points means a free line. Null before anything is placed.
+        /// the same bind point twice means a tangent, two bind points a LoF between them, and a spot away from bind
+        /// points a free line. Null before anything is placed, and while one bind point waits for the next click.
         /// </summary>
         private ForbiddanceMode? PlacedForbiddanceMode(ChalkBoard board, Player player)
         {
             if (_forbiddanceMode.HasValue) return _forbiddanceMode;
             if (_pointA.HasValue) return ForbiddanceMode.Free;
             if (_bindB >= 0) return ForbiddanceMode.Between;
-            if (_bindA >= 0) return TangentFits(board, player, _bindA) ? ForbiddanceMode.Tangent : ForbiddanceMode.Between;
+            if (_bindA >= 0 && _tangentPicked) return ForbiddanceMode.Tangent;
             return null;
         }
 
         /// <summary>
-        /// <see cref="PlacedForbiddanceMode"/>, or before anything is placed, what a click at the mouse would make:
-        /// a tangent near a bind point, otherwise a free line.
+        /// <see cref="PlacedForbiddanceMode"/>, or before anything is placed, a free line where a click at the mouse
+        /// would start one (near a bind point it is not yet known).
         /// </summary>
         private ForbiddanceMode? ForbiddanceModeAt(ChalkBoard board, Player player)
         {
             var placed = PlacedForbiddanceMode(board, player);
-            if (placed.HasValue || !_hover.HasValue) return placed;
-            int near = HoverBindPoint(board, player);
-            if (near < 0) return ForbiddanceMode.Free;
-            return TangentFits(board, player, near) ? ForbiddanceMode.Tangent : ForbiddanceMode.Between;
+            if (placed.HasValue || !_hover.HasValue || _bindA >= 0) return placed;
+            return HoverBindPoint(board, player) < 0 ? ForbiddanceMode.Free : (ForbiddanceMode?)null;
         }
 
         /// <summary>
@@ -1243,6 +1239,7 @@ namespace RithmaticDuels.Presentation
             if (_pointA.HasValue) return between | tangent;
             if (_bindB >= 0) return tangent | free;
             if (_bindA < 0) return 0;
+            if (_tangentPicked && !_forbiddanceMode.HasValue) return between | free;
             string key = "lof/" + _bindA + "/" + player;
             if (key != _maskKey)
             {
@@ -1255,18 +1252,20 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>
-        /// A click for a LoF with no mode chosen: a bind point after a first one joins the two if a LoF fits between
-        /// them (clicking the first again lets go of it); any other bind point starts a tangent there; a spot away from
-        /// bind points starts a free line, and once started, the next click sets its direction.
+        /// A click for a LoF with no mode chosen (Amelia, 2026-10-29): after a first bind point, clicking it again
+        /// makes a tangent there and clicking another joins the two (bind points that can do neither are red); with
+        /// nothing picked, or a line already placed, a bind point starts over from it; a spot away from bind points
+        /// starts a free line, and once started, the next click sets its direction.
         /// </summary>
         private bool PickForbiddance(ChalkBoard board, Player player, Vec2 point)
         {
             if (_pointA.HasValue && !_pointB.HasValue) return PickPoints(point);
             int near = NearBindPoint(board, player, point);
-            if (near >= 0 && _bindA >= 0 && _bindB < 0)
+            if (near >= 0 && _bindA >= 0 && _bindB < 0 && !_tangentPicked)
             {
-                if (near == _bindA) { _bindA = -1; return true; }
-                if (CanJoin(board, player, _bindA, near)) { _bindB = near; return true; }
+                if (near == _bindA) _tangentPicked = true;
+                else _bindB = near;
+                return true;
             }
             if (near >= 0)
             {
@@ -1419,6 +1418,7 @@ namespace RithmaticDuels.Presentation
         {
             _bindA = -1;
             _bindB = -1;
+            _tangentPicked = false;
             _pointA = null;
             _pointB = null;
         }
