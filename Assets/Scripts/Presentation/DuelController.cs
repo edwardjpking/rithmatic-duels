@@ -98,7 +98,7 @@ namespace RithmaticDuels.Presentation
         private void OnApplicationFocus(bool focused)
         {
             // Key up events are lost while the game is in the background, e.g. after Alt+Tab.
-            if (!focused) { _lineInfoHeld = false; _tabDown = false; }
+            if (!focused) { _lineInfoHeld = false; _tabDown = false; MenuKeys.ReleaseAll(); }
         }
 
         /// <summary>
@@ -218,6 +218,9 @@ namespace RithmaticDuels.Presentation
             TrackLineInfoKey(current);
             if (current.type == EventType.KeyUp && current.keyCode == KeyCode.Tab) _tabDown = false;
             bool editingStat = GUI.GetNameOfFocusedControl().StartsWith("stat-");
+            // The menu keys (numbers, Space, Backspace) do nothing while the lines list covers the menu, and type
+            // into a LoM stat box while the player is typing there.
+            MenuKeys.Track(current, _duel != null && !_showLines && !editingStat);
             // Unity sends a key press twice, once with its key code and once with its character. Its own Tab
             // handling moves focus into a stat box on the '\t' character event, so swallow that too unless the
             // player is typing in a box, where Tab and Shift+Tab move between the boxes.
@@ -274,6 +277,12 @@ namespace RithmaticDuels.Presentation
                 {
                     picker.HandleRightClick(_board, _chooser, _rules);
                     // A right-click anywhere steps back. Always take it, so no button treats it as a left-click.
+                    changed = true;
+                }
+                else if (MenuKeys.TakeBack())
+                {
+                    // Backspace steps back one choice, like a right-click.
+                    picker.HandleRightClick(_board, _chooser, _rules);
                     changed = true;
                 }
                 else if (boardPoint.HasValue && current.type == EventType.ScrollWheel)
@@ -664,7 +673,7 @@ namespace RithmaticDuels.Presentation
         private void DrawHandover()
         {
             GUILayout.Label(TurnNarrator.PlayerName(_chooser) + ", it's your turn to choose. The other player should look away.");
-            if (GUILayout.Button("I'm " + TurnNarrator.PlayerName(_chooser) + ", show my choices", GUILayout.Height(50)))
+            if (GUILayout.Button("I'm " + TurnNarrator.PlayerName(_chooser) + ", show my choices", GUILayout.Height(50)) || MenuKeys.TakeNext())
                 Then(() =>
                 {
                     _pickers[(int)_chooser] = new ActionPicker();
@@ -721,9 +730,9 @@ namespace RithmaticDuels.Presentation
             if (_duel.Outcome != DuelOutcome.InProgress)
             {
                 GUILayout.Label(TurnNarrator.OutcomeName(_duel.Outcome));
-                if (GUILayout.Button("Play again", GUILayout.Height(40))) Then(NewDuel);
+                if (GUILayout.Button("Play again", GUILayout.Height(40)) || MenuKeys.TakeNext()) Then(NewDuel);
             }
-            else if (GUILayout.Button("Next turn", GUILayout.Height(40)))
+            else if (GUILayout.Button("Next turn", GUILayout.Height(40)) || MenuKeys.TakeNext())
             {
                 Then(() =>
                 {
