@@ -41,7 +41,7 @@ The board is **continuous 2D**, with snapping to help placement.
 - **Snapping (default mode):** a player's selections snap to bind points and to cardinal directions where applicable. For example, a LoF drawn on the circumference of a LoW snaps to being a tangent.
 - **LoV aim is free:** a LoV can be angled in any direction, never snapped. While placing it, its aim line shows where it would go: it reflects off LoF (and the centre LoF while it stands) by the same rules as in flight, and stops at the first LoW, chalkling or board edge. It ignores other LoV and anything that moves (2026-10-27).
 - **Own half only (tightened 2026-10-25):** nothing a player draws may be on, or reach into, the opponent's half once it is complete: a LoV's starting point, every part of a LoF (free or tangent), the whole outline of any LoW or Mark's Cross, and an unbound chalkling. The scroll wheel can't make a LoF or LoW bigger than fits. Only lines that move afterwards (LoV, chalklings) can cross over. This stops point-blank attacks on the opponent's defence.
-- **Centre LoF (decided 2026-10-25):** for the first 10 turns (a placeholder, counting the setup turn as turn 1) a LoF stands along the line between the two halves, so neither player can play too aggressively early on. It belongs to neither player, can't be damaged and reflects LoV like any LoF; it blocks chalklings too, which wait at it until it goes (section 4.4). It can be switched off (`CentreWallConfig`), and may become a duel option later.
+- **Centre LoF (decided 2026-10-25):** for the first 10 turns (a placeholder, counting the setup turn as turn 1) a LoF stands along the line between the two halves, so neither player can play too aggressively early on. It belongs to neither player, can't be damaged and reflects LoV like any LoF; it blocks chalklings too, which wait at it until it goes (section 4.4). It is removed in stage 1 of the tick on turn 10 (with dismissals, section 3; decided 2026-10-29), so it no longer blocks anything that moves that tick. It can be switched off (`CentreWallConfig`), and may become a duel option later.
 - **Free hand mode:** holding a key turns snapping off, so lines can be placed wherever the player wishes. Lines that are straight (such as LoF) are still drawn straight.
 - Collision is computed geometrically (segment, circle and ellipse intersection), so reflections off LoF use the true angle.
 - **Main LoW placement (changed 2026-10-25):** each player's main LoW goes at the same fixed spot, the back preset: centred 6 units from their own short edge (section 2). Free placement is kept behind a switch (`GeometryConfig.MainWardAtHome`) but is off.
@@ -94,9 +94,10 @@ While players choose, time is frozen. LoV that have been drawn and are not yet d
 
 Once both players have locked in their choices (decided 2026-10-25):
 
-1. **Dismissal.** Any LoF being dismissed this tick disappears instantly.
+1. **Dismissal.** Any LoF being dismissed this tick disappears instantly. On the last turn of the centre LoF (turn 10), it is removed here too (decided 2026-10-29).
 2. **Rushed lines are finished.** Any rushed drawing that finishes this tick, and would have taken only 1 turn at normal pace (travel turns included), is added to the board and gains its durability (decided 2026-10-25). This is a small bonus to rushing short drawings: a rushed LoV flies, and a rushed LoF or LoW blocks, in the same tick it is finished. Longer rushed drawings already save time, so they finish at stage 4 like everything else.
 3. **Animated lines act.** LoV and LoM (chalklings) already on the board move and attack. Damage from the collisions is processed as they happen:
+   - **Own lines (decided 2026-10-29):** a LoV passes straight through every line of its own player (LoW, LoF, LoV and chalklings) without effect. Everything below is about the opponent's lines and the centre LoF.
    - **LoV hits LoF:** the LoV is reflected according to the laws of reflection for EM waves and carries on, dealing half its damage to the LoF (section 4.2). LoF are the only lines that do not absorb a LoV.
    - **LoV hits LoW or a chalkling (LoM):** the LoV is absorbed and deals its damage at the point of impact. Excess damage is ignored by a LoW. A chalkling that survives is pushed back; a LoV that destroys a chalkling carries on with its leftover damage (section 4.3).
    - **LoV hits LoV:** the two absorb each other's energy (section 4.3).
@@ -226,14 +227,14 @@ A chalkling has three stats: **Durability**, **Damage** and **Speed**. When the 
 | Modifier | +1 to a stat of choice / -1 to the highest stat |
 | Time to draw | 1 turn per 4 stat points (rounded up), **minimum 2 at normal pace** (decided 2026-10-27), so 0 to 8 stat points take 2 turns; the glyph is free (decided 2026-10-25). Rushing can still bring it down to 1 turn (corrected by Amelia, 2026-10-27). A rushed 2-turn chalkling finishes in stage 4 of the tick it is done, so it can't block a LoV in that tick. Travel turns are added on top as usual. |
 
-**Binding.** A chalkling can be bound to a bind point. A bound chalkling cannot move further than its tether distance from its bind point, and gains free durability as above.
+**Binding.** A chalkling can be bound to a bind point. Only one chalkling at a time can be bound to any one bind point (decided 2026-10-29); a bind point already holding one is filled in red for chalklings. A bound chalkling cannot move further than its tether distance from its bind point, and gains free durability as above.
 
 **Placeholder numbers**
 
 | Value | Placeholder |
 |---|---|
-| Chalkling size | radius 0.25 units |
-| Attack range | 0.5 units (contact) |
+| Chalkling size | radius 0.3 units (raised 2026-10-29 to be easier to hit) |
+| Attack range | 0.6 units (raised 2026-10-29 so the health of its target is easier to see) |
 | Attacks | 1 attack per tick, dealing its Damage |
 | Tether distance when bound | 2 units |
 | Guard distance for an unbound Defend chalkling | 3 units from where it was drawn (longer than a bound tether) |
@@ -251,7 +252,7 @@ A chalkling with the Defend glyph and bound to a bind point is a **defensive cha
 
 **Chalkling behaviour (decided 2026-10-27).** All of this happens in stage 3 of the tick (section 3): LoV move, then all chalklings move at once, then all chalklings attack at once.
 
-- **Attack.** Each tick it moves in a straight line, at its speed, towards the nearest point of the opponent's main LoW, worked out afresh from where it stands (so after being pushed by a LoV it re-aims from where it lands). It doesn't find a way round anything. It fights only what blocks it: an enemy LoW or LoF on its path, or an enemy chalkling in contact. A LoF in its way is damaged before the LoW behind it (section 4.2), and once a blocking line breaks it carries on. On reaching the opponent's LoW it scratches at it every tick, damaging it per point exactly like a LoV hit (within 0.5 units either side), until it or the LoW is destroyed. It may cross onto the opponent's half: only drawing is limited to your own half (section 1.1).
+- **Attack.** Each tick it moves in a straight line, at its speed, towards the nearest point of the opponent's main LoW, worked out afresh from where it stands (so after being pushed by a LoV it re-aims from where it lands). It doesn't find a way round anything. It fights only what blocks it: an enemy LoW or LoF on its path (never a friendly line, even one that blocks it; decided 2026-10-29), or an enemy chalkling in contact. A LoF in its way is damaged before the LoW behind it (section 4.2), and once a blocking line breaks it carries on. On reaching the opponent's LoW it scratches at it every tick, damaging it per point exactly like a LoV hit (within 0.5 units either side), until it or the LoW is destroyed. It may cross onto the opponent's half: only drawing is limited to your own half (section 1.1).
 - **Defend.** It waits at its anchor. When an enemy chalkling comes within its tether (or guard distance) plus its attack range, it steps out to meet it and attacks it; when no enemy is in reach, it goes back to its anchor. It never attacks lines or friendly chalklings.
 - **What blocks a chalkling.** Enemy LoW and every LoF, the player's own included (so LoF can hold a player's own chalklings in, as in the Fort preset). The player's **own LoW let their own chalklings through**, so one drawn inside its circle can walk out. The **centre LoF** can't be damaged, so a chalkling that reaches it waits there until it goes. **Friendly chalklings pass through each other**; enemy chalklings block each other and fight.
 - **Chalklings never** damage or move tethers or bind points, and never move lines. They only attack lines that block them, and fight enemy chalklings.
@@ -513,6 +514,8 @@ The rules core (`Assets/Scripts/Rules`) needs an answer for a few rules the sect
 **Ninth round, 2026-10-27:** invalid choices can never be selected and always show a visual sign (section 1.1, universal); no LoF or LoW overlaps another line by any of its drawn thickness, except where they meet at a bind point, and a free LoF never touches a LoW at all (section 4.2); bind points where even the smallest LoW wouldn't fit are blocked; free starting points (a free LoF, a LoV, an unbound chalkling) where nothing fits show a red cross and ignore clicks.
 
 **Twelfth round (v0.19), 2026-10-27:** a LoF through the centre of a LoW toughens all of it, and toughening from several LoF stacks (half each, so a Mark's Cross takes a quarter, dealt to the circle and both LoF) (section 4.2); the log names a Mark's Cross's parts when it is completed, and only then (section 4.1); the aim line shown while placing a LoV reflects off LoF by the same rules as the LoV, stopping at the first LoW, chalkling or edge (section 1.1).
+
+**Round v0.25, 2026-10-29:** one chalkling per bind point; a LoV passes through all its owner's lines; Attack chalklings never attack friendly lines; the centre LoF goes in stage 1 on turn 10; chalklings slightly bigger with a little more range (sections 1.1, 3, 4.4).
 
 **Chalkling behaviour, 2026-10-27:** Attack chalklings head straight for the nearest point of the opponent's main LoW and fight only what blocks them; Defend chalklings guard their bind point, or the spot they were drawn with a longer guard distance, and attack enemy chalklings only; own LoW let own chalklings through, every LoF blocks, the centre LoF makes them wait, and friendly chalklings pass through each other; chalklings move, then attack, all at once; chalklings take at least 2 turns to draw, Attack needs at least 1 speed, and a LoV that destroys a chalkling carries on with its leftover damage; chalklings are drawn as filled circles with their glyph on their back, with tether rings and blue path previews (sections 3, 4.3, 4.4).
 
