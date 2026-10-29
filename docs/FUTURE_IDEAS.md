@@ -162,6 +162,10 @@ Separate from the tutorial, and the lowest priority. It shares the tutorial's se
 - **Mode label while a key is held (Amelia, 2026-10-29).** Show a small "Free hand" or "Line info" label in the menu while Ctrl/Cmd or Alt is held. Only if player feedback asks for it; not thought necessary for now.
 - **In-game key helper overlay (Amelia, 2026-10-29).** An overlay the player can bring up during a duel listing the controls. Keys are otherwise learnt through the tutorial, with no permanent on-screen key hints (they would be clutter).
 
+### Testing backlog
+
+- **Revisit: LoF finished over a chalkling or LoV (Amelia, 2026-10-29).** v0.27 tests 7 and 8 were impractical to set up by hand, so they are assumed to work for now: a chalkling under a friendly LoF is held by it while an enemy LoF must be attacked to get through, and a LoV under a LoF reflects and folds back. Suggested: a debug scenario or setup tool that places lines directly on the board, so edge cases like this can be tested quickly.
+
 ### Settings
 
 Player settings to add later (the list started 2026-10-27). Accessibility settings are also tracked in `docs/ACCESSIBILITY.md`.
