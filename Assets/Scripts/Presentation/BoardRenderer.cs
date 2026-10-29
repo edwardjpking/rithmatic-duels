@@ -384,7 +384,8 @@ namespace RithmaticDuels.Presentation
                 Line(a + along * d, a + along * Math.Min(length, d + DashLength), width, colour);
         }
 
-        private const float ChalklingRadius = 0.25f;
+        /// <summary>A chalkling's body radius, from the rules config so the drawing matches its hit area.</summary>
+        public float ChalklingRadius = 0.35f;
         // The glyph is marked in the board's dark, as if scratched into the chalk, so it reads on either player's colour.
         private static readonly Color GlyphMark = new Color(0.1f, 0.12f, 0.12f, 1f);
 
