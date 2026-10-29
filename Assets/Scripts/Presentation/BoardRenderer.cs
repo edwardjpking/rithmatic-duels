@@ -18,6 +18,10 @@ namespace RithmaticDuels.Presentation
         private static readonly Color Faint = new Color(1f, 1f, 1f, 0.15f);
         private static readonly Color CentreWallColour = new Color(0.75f, 0.8f, 0.85f, 0.7f);
         private static readonly Color PreviewColour = new Color(0.6f, 0.9f, 1f, 0.8f);
+        // Placements that only follow the mouse, before a click picks them: a darker blue than the picked preview
+        // (Amelia, 2026-10-29), and fainter or dashed too, so the difference doesn't rest on colour alone.
+        // Aim lines and attack paths stay PreviewColour while following the mouse, as every aim line is that blue.
+        private static readonly Color HoverPlacementColour = new Color(0.3f, 0.55f, 0.95f, 0.8f);
         // Highlight glow: grey for player A's lines, golden-yellow for player B's, to match their chalk.
         private static readonly Color HighlightA = new Color(0.75f, 0.75f, 0.75f, 0.55f);
         private static readonly Color HighlightB = new Color(1f, 0.72f, 0.1f, 0.55f);
@@ -51,6 +55,8 @@ namespace RithmaticDuels.Presentation
         /// <summary>Set from OnGUI: the start and direction of the LoV under the mouse, whose aim line is shown.</summary>
         public Vec2? HoverAimFrom { get; set; }
         public Vec2? HoverAimDirection { get; set; }
+        /// <summary>Whose LoV the hover aim line belongs to; it passes through that player's own lines.</summary>
+        public Player? HoverAimOwner { get; set; }
         /// <summary>Set from OnGUI: the chalkling under the mouse or hovered in a list, whose guard ring or path is shown.</summary>
         public ChalklingBody HoverChalkling { get; set; }
 
@@ -118,7 +124,7 @@ namespace RithmaticDuels.Presentation
             {
                 // A glow along the wave itself, plus its aim line in the usual aim line colour.
                 Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, glowColour, false, 0.06f + glow);
-                AimLine(vigor.Position, vigor.Direction, PreviewColour);
+                AimLine(vigor.Position, vigor.Direction, vigor.Owner, PreviewColour);
                 return;
             }
             var chalkling = body as ChalklingBody;
@@ -229,7 +235,7 @@ namespace RithmaticDuels.Presentation
                 Disc(HoverWardPoint.Value, HoverMarkSize / 2f + 0.03f, Color.black);
                 Disc(HoverWardPoint.Value, HoverMarkSize / 2f, DurabilityDotColour);
             }
-            if (HoverAimFrom.HasValue && HoverAimDirection.HasValue) AimLine(HoverAimFrom.Value, HoverAimDirection.Value, PreviewColour);
+            if (HoverAimFrom.HasValue && HoverAimDirection.HasValue) AimLine(HoverAimFrom.Value, HoverAimDirection.Value, HoverAimOwner, PreviewColour);
             if (HoverChalkling != null)
                 ChalklingReach(HoverChalkling.Owner, HoverChalkling.Line.Glyph, HoverChalkling.Anchor, HoverChalkling.Position, HoverChalkling.GuardDistance);
         }
@@ -237,12 +243,14 @@ namespace RithmaticDuels.Presentation
         /// <summary>
         /// What a chalkling will do, in the aim line blue: a Defend chalkling's guard ring around its anchor
         /// (bind point or spot drawn), or an Attack chalkling's straight path, stopping at the first blocker.
+        /// The guard ring takes <paramref name="ringColour"/> (darker while it only follows the mouse); the path, like
+        /// every aim line, is always the aim line blue.
         /// </summary>
-        private void ChalklingReach(Player owner, Glyph glyph, Vec2 anchor, Vec2 position, float guardDistance)
+        private void ChalklingReach(Player owner, Glyph glyph, Vec2 anchor, Vec2 position, float guardDistance, Color? ringColour = null)
         {
             if (glyph == Glyph.Defend)
             {
-                Ring(anchor, guardDistance, 0.03f, PreviewColour, true);
+                Ring(anchor, guardDistance, 0.03f, ringColour ?? PreviewColour, true);
                 return;
             }
             DashedPath(Board.ChalklingAttackPath(owner, position), PreviewColour);
@@ -255,9 +263,9 @@ namespace RithmaticDuels.Presentation
         /// Where a LoV would go, dashed, reflecting off LoF as it would until it reaches a LoW, chalkling or the edge.
         /// Dashes run on around each reflection point, bending there, so the bounce reads as one continuous line.
         /// </summary>
-        private void AimLine(Vec2 from, Vec2 direction, Color colour)
+        private void AimLine(Vec2 from, Vec2 direction, Player? owner, Color colour)
         {
-            DashedPath(Board.AimPath(from, direction), colour);
+            DashedPath(Board.AimPath(from, direction, owner), colour);
         }
 
         /// <summary>A path of points drawn dashed like the aim line.</summary>
@@ -294,6 +302,8 @@ namespace RithmaticDuels.Presentation
             foreach (int index in preview.BindPoints)
                 if (index >= 0 && index < bindPoints.Count)
                     Disc(bindPoints[index], BindPointSize / 2f + BindPointRingWidth / 2f, PreviewColour);
+            if (preview.HoverBindPoint.HasValue)
+                Disc(preview.HoverBindPoint.Value, BindPointSize / 2f + BindPointRingWidth / 2f, WithAlpha(HoverPlacementColour, 0.6f));
             if (preview.WardBindPoints != null)
                 foreach (var point in preview.WardBindPoints) BindPoint(point, PreviewColour);
             // Bind points that can't be picked for this drawing are filled in red, inside their ring.
@@ -310,27 +320,32 @@ namespace RithmaticDuels.Presentation
             }
             if (preview.Presets != null)
                 foreach (var spot in preview.Presets) Diamond(spot, 0.3f, WithAlpha(PreviewColour, 0.6f));
-            if (preview.GhostWard != null) Outline(preview.GhostWard, true, WithAlpha(PreviewColour, 0.6f));
+            // A main LoW placed freely (MainWardAtHome off) also follows the mouse as a ghost.
+            if (preview.GhostWard != null) Outline(preview.GhostWard, true, WithAlpha(HoverPlacementColour, 0.6f));
             if (preview.Ward != null) Outline(preview.Ward, !preview.WardChosen, PreviewColour);
             if (preview.Braces != null)
                 foreach (var brace in preview.Braces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, PreviewColour);
+            if (preview.GhostSegment.HasValue) Line(preview.GhostSegment.Value.A, preview.GhostSegment.Value.B, ForbiddanceWidth, WithAlpha(HoverPlacementColour, 0.6f));
             if (preview.Segment.HasValue) Line(preview.Segment.Value.A, preview.Segment.Value.B, ForbiddanceWidth, PreviewColour);
-            if (preview.ChalklingGlyph.HasValue && preview.ChalklingAnchor.HasValue)
+            Color chalklingColour = preview.ChalklingHovered ? HoverPlacementColour : PreviewColour;
+            if (preview.ChalklingAnchor.HasValue && preview.ChalklingGlyph.HasValue)
             {
                 Vec2 spot = preview.ChalklingAnchor.Value;
-                Chalkling(spot, preview.ChalklingGlyph.Value, PreviewColour);
-                ChalklingReach(preview.Player, preview.ChalklingGlyph.Value, spot, spot, preview.ChalklingGuardDistance);
+                Chalkling(spot, preview.ChalklingGlyph.Value, chalklingColour);
+                ChalklingReach(preview.Player, preview.ChalklingGlyph.Value, spot, spot, preview.ChalklingGuardDistance, chalklingColour);
             }
+            // Before a glyph is chosen: the body alone, with no glyph, ring or path.
+            else if (preview.ChalklingAnchor.HasValue) Disc(preview.ChalklingAnchor.Value, ChalklingRadius, chalklingColour);
             else if (preview.Point.HasValue) Diamond(preview.Point.Value, 0.25f, PreviewColour);
             // The red cross for an invalid spot is drawn by DuelController in OnGUI, at this frame's mouse position.
             if (preview.From.HasValue)
             {
-                Square(preview.From.Value, 0.2f, PreviewColour);
+                Square(preview.From.Value, 0.2f, preview.FromHovered ? HoverPlacementColour : PreviewColour);
                 if (preview.To.HasValue)
                 {
                     Vec2 direction = (preview.To.Value - preview.From.Value).Normalized;
                     Wave(preview.From.Value, direction, Board.Config.Geometry.VigorDrawnLength, PreviewColour);
-                    AimLine(preview.From.Value, direction, PreviewColour);
+                    AimLine(preview.From.Value, direction, preview.Player, PreviewColour);
                 }
             }
         }
@@ -384,7 +399,8 @@ namespace RithmaticDuels.Presentation
                 Line(a + along * d, a + along * Math.Min(length, d + DashLength), width, colour);
         }
 
-        private const float ChalklingRadius = 0.25f;
+        /// <summary>A chalkling's body radius, from the rules config so the drawing matches its hit area.</summary>
+        public float ChalklingRadius = 0.35f;
         // The glyph is marked in the board's dark, as if scratched into the chalk, so it reads on either player's colour.
         private static readonly Color GlyphMark = new Color(0.1f, 0.12f, 0.12f, 1f);
 

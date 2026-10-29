@@ -61,7 +61,7 @@ namespace RithmaticDuels.Presentation
         /// <summary>The menu area's width this frame, so the picker can wrap its button rows to fit.</summary>
         private float _menuContentWidth = 400f;
         private string _error;
-        /// <summary>Tab shows every current line of both players over the menu, at any point, until Tab or a right-click closes it.</summary>
+        /// <summary>Tab shows every current line of both players over the menu, at any point, until Tab or (Tab in a LoM stat box moves between boxes instead) a right-click closes it.</summary>
         private bool _showLines;
         private Vector2 _linesScroll;
         /// <summary>The line under the mouse on the board, whose entry the lines list picks out. -1 for none.</summary>
@@ -132,6 +132,7 @@ namespace RithmaticDuels.Presentation
             if (_camera == null || _renderer == null) return;
             PlaceCamera();
             _renderer.Board = _board;
+            _renderer.ChalklingRadius = _rules.Making.Radius;
             _renderer.BoardCamera = _camera;
             _renderer.Preview = _phase == Phase.Choosing && _duel != null ? _pickers[(int)_chooser].Preview : null;
             int dismissHover = _phase == Phase.Choosing && _duel != null && !_showLines ? _pickers[(int)_chooser].HoveredLineId : -1;
@@ -181,12 +182,15 @@ namespace RithmaticDuels.Presentation
             if (current.type == EventType.Repaint) _listHoverLineId = -1;
             var boardHovered = boardPoint.HasValue && _board != null ? _board.BodyAt(boardPoint.Value, 0.3f) : null;
             _boardHoverLineId = boardHovered != null ? boardHovered.LineId : -1;
-            if (_duel != null && current.type == EventType.KeyDown && current.keyCode == KeyCode.Tab)
+            if (_duel != null && current.type == EventType.KeyDown && current.keyCode == KeyCode.Tab
+                && !GUI.GetNameOfFocusedControl().StartsWith("stat-"))
             {
                 _showLines = !_showLines;
                 current.Use();
                 GUIUtility.ExitGUI();
             }
+            // Clicking the board leaves a LoM stat box, so Tab goes back to opening the lines list.
+            if (boardPoint.HasValue && current.type == EventType.MouseDown && GUI.GetNameOfFocusedControl().StartsWith("stat-")) GUI.FocusControl(null);
             if (_duel != null && _showLines)
             {
                 // The list covers the menu, so board clicks and scrolls do nothing; a right-click closes the list.
@@ -201,7 +205,8 @@ namespace RithmaticDuels.Presentation
             else if (_duel != null && _phase == Phase.Choosing)
             {
                 var picker = _pickers[(int)_chooser];
-                picker.SetHover(boardPoint);
+                // Holding the free hand key (Ctrl, or Cmd on macOS) stops snapping to bind points (DESIGN.md 1.1).
+                picker.SetHover(boardPoint, ActionPicker.FreeHandIsCommand ? current.command : current.control);
                 bool changed = false;
                 if (boardPoint.HasValue && current.type == EventType.MouseDown && current.button == 0)
                     changed = picker.HandleBoardClick(_board, _chooser, _rules, boardPoint.Value);
@@ -436,6 +441,7 @@ namespace RithmaticDuels.Presentation
             {
                 _renderer.HoverAimFrom = vigor.Position;
                 _renderer.HoverAimDirection = vigor.Direction;
+                _renderer.HoverAimOwner = vigor.Owner;
             }
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (_renderer != null && body is ChalklingBody) _renderer.HoverChalkling = (ChalklingBody)body;
@@ -459,6 +465,7 @@ namespace RithmaticDuels.Presentation
             {
                 _renderer.HoverAimFrom = sketch.Point.Value;
                 _renderer.HoverAimDirection = sketch.Direction.Value.Normalized;
+                _renderer.HoverAimOwner = sketch.Owner;
             }
             DrawStatsBox(text, mouse, screenWidth, screenHeight);
         }
