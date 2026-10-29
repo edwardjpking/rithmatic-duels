@@ -23,8 +23,10 @@ Each item says what the friction is and a likely fix. None are built yet unless 
 ## Controls
 
 - **Scroll wheel is required.** Size, shape, turn and LoF length all use the scroll wheel or Shift + scroll. Some trackpads and mice make this awkward. Add keyboard alternatives (for example + and - for size, and Shift with them for shape or turn) and on-screen buttons, used consistently everywhere scroll is used.
-- **Right-click to go back.** Some trackpads and one-button mice make right-click awkward. Add a key for "back one step" (for example Escape or Backspace) and an on-screen Back button.
-- **Key rebinding.** Tab, Enter, Shift and right-click should all be rebindable.
+- **Right-click to go back.** Some trackpads and one-button mice make right-click awkward. Backspace does the same since v0.27 (DESIGN.md 5.1); an on-screen Back button is still worth adding.
+- **Key rebinding.** Tab, Enter, Shift and right-click should all be rebindable, and so should the menu keys added in v0.27 (number keys, Space, Backspace; `MenuKeys`).
+- **Keyboard menu still needs the mouse for the board (v0.27).** The number keys and Space work the menu's buttons, but placing, aiming and picking bind points still need a mouse click, so a full duel can't be played from the keyboard alone yet. Also, rows with more than ten options are mouse only.
+- **Key hint numbers are small and dim (v0.27).** The numbers in the corner of the buttons in the key row are about 70% of the button text size and slightly see-through. They should follow the UI scale and contrast settings when those are added.
 - **Holding instead of pressing.** Some players find holding a key easier, others find pressing easier. Holding Tab for the lines list is already on the settings list. Any future hold-to-act control needs a press-to-toggle option, and the other way round. The free hand key (hold Ctrl, or Cmd on macOS, v0.25) is one: it needs a toggle option, and should be rebindable. The line info key (hold Alt, or Option on macOS, while hovering a line, v0.26) is another: holding a modifier while aiming the mouse is hard for some players, and Alt can clash with system or screen-reader shortcuts, so it needs a toggle option and rebinding too.
 - **Precise aiming.** Aiming a LoV and placing free lines need precise mouse control. Consider a fine-adjust option (keyboard nudging, or snapping to set angles as an option) for players with less precise movement.
 

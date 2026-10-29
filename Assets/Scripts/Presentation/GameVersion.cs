@@ -9,7 +9,7 @@ namespace RithmaticDuels.Presentation
         public const string Number = "0.27";
         public const string Date = "2026-10-29";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "Alt fix, chalkling offset, LoM Enter, Tab downstroke";
+        public const string Summary = "Alt fix, chalkling offset, LoM Enter, Tab downstroke, keyboard menu";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }
