@@ -161,11 +161,17 @@ namespace RithmaticDuels.Presentation
         /// <summary>The line whose button in the dismissal list is under the mouse, to highlight on the board. -1 for none.</summary>
         public int HoveredLineId { get; private set; } = -1;
 
-        /// <summary>Where the mouse is over the board, in board units, or null when it is elsewhere.</summary>
-        public void SetHover(Vec2? point)
+        /// <summary>
+        /// Where the mouse is over the board, in board units, or null when it is elsewhere, and whether the free hand
+        /// key (Ctrl) is held, which stops a LoF or chalkling with no mode chosen snapping to bind points (DESIGN.md 1.1).
+        /// </summary>
+        public void SetHover(Vec2? point, bool freeHand = false)
         {
             _hover = point;
+            _freeHand = freeHand;
         }
+
+        private bool _freeHand;
 
         /// <summary>The action being built: after Cancel, the one chosen to follow it.</summary>
         private ActionKind? Effective { get { return _kind == ActionKind.CancelDrawing ? _afterCancel : _kind; } }
@@ -673,7 +679,7 @@ namespace RithmaticDuels.Presentation
                         GUIUtility.ExitGUI();
                     }
                     // A bind point near the mouse, where a click would go (only while bind points can be clicked).
-                    int hoverBind = _forbiddanceMode == ForbiddanceMode.Free || _pointA.HasValue && !_pointB.HasValue ? -1 : HoverBindPoint(board, player);
+                    int hoverBind = _forbiddanceMode == ForbiddanceMode.Free || _pointA.HasValue && !_pointB.HasValue || FreeHandLof ? -1 : HoverBindPoint(board, player);
                     switch (placed)
                     {
                         case ForbiddanceMode.Between:
@@ -714,7 +720,7 @@ namespace RithmaticDuels.Presentation
                             // No line is shown until it is clear which: the same bind point twice for a tangent, or a second one to join them.
                             GUILayout.Label(_bindA >= 0
                                 ? "Click the same bind point again for a tangent, or another bind point to join the two."
-                                : "Click a bind point (twice for a tangent, or then another to join the two), or anywhere else on your half to start a free line.");
+                                : "Click a bind point (twice for a tangent, or then another to join the two), or anywhere else on your half to start a free line. Hold Ctrl to start a free line next to a bind point.");
                             hint = "Click the board to place it.";
                             break;
                     }
@@ -761,7 +767,7 @@ namespace RithmaticDuels.Presentation
                     var placedTether = PlacedChalklingMode;
                     bool snaps = ChalklingSnaps;
                     GUILayout.Label(_chalklingMode == ChalklingMode.Bound ? "Click a bind point to tether it there."
-                        : snaps ? "Click where to draw it on your half. A click near a bind point tethers it there."
+                        : snaps ? "Click where to draw it on your half. A click near a bind point tethers it there (hold Ctrl not to)."
                         : "Click where to draw it on your half.");
                     var bindSpots = board.BindPointsOf(player);
                     if (_chalklingMode != ChalklingMode.Bound) preview.InvalidHover = InvalidHover(board, player);
@@ -1225,7 +1231,7 @@ namespace RithmaticDuels.Presentation
         {
             var placed = PlacedForbiddanceMode(board, player);
             if (placed.HasValue || !_hover.HasValue || _bindA >= 0) return placed;
-            return HoverBindPoint(board, player) < 0 ? ForbiddanceMode.Free : (ForbiddanceMode?)null;
+            return _freeHand || HoverBindPoint(board, player) < 0 ? ForbiddanceMode.Free : (ForbiddanceMode?)null;
         }
 
         /// <summary>
@@ -1260,7 +1266,7 @@ namespace RithmaticDuels.Presentation
         private bool PickForbiddance(ChalkBoard board, Player player, Vec2 point)
         {
             if (_pointA.HasValue && !_pointB.HasValue) return PickPoints(point);
-            int near = NearBindPoint(board, player, point);
+            int near = _freeHand ? -1 : NearBindPoint(board, player, point);
             if (near >= 0 && _bindA >= 0 && _bindB < 0 && !_tangentPicked)
             {
                 if (near == _bindA) _tangentPicked = true;
@@ -1304,7 +1310,10 @@ namespace RithmaticDuels.Presentation
         /// True if a click near a bind point binds the chalkling there: when no tether is chosen and it isn't set to
         /// Attack, since a bound chalkling must defend.
         /// </summary>
-        private bool ChalklingSnaps { get { return !_chalklingMode.HasValue && _glyph != Glyph.Attack; } }
+        private bool ChalklingSnaps { get { return !_chalklingMode.HasValue && _glyph != Glyph.Attack && !_freeHand; } }
+
+        /// <summary>True while the free hand key keeps a LoF with no mode chosen from snapping to bind points.</summary>
+        private bool FreeHandLof { get { return _freeHand && !_forbiddanceMode.HasValue; } }
 
         /// <summary>The bind point that can be picked nearest the mouse, within picking distance, or -1.</summary>
         private int HoverBindPoint(ChalkBoard board, Player player)
@@ -1350,7 +1359,7 @@ namespace RithmaticDuels.Presentation
                 case LineType.Forbiddance:
                     if (_pointA.HasValue && !_pointB.HasValue) return true; // the second click sets the direction
                     // With no mode chosen, a click near a bind point that can be picked starts a tangent or joins the two.
-                    if (!_forbiddanceMode.HasValue && NearBindPoint(board, player, point) >= 0) return true;
+                    if (!_forbiddanceMode.HasValue && !_freeHand && NearBindPoint(board, player, point) >= 0) return true;
                     // A start is allowed if the shortest line fits in some direction from it.
                     float length = board.Config.Geometry.MinForbiddanceLength;
                     const int directions = 16;
@@ -1379,7 +1388,7 @@ namespace RithmaticDuels.Presentation
             // The menu is laid out several times a frame and the free LoF check tries 16 directions, so keep the answer
             // until the mouse moves or the choice changes.
             Vec2 at = _hover.Value;
-            string key = _lineType + "/" + _forbiddanceMode + "/" + _chalklingMode + "/" + _glyph + "/" + _tier + "/" + _pointA + "/" + _pointB
+            string key = _lineType + "/" + _forbiddanceMode + "/" + _chalklingMode + "/" + _glyph + "/" + _freeHand + "/" + _tier + "/" + _pointA + "/" + _pointB
                 + "/" + _bindA + "/" + player + "/" + at.X + "," + at.Y;
             if (key != _invalidHoverKey)
             {
