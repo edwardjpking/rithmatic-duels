@@ -438,6 +438,7 @@ namespace RithmaticDuels.Presentation
             {
                 _renderer.HoverAimFrom = vigor.Position;
                 _renderer.HoverAimDirection = vigor.Direction;
+                _renderer.HoverAimOwner = vigor.Owner;
             }
             if (line.Type == LineType.Vigor) text += "\n" + line.Tier + " tier, speed " + line.Speed + "\nDamage on a hit: " + line.Damage;
             if (_renderer != null && body is ChalklingBody) _renderer.HoverChalkling = (ChalklingBody)body;
@@ -461,6 +462,7 @@ namespace RithmaticDuels.Presentation
             {
                 _renderer.HoverAimFrom = sketch.Point.Value;
                 _renderer.HoverAimDirection = sketch.Direction.Value.Normalized;
+                _renderer.HoverAimOwner = sketch.Owner;
             }
             DrawStatsBox(text, mouse, screenWidth, screenHeight);
         }

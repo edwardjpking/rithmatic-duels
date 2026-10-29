@@ -321,7 +321,7 @@ namespace RithmaticDuels.Rules.Tests
             for (int i = 0; i < 5; i++) PassTurn();
 
             Assert.AreEqual(12, MainWard(Player.B).Durability);
-            Assert.AreEqual(10, MainWard(Player.A).Durability);
+            Assert.AreEqual(12, MainWard(Player.A).Durability, "the reflected LoV passes through its own player's LoW");
             Assert.AreEqual(2, wall.Durability, "a reflected LoV deals half its damage (2), rounded up, to the LoF");
         }
 
@@ -780,7 +780,7 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(12, MainWard(Player.B).Durability);
             var body = (ChalklingBody)_board.BodyOf(chalkling.Id);
             Assert.LessOrEqual(Vec2.Distance(body.Position, body.Tether.Value), _config.Making.TetherDistance + 1e-4);
-            Assert.Greater(body.Position.X, 23.25f); // pushed back toward B
+            Assert.Greater(body.Position.X, 23f - _config.Making.Radius); // pushed back toward B from where it was drawn
         }
 
         [Test]
@@ -1137,17 +1137,17 @@ namespace RithmaticDuels.Rules.Tests
         [Test]
         public void AChordThroughTheCentreToughensTheBackToo()
         {
-            // A circle on the front bind point, centre (10.5, 10), with a LoF across it from its top to its bottom.
+            // B's circle on its front bind point, centre (21.5, 10), with a LoF across it from its top to its bottom.
             _config.Vigor.High.Damage = 4;
-            var circle = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
-            var points = _board.BindPointsOf(Player.A);
-            int top = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(10.5f, 11.5f)) < 1e-3f);
-            int bottom = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(10.5f, 8.5f)) < 1e-3f);
-            var chord = Draw(Player.A, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(top, bottom));
+            var circle = Draw(Player.B, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
+            var points = _board.BindPointsOf(Player.B);
+            int top = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(21.5f, 11.5f)) < 1e-3f);
+            int bottom = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(21.5f, 8.5f)) < 1e-3f);
+            var chord = Draw(Player.B, DrawingSpec.Forbiddance(2), Placement.BetweenBindPoints(top, bottom));
             int before = circle.Durability;
-            // Hit it from straight above, left of the LoF, on the half that doesn't face the opponent. (A's own LoV, since
-            // B can't start one on A's half; LoV hit their owner's lines too.)
-            Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(10.2f, 19f), V(10.2f, 0f)));
+            // A's LoV comes down steeply over the LoF and hits the circle just right of it, on the half that doesn't
+            // face the opponent (a LoV passes through its own player's lines, so it must be the opponent's).
+            Draw(Player.A, DrawingSpec.Vigor(VigorTier.High), Placement.Aimed(V(15f, 19f), V(21.8f, 11.47f)));
             for (int turn = 0; turn < 3 && chord.Durability == chord.MaxDurability; turn++) PassTurn();
             Assert.AreEqual(before - 2, circle.Durability);
             Assert.AreEqual(chord.MaxDurability - 2, chord.Durability);

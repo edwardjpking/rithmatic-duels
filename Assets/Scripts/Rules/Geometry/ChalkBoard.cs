@@ -58,6 +58,15 @@ namespace RithmaticDuels.Rules.Geometry
             return _config.CentreWall.Enabled && turn <= _config.CentreWall.Turns;
         }
 
+        /// <summary>
+        /// Whether the centre LoF stands during this turn's tick. On its last turn it is still up while players choose,
+        /// but goes in stage 1 of that turn's tick (DESIGN.md section 1.1), before anything moves.
+        /// </summary>
+        private bool CentreWallStandsDuringTick(int turn)
+        {
+            return CentreWallStandsOn(turn) && turn < _config.CentreWall.Turns;
+        }
+
         public RulesConfig Config { get { return _config; } }
         public float Width { get { return _config.Board.Width; } }
         public float Height { get { return _config.Board.Height; } }
@@ -309,7 +318,9 @@ namespace RithmaticDuels.Rules.Geometry
                     {
                         case PlacementKind.AtBindPoint:
                             if (spec.BindPoints != 1) return "A chalkling bound to one bind point has 1 bind point.";
-                            return ValidBindPoint(placement.BindPointA, bindPoints);
+                            return ValidBindPoint(placement.BindPointA, bindPoints)
+                                ?? (ChalklingBoundAt(player, bindPoints[placement.BindPointA])
+                                    ? "A chalkling is already bound to this bind point." : null);
                         case PlacementKind.FreePoint:
                             if (spec.BindPoints != 0) return "An unbound chalkling has no bind points.";
                             return CheckPoint(player, placement.PointA, halfOnly);
@@ -743,7 +754,7 @@ namespace RithmaticDuels.Rules.Geometry
             _notes.Clear();
             _trails.Clear();
             bool wasUp = CentreWallUp;
-            CentreWallUp = CentreWallStandsOn(duel.Turn);
+            CentreWallUp = CentreWallStandsDuringTick(duel.Turn);
             if (wasUp && !CentreWallUp) _notes.Add("The centre Line of Forbiddance is gone.");
             Sync(duel, result);
             var used = FlyVigor(result);
@@ -1244,10 +1255,10 @@ namespace RithmaticDuels.Rules.Geometry
         /// <summary>
         /// Where a LoV starting here in this direction would go if nothing moved, for the aim preview: it reflects
         /// off LoF (and the centre LoF while it stands) by the same rules as in flight, and stops at the first LoW,
-        /// chalkling or board edge it reaches. Other LoV are ignored. The first point is the start; at most
+        /// chalkling or board edge it reaches. Other LoV, and the <paramref name="owner"/>'s own lines, are ignored. The first point is the start; at most
         /// <paramref name="maxBounces"/> reflections are followed.
         /// </summary>
-        public List<Vec2> AimPath(Vec2 from, Vec2 direction, int maxBounces = 8)
+        public List<Vec2> AimPath(Vec2 from, Vec2 direction, Player? owner = null, int maxBounces = 8)
         {
             var path = new List<Vec2> { from };
             direction = direction.Normalized;
@@ -1264,7 +1275,7 @@ namespace RithmaticDuels.Rules.Geometry
                 }
                 foreach (var body in _bodies.Values)
                 {
-                    if (!body.Line.IsActive) continue;
+                    if (!body.Line.IsActive || (owner.HasValue && body.Owner == owner.Value)) continue;
                     var ward = body as WardBody;
                     if (ward != null)
                     {
@@ -1319,7 +1330,8 @@ namespace RithmaticDuels.Rules.Geometry
 
                 foreach (var body in _bodies.Values)
                 {
-                    if (!body.Line.IsActive) continue;
+                    // A LoV passes through all its own player's lines (DESIGN.md section 4.3).
+                    if (!body.Line.IsActive || body.Owner == vigor.Owner) continue;
                     float distance;
 
                     var ward = body as WardBody;
@@ -1358,6 +1370,7 @@ namespace RithmaticDuels.Rules.Geometry
                 {
                     var a = flying[i];
                     var b = flying[j];
+                    if (a.Owner == b.Owner) continue;
                     Vec2 gap = b.Position - a.Position;
                     Vec2 closing = b.Direction * b.Line.Speed - a.Direction * a.Line.Speed;
                     if (Vec2.Dot(gap, closing) >= 0f) continue; // not getting closer
@@ -1792,6 +1805,18 @@ namespace RithmaticDuels.Rules.Geometry
             if (!OnBoard(point)) return "That point is off the board.";
             if (halfOnly && !OnOwnHalf(player, point)) return "Draw on your own half of the board.";
             return null;
+        }
+
+        /// <summary>Whether one of this player's chalklings is already bound to this bind point (DESIGN.md section 4.4).</summary>
+        private bool ChalklingBoundAt(Player player, Vec2 bindPoint)
+        {
+            foreach (var body in _bodies.Values)
+            {
+                var chalkling = body as ChalklingBody;
+                if (chalkling != null && chalkling.Owner == player && chalkling.Line.IsActive && chalkling.Tether.HasValue
+                    && Vec2.Distance(chalkling.Tether.Value, bindPoint) < 1e-3f) return true;
+            }
+            return false;
         }
 
         private static string ValidBindPoint(int index, IReadOnlyList<Vec2> bindPoints)

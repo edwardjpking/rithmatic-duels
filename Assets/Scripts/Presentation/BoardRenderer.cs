@@ -51,6 +51,8 @@ namespace RithmaticDuels.Presentation
         /// <summary>Set from OnGUI: the start and direction of the LoV under the mouse, whose aim line is shown.</summary>
         public Vec2? HoverAimFrom { get; set; }
         public Vec2? HoverAimDirection { get; set; }
+        /// <summary>Whose LoV the hover aim line belongs to; it passes through that player's own lines.</summary>
+        public Player? HoverAimOwner { get; set; }
         /// <summary>Set from OnGUI: the chalkling under the mouse or hovered in a list, whose guard ring or path is shown.</summary>
         public ChalklingBody HoverChalkling { get; set; }
 
@@ -118,7 +120,7 @@ namespace RithmaticDuels.Presentation
             {
                 // A glow along the wave itself, plus its aim line in the usual aim line colour.
                 Wave(vigor.Position, vigor.Direction, Board.Config.Geometry.VigorDrawnLength, glowColour, false, 0.06f + glow);
-                AimLine(vigor.Position, vigor.Direction, PreviewColour);
+                AimLine(vigor.Position, vigor.Direction, vigor.Owner, PreviewColour);
                 return;
             }
             var chalkling = body as ChalklingBody;
@@ -229,7 +231,7 @@ namespace RithmaticDuels.Presentation
                 Disc(HoverWardPoint.Value, HoverMarkSize / 2f + 0.03f, Color.black);
                 Disc(HoverWardPoint.Value, HoverMarkSize / 2f, DurabilityDotColour);
             }
-            if (HoverAimFrom.HasValue && HoverAimDirection.HasValue) AimLine(HoverAimFrom.Value, HoverAimDirection.Value, PreviewColour);
+            if (HoverAimFrom.HasValue && HoverAimDirection.HasValue) AimLine(HoverAimFrom.Value, HoverAimDirection.Value, HoverAimOwner, PreviewColour);
             if (HoverChalkling != null)
                 ChalklingReach(HoverChalkling.Owner, HoverChalkling.Line.Glyph, HoverChalkling.Anchor, HoverChalkling.Position, HoverChalkling.GuardDistance);
         }
@@ -255,9 +257,9 @@ namespace RithmaticDuels.Presentation
         /// Where a LoV would go, dashed, reflecting off LoF as it would until it reaches a LoW, chalkling or the edge.
         /// Dashes run on around each reflection point, bending there, so the bounce reads as one continuous line.
         /// </summary>
-        private void AimLine(Vec2 from, Vec2 direction, Color colour)
+        private void AimLine(Vec2 from, Vec2 direction, Player? owner, Color colour)
         {
-            DashedPath(Board.AimPath(from, direction), colour);
+            DashedPath(Board.AimPath(from, direction, owner), colour);
         }
 
         /// <summary>A path of points drawn dashed like the aim line.</summary>
@@ -330,7 +332,7 @@ namespace RithmaticDuels.Presentation
                 {
                     Vec2 direction = (preview.To.Value - preview.From.Value).Normalized;
                     Wave(preview.From.Value, direction, Board.Config.Geometry.VigorDrawnLength, PreviewColour);
-                    AimLine(preview.From.Value, direction, PreviewColour);
+                    AimLine(preview.From.Value, direction, preview.Player, PreviewColour);
                 }
             }
         }
