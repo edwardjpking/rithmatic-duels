@@ -132,6 +132,14 @@ namespace RithmaticDuels.Presentation
         /// <summary>How long the reason a key press was refused stays in the problem line, in seconds.</summary>
         private const float ReasonSeconds = 3f;
 
+        /// <summary>
+        /// Set by the defence editor (DESIGN.md section 6.8): the menu only places new lines (no action row), Lines
+        /// of Vigor are greyed out, and Lock in reads <see cref="LockLabel"/>.
+        /// </summary>
+        public bool DefenceEditor;
+        /// <summary>The text on the menu's main button.</summary>
+        public string LockLabel = "Lock in";
+
         public ActionPicker()
         {
             // A new player's menu starts with nothing flashing.
@@ -258,7 +266,12 @@ namespace RithmaticDuels.Presentation
                 if (!_kind.HasValue && !_defaultChosen && available.Contains(ActionKind.ContinueDrawing)) _kind = ActionKind.ContinueDrawing;
                 _defaultChosen = true;
 
-                if (available.Count == 1 && available[0] == ActionKind.StartDrawing && board.MainWardOf(player) == null)
+                if (DefenceEditor && available.Contains(ActionKind.StartDrawing))
+                {
+                    // The defence editor only places new parts.
+                    _kind = ActionKind.StartDrawing;
+                }
+                else if (available.Count == 1 && available[0] == ActionKind.StartDrawing && board.MainWardOf(player) == null)
                 {
                     // Setting up the main LoW is the only thing to do, so there is no action to pick.
                     _kind = ActionKind.StartDrawing;
@@ -348,7 +361,7 @@ namespace RithmaticDuels.Presentation
             }
 
             GUI.enabled = problem == null;
-            bool locked = GUILayout.Button("Lock in", GUILayout.Height(34));
+            bool locked = GUILayout.Button(LockLabel, GUILayout.Height(34));
             GUI.enabled = true;
             // A click on Lock in while it is greyed out flashes the problem line, as Space does.
             if (Event.current.type != EventType.Layout) RefuseClick(GUILayoutUtility.GetLastRect(), problem != null, null, null);
@@ -686,7 +699,7 @@ namespace RithmaticDuels.Presentation
             // or after placing, and a setting that wouldn't fit what is already placed is greyed out.
             ResetClicksIfChanged(_lineType.ToString());
             placement = null;
-            Choose(ref _lineType, LineTypeLabels);
+            Choose(ref _lineType, LineTypeLabels, DefenceEditor ? 1 << (int)LineType.Vigor : 0, "A defence can't hold a Line of Vigor.");
             if (!_lineType.HasValue)
             {
                 hint = "Choose a line type.";

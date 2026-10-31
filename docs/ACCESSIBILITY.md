@@ -37,6 +37,9 @@ Each item says what the friction is and a likely fix. None are built yet unless 
 - **The log moves on its own.** It jumps to the newest entry whenever it changes. A setting to stop this is already on the settings list. Players should also be able to scroll back without losing their place.
 - **Screen readers.** IMGUI is not read by screen readers. The log and menus could later be mirrored to a text output a screen reader can use. This is a large change, so it is noted rather than planned.
 
+- **Reordering by drag only (defence editor, v0.31).** The build order can only be changed by dragging, which needs steady pointer control. Add keyboard moves (e.g. select a part, then up and down keys, stopping at its parent) or up and down buttons on each part.
+- **Invalid drop spots shown in red (defence editor, v0.31).** While dragging, places a part can't go are tinted red. The drop line also changes colour, so add a shape cue too (for example a cross on the drop line) so it doesn't rest on colour alone.
+
 ## Time pressure
 
 - **Decision timer.** Online duels will need a timer (DESIGN.md section 2). Offer the longest setting and an "off" choice wherever both players agree, and show the time left as text as well as any bar.

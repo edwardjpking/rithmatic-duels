@@ -463,7 +463,7 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A red cross with a dark outline, so it shows on both the board and the menus.</summary>
-        private static Texture2D MakeCrossCursor(int size)
+        internal static Texture2D MakeCrossCursor(int size)
         {
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
             var red = new Color(0.95f, 0.3f, 0.25f, 1f);
@@ -650,8 +650,21 @@ namespace RithmaticDuels.Presentation
             }
             GUILayout.FlexibleSpace();
             GUILayout.Label(GameVersion.Label);
+            if (GUILayout.Button("Defence editor", GUILayout.Width(130))) Then(OpenDefenceEditor);
             if (GUILayout.Button("New duel", GUILayout.Width(100))) Then(NewDuel);
             GUILayout.EndHorizontal();
+        }
+
+        /// <summary>
+        /// Opens the defence editor (DESIGN.md section 6.8) in place of the duel screen, which keeps its duel and
+        /// carries on when the editor is closed. Moves to the main menu in build step 6.
+        /// </summary>
+        private void OpenDefenceEditor()
+        {
+            var editor = GetComponent<DefenceEditorScreen>();
+            if (editor == null) editor = gameObject.AddComponent<DefenceEditorScreen>();
+            enabled = false;
+            editor.Open(this, _rules, _camera, _renderer);
         }
 
         private void DrawWardStatus()
