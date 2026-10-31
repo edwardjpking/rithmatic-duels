@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using RithmaticDuels.Rules;
 using RithmaticDuels.Rules.Geometry;
+using RithmaticDuels.Rules.Presets;
 using UnityEngine;
 
 namespace RithmaticDuels.Presentation
@@ -52,6 +53,9 @@ namespace RithmaticDuels.Presentation
         private LockedChoice _lockedA;
         // Replaced with a fresh picker each time a player starts choosing, so no choice carries over.
         private readonly ActionPicker[] _pickers = { new ActionPicker(), new ActionPicker() };
+        // Saved defences (DESIGN.md section 6.8): the library, loaded at the start of each duel, and each player's defence being built.
+        private PresetLibrary _library;
+        private readonly DefenceRun[] _runs = new DefenceRun[2];
         private readonly List<string> _log = new List<string>();
         private Vector2 _logScroll;
         // Each log line's height, measured once for the width they were measured at (see DrawLog).
@@ -143,6 +147,9 @@ namespace RithmaticDuels.Presentation
             _currentSeed = _seed != 0 ? (ulong)_seed : (ulong)UnityEngine.Random.Range(1, int.MaxValue);
             _board = new ChalkBoard(_rules);
             _error = null;
+            _runs[0] = null;
+            _runs[1] = null;
+            _library = PresetStore.Load(_rules);
             try
             {
                 _duel = new Duel(_rules, _currentSeed, _board);
@@ -676,7 +683,7 @@ namespace RithmaticDuels.Presentation
             if (GUILayout.Button("I'm " + TurnNarrator.PlayerName(_chooser) + ", show my choices", GUILayout.Height(50)) || MenuKeys.TakeNext())
                 Then(() =>
                 {
-                    _pickers[(int)_chooser] = new ActionPicker();
+                    _pickers[(int)_chooser] = NewPicker(_chooser);
                     _showLines = false;
                     _menuScroll = Vector2.zero;
                     _phase = Phase.Choosing;
@@ -692,8 +699,20 @@ namespace RithmaticDuels.Presentation
             if (choice != null) Then(() => Lock(choice));
         }
 
+        private ActionPicker NewPicker(Player player)
+        {
+            if (_library == null) _library = PresetStore.Load(_rules);
+            var picker = new ActionPicker { Run = _runs[(int)player] };
+            // Offered on turn 1 only, and never again once one is used or cancelled.
+            if (_runs[(int)player] == null) picker.Presets = _library.Presets;
+            return picker;
+        }
+
         private void Lock(LockedChoice choice)
         {
+            if (choice.StartPreset != null) _runs[(int)_chooser] = new DefenceRun(choice.StartPreset, _chooser);
+            if (choice.CancelsPreset && _runs[(int)_chooser] != null) _runs[(int)_chooser].Cancel(_duel);
+
             if (choice.Action.Kind == ActionKind.StartDrawing)
                 _board.SetPendingPlacement(_chooser, choice.Action.Spec, choice.Placement);
 
@@ -711,6 +730,7 @@ namespace RithmaticDuels.Presentation
                 _error = null;
                 _log.Add("— Turn " + report.Turn + " —");
                 _log.AddRange(TurnNarrator.Describe(_duel, report, _board.LastTickNotes));
+                foreach (var run in _runs) if (run != null) run.Observe(_duel, report);
                 _logScroll.y = float.MaxValue;
             }
             catch (System.InvalidOperationException e)
