@@ -49,8 +49,8 @@ namespace RithmaticDuels.Rules.Presets
             if (string.IsNullOrWhiteSpace(Name)) return "Give the layout a name.";
             if (IsEllipse) return null;
             if (Vertices == null || Vertices.Length != 3) return "A layout needs three triangle vertices.";
-            if (Math.Abs(Vec2.Cross(Vertices[1] - Vertices[0], Vertices[2] - Vertices[0])) < 1e-4f)
-                return "The triangle's vertices can't lie in a straight line.";
+            // Vertices in a straight line are fine (Amelia, v0.31): the heights are then the lines through each
+            // vertex perpendicular to that line, which is what the construction gives anyway.
             int count = BindPointCount;
             if (count < config.Presets.MinLayoutBindPoints) return "The layout needs at least " + config.Presets.MinLayoutBindPoints + " bind points.";
             return null;
@@ -99,18 +99,15 @@ namespace RithmaticDuels.Rules.Presets
 
         /// <summary>
         /// Whether vertex <paramref name="index"/> may go to <paramref name="spot"/> in the bind point editor: within
-        /// LayoutMaxVertexRadius of the centre, and at least LayoutMinVertexGap from the other two vertices and from
-        /// the line through them, so the triangle can't flatten (DESIGN.md sections 1.1 and 6.1).
+        /// LayoutMaxVertexRadius of the centre, and at least LayoutMinVertexGap from the other two vertices. Vertices
+        /// in a straight line are allowed (DESIGN.md sections 1.1 and 6.1).
         /// </summary>
         public static bool VertexAllowed(Vec2[] vertices, int index, Vec2 spot, PresetsConfig config)
         {
             if (spot.Length > config.LayoutMaxVertexRadius + 1e-5f) return false;
             Vec2 a = vertices[(index + 1) % 3], b = vertices[(index + 2) % 3];
             float gap = config.LayoutMinVertexGap;
-            if (Vec2.Distance(spot, a) < gap || Vec2.Distance(spot, b) < gap) return false;
-            float baseLength = Vec2.Distance(a, b);
-            if (baseLength < 1e-6f) return false;
-            return Math.Abs(Vec2.Cross(b - a, spot - a)) / baseLength >= gap;
+            return Vec2.Distance(spot, a) >= gap && Vec2.Distance(spot, b) >= gap;
         }
 
         /// <summary>Two crossings this close count as the same bind point when snapping.</summary>
@@ -171,6 +168,14 @@ namespace RithmaticDuels.Rules.Presets
                 Triangle("Six-point circle", OnUnit(0f), OnUnit(120f), OnUnit(240f), true),
                 Triangle("Nine-point circle", nine[0], nine[1], nine[2], true),
             };
+        }
+
+        /// <summary>The vertices turned by <paramref name="radians"/> about the circle's centre (anticlockwise).</summary>
+        public static Vec2[] Rotated(Vec2[] vertices, float radians)
+        {
+            var turned = new Vec2[vertices.Length];
+            for (int i = 0; i < vertices.Length; i++) turned[i] = vertices[i].Rotated(radians);
+            return turned;
         }
 
         public BindPointLayout Clone()

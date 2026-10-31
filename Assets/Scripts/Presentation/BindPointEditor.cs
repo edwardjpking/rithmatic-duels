@@ -40,6 +40,15 @@ namespace RithmaticDuels.Presentation
         private string _status;
         private Material _material;
         private Rect _canvas;
+        /// <summary>Zoom (1 = the whole area fits) and pan (GUI units) of the canvas view.</summary>
+        private float _zoom = 1f;
+        private Vector2 _pan;
+        private bool _panning;
+        private bool _showCentre;
+        /// <summary>Whether the free hand key (Ctrl, or Cmd on macOS) is held: it stops snapping, as in a duel.</summary>
+        private bool _freeHandHeld;
+        /// <summary>The saved layout waiting for its delete to be confirmed, if any.</summary>
+        private BindPointLayout _confirmDelete;
 
         public BindPointEditor(RulesConfig config, PresetLibrary library)
         {
@@ -61,6 +70,7 @@ namespace RithmaticDuels.Presentation
             _name = edit ? layout.Name : "";
             _undo.Clear();
             _dragging = -1;
+            _confirmDelete = null;
             _status = null;
         }
 
@@ -82,16 +92,27 @@ namespace RithmaticDuels.Presentation
 
         // ---- Input ----
 
-        private float CanvasScale { get { return Mathf.Min(_canvas.width, _canvas.height) / (2f * _config.Presets.LayoutMaxVertexRadius + 0.4f); } }
+        private float CanvasScale { get { return _zoom * Mathf.Min(_canvas.width, _canvas.height) / (2f * _config.Presets.LayoutMaxVertexRadius + 0.4f); } }
+
+        private Vector2 Origin { get { return _canvas.center + _pan; } }
 
         private Vector2 ToGui(Vec2 p)
         {
-            return new Vector2(_canvas.center.x + p.X * CanvasScale, _canvas.center.y - p.Y * CanvasScale);
+            return new Vector2(Origin.x + p.X * CanvasScale, Origin.y - p.Y * CanvasScale);
         }
 
         private Vec2 ToUnit(Vector2 gui)
         {
-            return new Vec2((gui.x - _canvas.center.x) / CanvasScale, (_canvas.center.y - gui.y) / CanvasScale);
+            return new Vec2((gui.x - Origin.x) / CanvasScale, (Origin.y - gui.y) / CanvasScale);
+        }
+
+        /// <summary>Zooms by <paramref name="factor"/>, keeping the spot under the mouse where it is.</summary>
+        private void ZoomAt(Vector2 mouse, float factor)
+        {
+            var presets = _config.Presets;
+            Vec2 under = ToUnit(mouse);
+            _zoom = Mathf.Clamp(_zoom * factor, presets.LayoutMinZoom, presets.LayoutMaxZoom);
+            _pan = mouse - _canvas.center - new Vector2(under.X * CanvasScale, -under.Y * CanvasScale);
         }
 
         private int VertexAt(Vector2 mouse)
@@ -109,6 +130,15 @@ namespace RithmaticDuels.Presentation
         private void HandleInput(Event e)
         {
             bool inCanvas = _canvas.Contains(e.mousePosition);
+            if (e.type != EventType.Repaint && e.type != EventType.Layout)
+            {
+                bool mac = ActionPicker.FreeHandIsCommand;
+                bool isKey = mac ? e.keyCode == KeyCode.LeftCommand || e.keyCode == KeyCode.RightCommand
+                    : e.keyCode == KeyCode.LeftControl || e.keyCode == KeyCode.RightControl;
+                if (e.type == EventType.KeyDown && isKey) _freeHandHeld = true;
+                else if (e.type == EventType.KeyUp && isKey) _freeHandHeld = false;
+                else _freeHandHeld = mac ? e.command : e.control;
+            }
             _hovered = _dragging >= 0 ? _dragging : (inCanvas ? VertexAt(e.mousePosition) : -1);
 
             if (e.type == EventType.MouseDown && e.button == 0 && inCanvas)
@@ -122,6 +152,40 @@ namespace RithmaticDuels.Presentation
                     _status = null;
                     e.Use();
                 }
+                else
+                {
+                    // Dragging empty space moves the view.
+                    _panning = true;
+                    e.Use();
+                }
+            }
+            else if (e.type == EventType.MouseDrag && _panning)
+            {
+                _pan += e.delta;
+                e.Use();
+            }
+            else if (e.type == EventType.MouseUp && e.button == 0 && _panning)
+            {
+                _panning = false;
+                e.Use();
+            }
+            else if (e.type == EventType.ScrollWheel && inCanvas && _dragging < 0)
+            {
+                // Scroll zooms; Shift + scroll turns the layout round the circle (as it turns a circle in a duel).
+                // Some platforms turn Shift + scroll into a sideways scroll, so fall back to the horizontal delta.
+                float delta = e.shift && Mathf.Abs(e.delta.y) < 1e-6f ? e.delta.x : e.delta.y;
+                if (Mathf.Abs(delta) > 1e-6f)
+                {
+                    if (e.shift)
+                    {
+                        _undo.Push((Vec2[])_vertices.Clone());
+                        float step = _config.Presets.LayoutRotateStepDegrees * Mathf.Deg2Rad;
+                        _vertices = BindPointLayout.Rotated(_vertices, delta > 0 ? -step : step);
+                        _status = null;
+                    }
+                    else ZoomAt(e.mousePosition, delta > 0 ? 1f / _config.Presets.LayoutZoomStep : _config.Presets.LayoutZoomStep);
+                }
+                e.Use();
             }
             else if (e.type == EventType.MouseDrag && _dragging >= 0)
             {
@@ -138,8 +202,9 @@ namespace RithmaticDuels.Presentation
             }
             else if (e.type == EventType.MouseDown && e.button == 1 || MenuKeys.TakeBack())
             {
-                // Right-click (or Backspace / Esc) goes back one step: cancel the drag, or undo the last move.
-                if (_dragging >= 0) { _vertices[_dragging] = _dragStart; if (_undo.Count > 0) _undo.Pop(); _dragging = -1; }
+                // Right-click (or Backspace / Esc) goes back one step: cancel a delete, cancel the drag, or undo the last move.
+                if (_confirmDelete != null) _confirmDelete = null;
+                else if (_dragging >= 0) { _vertices[_dragging] = _dragStart; if (_undo.Count > 0) _undo.Pop(); _dragging = -1; }
                 else if (_undo.Count > 0) _vertices = _undo.Pop();
                 _refusedAt = null;
                 if (e.type == EventType.MouseDown) e.Use();
@@ -152,7 +217,8 @@ namespace RithmaticDuels.Presentation
             Vec2 desired = ToUnit(mouse);
             // Like a size that is capped to what fits, a vertex dragged past the edge stays on the edge.
             if (desired.Length > presets.LayoutMaxVertexRadius) desired = desired.Normalized * presets.LayoutMaxVertexRadius;
-            Vec2 snapped = BindPointLayout.SnapVertex(_vertices, _dragging, desired, presets.LayoutSnapDistance);
+            // Holding the free hand key stops snapping, as in a duel (DESIGN.md 1.1).
+            Vec2 snapped = _freeHandHeld ? desired : BindPointLayout.SnapVertex(_vertices, _dragging, desired, presets.LayoutSnapDistance);
             if (!BindPointLayout.VertexAllowed(_vertices, _dragging, snapped, presets)) snapped = desired;
             if (BindPointLayout.VertexAllowed(_vertices, _dragging, snapped, presets))
             {
@@ -168,11 +234,12 @@ namespace RithmaticDuels.Presentation
         {
             GUILayout.BeginArea(area);
             GUILayout.Label("Bind points editor");
-            GUILayout.Label("Drag the triangle's corners. Bind points appear where its sides and extended heights cross the circle. Points that come close snap together. Right-click undoes a move.");
+            GUILayout.Label("Drag the triangle's corners. Bind points appear where its sides and extended heights cross the circle. Points that come close snap together; hold Ctrl (Cmd on Mac) to stop snapping. Shift + scroll turns the layout round the circle. Scroll zooms and dragging empty space moves the view. Right-click undoes a move.");
             GUILayout.Space(6);
 
             var layout = Current();
             GUILayout.Label(layout.BindPointCount + " bind points");
+            _showCentre = GUILayout.Toggle(_showCentre, " Show the circle's centre");
             GUILayout.Space(6);
 
             GUILayout.Label("Name:");
@@ -199,18 +266,27 @@ namespace RithmaticDuels.Presentation
             {
                 if (saved.IsEllipse) continue;
                 GUILayout.BeginHorizontal();
+                if (_confirmDelete == saved)
+                {
+                    // Deleting can't be undone, so it asks first. Right-click, Backspace or Esc also keeps it.
+                    GUILayout.Label("Delete " + saved.Name + "?");
+                    if (GUILayout.Button("Delete", GUILayout.Width(60)))
+                    {
+                        _library.Layouts.Remove(saved);
+                        PresetStore.Save(_library);
+                        if (_editing == saved) _editing = null;
+                        _confirmDelete = null;
+                        _status = "Deleted \"" + saved.Name + "\".";
+                        GUIUtility.ExitGUI();
+                    }
+                    if (GUILayout.Button("Keep", GUILayout.Width(60))) { _confirmDelete = null; GUIUtility.ExitGUI(); }
+                    GUILayout.EndHorizontal();
+                    continue;
+                }
                 GUILayout.Label(saved.Name + " (" + saved.BindPointCount + ")");
                 if (GUILayout.Button(saved.IsDefault ? "Copy" : "Edit", GUILayout.Width(60))) { StartFrom(saved, !saved.IsDefault); GUIUtility.ExitGUI(); }
                 GUI.enabled = !saved.IsDefault;
-                if (GUILayout.Button("Delete", GUILayout.Width(60)))
-                {
-                    _library.Layouts.Remove(saved);
-                    PresetStore.Save(_library);
-                    if (_editing == saved) _editing = null;
-                    _status = "Deleted \"" + saved.Name + "\".";
-                    GUI.enabled = true;
-                    GUIUtility.ExitGUI();
-                }
+                if (GUILayout.Button("Delete", GUILayout.Width(60))) { _confirmDelete = saved; GUI.enabled = true; GUIUtility.ExitGUI(); }
                 GUI.enabled = true;
                 GUILayout.EndHorizontal();
             }
@@ -227,7 +303,9 @@ namespace RithmaticDuels.Presentation
             EnsureMaterial();
             _material.SetPass(0);
             GL.PushMatrix();
-            GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
+            // Draw only inside the canvas, so a zoomed or moved view doesn't spill over the panel.
+            GL.Viewport(new Rect(_canvas.x * scale, Screen.height - _canvas.yMax * scale, _canvas.width * scale, _canvas.height * scale));
+            GL.LoadPixelMatrix(_canvas.x * scale, _canvas.xMax * scale, _canvas.yMax * scale, _canvas.y * scale);
             GL.Begin(GL.QUADS);
             _pixels = scale;
 
@@ -246,6 +324,14 @@ namespace RithmaticDuels.Presentation
                 Vec2 dir = (foot - opposite).Length > 1e-5f ? (foot - opposite).Normalized : (to - from).Perp.Normalized;
                 float reach = 2f * _config.Presets.LayoutMaxVertexRadius;
                 Line(ToGui(opposite - dir * reach), ToGui(opposite + dir * reach), 1.5f, Construction, true);
+            }
+
+            if (_showCentre)
+            {
+                // A small cross, so it can't be mistaken for a bind point.
+                var o = ToGui(Vec2.Zero);
+                Line(o + new Vector2(-6, 0), o + new Vector2(6, 0), 2f, Chalk, false);
+                Line(o + new Vector2(0, -6), o + new Vector2(0, 6), 2f, Chalk, false);
             }
 
             foreach (var p in Current().PointsOnUnitCircle())
@@ -270,6 +356,7 @@ namespace RithmaticDuels.Presentation
             }
             GL.End();
             GL.PopMatrix();
+            GL.Viewport(new Rect(0, 0, Screen.width, Screen.height));
         }
 
         private static Vec2 FootOn(Vec2 point, Vec2 a, Vec2 b)
