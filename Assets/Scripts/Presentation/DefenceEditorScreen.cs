@@ -38,6 +38,14 @@ namespace RithmaticDuels.Presentation
         private ActionPicker _picker;
         private Vector2 _menuScroll;
         private Vector2 _partsScroll;
+        // While dragging a part: the mouse height within the visible parts box, and that box's height.
+        private float _dragViewY;
+        private float _partsViewHeight;
+        private float _lastAutoScroll;
+        /// <summary>Height of the band at each end of the parts box where a dragged part scrolls the list, in GUI pixels.</summary>
+        private const float AutoScrollBand = 30f;
+        /// <summary>Fastest auto-scroll speed (at the very edge), in GUI pixels per second.</summary>
+        private const float AutoScrollSpeed = 400f;
         private string _message;
         private bool _freeHandHeld;
         private int _hoverPartLine = -1;
@@ -430,6 +438,8 @@ namespace RithmaticDuels.Presentation
         {
             var preset = _session.Preset;
             var e = Event.current;
+            _partsViewHeight = height;
+            AutoScroll(e);
             _partsScroll = GUILayout.BeginScrollView(_partsScroll, GUILayout.Height(height));
             try
             {
@@ -480,7 +490,11 @@ namespace RithmaticDuels.Presentation
                 if (_pressIndex >= 0 && e.type == EventType.MouseDrag)
                 {
                     if (!_dragging && (e.mousePosition - _pressMouse).magnitude > DragStart) _dragging = true;
-                    if (_dragging) _dropIndex = DropIndexAt(e.mousePosition.y);
+                    if (_dragging)
+                    {
+                        _dragViewY = e.mousePosition.y - _partsScroll.y;
+                        _dropIndex = DropIndexAt(e.mousePosition.y);
+                    }
                     e.Use();
                 }
                 if (_dragging && e.type == EventType.Repaint && _dropIndex >= 0 && _dropIndex < _rowRects.Count)
@@ -517,6 +531,27 @@ namespace RithmaticDuels.Presentation
                 e.Use();
                 if (_session.Preset.CanMove(_selected, to)) { _message = null; Then(() => { _session.Move(_selected, to); _selected = to; }); }
             }
+        }
+
+        /// <summary>
+        /// While a part is dragged near the top or bottom of the parts box, scrolls the list that way, faster the
+        /// closer it is to the edge, and keeps the drop marker under the mouse. Stops at the ends of the list.
+        /// </summary>
+        private void AutoScroll(Event e)
+        {
+            if (e.type != EventType.Repaint) return;
+            float now = Time.realtimeSinceStartup;
+            float dt = Mathf.Min(0.1f, now - _lastAutoScroll);
+            _lastAutoScroll = now;
+            if (!_dragging || _rowRects.Count == 0) return;
+            float push = 0f;
+            if (_dragViewY < AutoScrollBand) push = -(AutoScrollBand - _dragViewY) / AutoScrollBand;
+            else if (_dragViewY > _partsViewHeight - AutoScrollBand) push = (_dragViewY - (_partsViewHeight - AutoScrollBand)) / AutoScrollBand;
+            if (push == 0f) return;
+            float maxScroll = Mathf.Max(0f, _rowRects[_rowRects.Count - 1].yMax + 8f - _partsViewHeight);
+            float before = _partsScroll.y;
+            _partsScroll.y = Mathf.Clamp(_partsScroll.y + Mathf.Clamp(push, -1f, 1f) * AutoScrollSpeed * dt, 0f, maxScroll);
+            if (_partsScroll.y != before) _dropIndex = DropIndexAt(_dragViewY + _partsScroll.y);
         }
 
         private static GUIStyle SelectedRow(GUIStyle style)
