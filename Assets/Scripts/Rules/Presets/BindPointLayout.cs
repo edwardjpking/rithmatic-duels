@@ -11,6 +11,13 @@ namespace RithmaticDuels.Rules.Presets
     /// crossings that sit on top of each other count once. An ellipse layout has no triangle and always 2 points.
     /// Plain data so it can be saved as JSON.
     /// </summary>
+    /// <summary>
+    /// A lock on one side of the triangle in the bind point editor (DESIGN.md section 6.1). The mirror locks keep the
+    /// side's two vertices mirror images across the horizontal (or vertical) line through the circle's centre; the
+    /// others keep the side horizontal (or vertical).
+    /// </summary>
+    public enum EdgeLock { None, MirrorHorizontal, MirrorVertical, Horizontal, Vertical }
+
     [Serializable]
     public sealed class BindPointLayout
     {
@@ -49,8 +56,8 @@ namespace RithmaticDuels.Rules.Presets
             if (string.IsNullOrWhiteSpace(Name)) return "Give the layout a name.";
             if (IsEllipse) return null;
             if (Vertices == null || Vertices.Length != 3) return "A layout needs three triangle vertices.";
-            if (Math.Abs(Vec2.Cross(Vertices[1] - Vertices[0], Vertices[2] - Vertices[0])) < 1e-4f)
-                return "The triangle's vertices can't lie in a straight line.";
+            // Vertices in a straight line are fine (Amelia, v0.31): the heights are then the lines through each
+            // vertex perpendicular to that line, which is what the construction gives anyway.
             int count = BindPointCount;
             if (count < config.Presets.MinLayoutBindPoints) return "The layout needs at least " + config.Presets.MinLayoutBindPoints + " bind points.";
             return null;
@@ -99,18 +106,15 @@ namespace RithmaticDuels.Rules.Presets
 
         /// <summary>
         /// Whether vertex <paramref name="index"/> may go to <paramref name="spot"/> in the bind point editor: within
-        /// LayoutMaxVertexRadius of the centre, and at least LayoutMinVertexGap from the other two vertices and from
-        /// the line through them, so the triangle can't flatten (DESIGN.md sections 1.1 and 6.1).
+        /// LayoutMaxVertexRadius of the centre, and at least LayoutMinVertexGap from the other two vertices. Vertices
+        /// in a straight line are allowed (DESIGN.md sections 1.1 and 6.1).
         /// </summary>
         public static bool VertexAllowed(Vec2[] vertices, int index, Vec2 spot, PresetsConfig config)
         {
             if (spot.Length > config.LayoutMaxVertexRadius + 1e-5f) return false;
             Vec2 a = vertices[(index + 1) % 3], b = vertices[(index + 2) % 3];
             float gap = config.LayoutMinVertexGap;
-            if (Vec2.Distance(spot, a) < gap || Vec2.Distance(spot, b) < gap) return false;
-            float baseLength = Vec2.Distance(a, b);
-            if (baseLength < 1e-6f) return false;
-            return Math.Abs(Vec2.Cross(b - a, spot - a)) / baseLength >= gap;
+            return Vec2.Distance(spot, a) >= gap && Vec2.Distance(spot, b) >= gap;
         }
 
         /// <summary>Two crossings this close count as the same bind point when snapping.</summary>
@@ -171,6 +175,31 @@ namespace RithmaticDuels.Rules.Presets
                 Triangle("Six-point circle", OnUnit(0f), OnUnit(120f), OnUnit(240f), true),
                 Triangle("Nine-point circle", nine[0], nine[1], nine[2], true),
             };
+        }
+
+        /// <summary>
+        /// Where the other vertex of a locked side must be when one of its vertices is at <paramref name="moved"/>
+        /// (DESIGN.md section 6.1). <paramref name="partner"/> is the other vertex's current spot, used by the
+        /// horizontal and vertical locks, which only fix one coordinate.
+        /// </summary>
+        public static Vec2 LockedPartner(EdgeLock edgeLock, Vec2 moved, Vec2 partner)
+        {
+            switch (edgeLock)
+            {
+                case EdgeLock.MirrorHorizontal: return new Vec2(moved.X, -moved.Y);
+                case EdgeLock.MirrorVertical: return new Vec2(-moved.X, moved.Y);
+                case EdgeLock.Horizontal: return new Vec2(partner.X, moved.Y);
+                case EdgeLock.Vertical: return new Vec2(moved.X, partner.Y);
+                default: return partner;
+            }
+        }
+
+        /// <summary>The vertices turned by <paramref name="radians"/> about the circle's centre (anticlockwise).</summary>
+        public static Vec2[] Rotated(Vec2[] vertices, float radians)
+        {
+            var turned = new Vec2[vertices.Length];
+            for (int i = 0; i < vertices.Length; i++) turned[i] = vertices[i].Rotated(radians);
+            return turned;
         }
 
         public BindPointLayout Clone()

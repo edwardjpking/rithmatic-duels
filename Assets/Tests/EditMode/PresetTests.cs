@@ -47,10 +47,35 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void Layout_CollinearVerticesCantBeSaved()
+        public void Layout_CollinearVerticesAreValid()
         {
+            // Three vertices on a diameter: the line gives 2 points, the perpendicular heights through the outer two
+            // touch the circle at those same points, and the one through the centre adds 2 more.
             var layout = BindPointLayout.Triangle("Flat", new Vec2(-1f, 0f), new Vec2(0f, 0f), new Vec2(1f, 0f));
-            Assert.IsNotNull(layout.Problem(_config));
+            Assert.IsNull(layout.Problem(_config));
+            Assert.AreEqual(4, layout.BindPointCount);
+            Assert.IsTrue(BindPointLayout.VertexAllowed(layout.Vertices, 1, new Vec2(0.5f, 0f), _config.Presets));
+        }
+
+        [Test]
+        public void LockedPartner_FollowsTheLock()
+        {
+            var moved = new Vec2(0.5f, 0.8f);
+            var partner = new Vec2(-1f, -0.2f);
+            Assert.AreEqual(new Vec2(0.5f, -0.8f), BindPointLayout.LockedPartner(EdgeLock.MirrorHorizontal, moved, partner));
+            Assert.AreEqual(new Vec2(-0.5f, 0.8f), BindPointLayout.LockedPartner(EdgeLock.MirrorVertical, moved, partner));
+            Assert.AreEqual(new Vec2(-1f, 0.8f), BindPointLayout.LockedPartner(EdgeLock.Horizontal, moved, partner));
+            Assert.AreEqual(new Vec2(0.5f, -0.2f), BindPointLayout.LockedPartner(EdgeLock.Vertical, moved, partner));
+        }
+
+        [Test]
+        public void Layout_RotatedKeepsCountAndTurnsPoints()
+        {
+            var six = BindPointLayout.Triangle("x", Vec2.FromAngle(0f), Vec2.FromAngle(2.0944f), Vec2.FromAngle(4.18879f));
+            var turned = BindPointLayout.Rotated(six.Vertices, 0.3f);
+            Assert.AreEqual(six.Vertices[0].Length, turned[0].Length, 1e-5f);
+            Assert.AreEqual(0.3f, turned[0].Angle, 1e-5f);
+            Assert.AreEqual(six.BindPointCount, BindPointLayout.Triangle("y", turned[0], turned[1], turned[2]).BindPointCount);
         }
 
         [Test]
