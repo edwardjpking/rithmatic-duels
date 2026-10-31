@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using RithmaticDuels.Rules;
 using RithmaticDuels.Rules.Geometry;
+using RithmaticDuels.Rules.Presets;
 using UnityEngine;
 
 namespace RithmaticDuels.Presentation
@@ -54,6 +55,10 @@ namespace RithmaticDuels.Presentation
     {
         public PlayerAction Action;
         public Placement Placement;
+        /// <summary>A saved defence picked on turn 1: the controller starts building it (DESIGN.md section 6.8).</summary>
+        public DefencePreset StartPreset;
+        /// <summary>The player cancelled the defence being built, for good.</summary>
+        public bool CancelsPreset;
     }
 
     /// <summary>
@@ -199,6 +204,17 @@ namespace RithmaticDuels.Presentation
         private Vec2? _hover;
         private string _clickKey;
 
+        /// <summary>The saved defence this player is building, if any. Set by the duel controller.</summary>
+        public DefenceRun Run;
+        /// <summary>Saved defences offered on turn 1 (DESIGN.md section 6.8). Empty once the player has used or cancelled one.</summary>
+        public IList<DefencePreset> Presets = new List<DefencePreset>();
+        // On turn 1: the saved defence picked (-1 for none, drawing by hand). While building: 0 Continue, 1 Cancel.
+        private int _presetChoice = -1;
+        private int _runChoice = 0;
+        private bool _runPicked;
+        private DefencePreset _pickedPreset;
+        private bool _cancelPreset;
+
         /// <summary>What to draw on the board for the choice in progress. Null when there is nothing to show.</summary>
         public PlacementPreview Preview { get; private set; }
 
@@ -253,6 +269,20 @@ namespace RithmaticDuels.Presentation
             // Unity's clip stack balanced when it does (otherwise: "pushing more GUIClips than popping").
             try
             {
+                if (Run != null && Run.IsRunning)
+                {
+                    action = DrawPresetRun(duel, board, player, out placement, out hint);
+                }
+                else if (OffersPresets(duel, player) && (action = DrawPresetChoice(duel, board, player, out placement, out hint)) != null)
+                {
+                    // A saved defence was picked: its first part (the main LoW) is the action.
+                }
+                else if (_presetChoice >= 0)
+                {
+                    // Picked, but its main LoW can't be drawn: the hint says why.
+                }
+                else
+                {
                 if (_kind.HasValue && !available.Contains(_kind.Value)) _kind = null;
                 // Mid-drawing, carrying on is the usual choice, so it starts selected.
                 if (!_kind.HasValue && !_defaultChosen && available.Contains(ActionKind.ContinueDrawing)) _kind = ActionKind.ContinueDrawing;
@@ -323,6 +353,7 @@ namespace RithmaticDuels.Presentation
                 }
                 if (cancelling && action != null)
                     action = action.Kind == ActionKind.Pass ? PlayerAction.Cancel() : action.AfterCancelling();
+                }
 
             }
             catch (ExitGUIException)
@@ -363,7 +394,124 @@ namespace RithmaticDuels.Presentation
                 }
             }
             if (!locked) return null;
-            return new LockedChoice { Action = action, Placement = placement };
+            return new LockedChoice { Action = action, Placement = placement, StartPreset = _pickedPreset, CancelsPreset = _cancelPreset };
+        }
+
+        private bool OffersPresets(Duel duel, Player player)
+        {
+            return Presets != null && Presets.Count > 0 && Run == null && DefenceRun.CanOffer(duel, player);
+        }
+
+        /// <summary>
+        /// Turn 1 (DESIGN.md section 6.8): a row of saved defences above the main LoW setup. Picking one replaces the
+        /// setup with that defence's main LoW, shown as a picked placement. Returns null while none is picked.
+        /// </summary>
+        private PlayerAction DrawPresetChoice(Duel duel, ChalkBoard board, Player player, out Placement placement, out string hint)
+        {
+            placement = null;
+            hint = null;
+            var labels = new string[Presets.Count + 1];
+            labels[0] = "Draw by hand";
+            for (int i = 0; i < Presets.Count; i++) labels[i + 1] = Presets[i].Name;
+            BeginRow("Defence:");
+            int chosen = Buttons(_presetChoice + 1, labels, NextRowWidth(), 0, null, _presetChoice < 0);
+            GUILayout.EndHorizontal();
+            if (chosen >= 0 && chosen - 1 != _presetChoice)
+            {
+                _presetChoice = chosen - 1;
+                GUIUtility.ExitGUI();
+            }
+            GUILayout.Space(4);
+            _pickedPreset = null;
+            if (_presetChoice < 0) return null;
+
+            var preset = Presets[_presetChoice];
+            GUILayout.Label("Builds " + preset.Name + " part by part (" + (preset.Components.Count + 1) + " parts), each at its normal drawing time. "
+                + "You can only continue or cancel it, and a cancelled defence can't be restarted.");
+            var trial = new DefenceRun(preset, player);
+            DrawingSpec spec; DrawingPace pace;
+            if (!trial.CurrentDrawing(duel, board, out spec, out placement, out pace, out hint)) return null;
+            ShowPart(board, player, spec, placement);
+            _pickedPreset = preset;
+            return PlayerAction.Start(spec, pace);
+        }
+
+        /// <summary>
+        /// A saved defence being built (DESIGN.md section 6.8): only Continue or Cancel, like a multi-turn drawing. The
+        /// next part shows on the board like a picked placement.
+        /// </summary>
+        private PlayerAction DrawPresetRun(Duel duel, ChalkBoard board, Player player, out Placement placement, out string hint)
+        {
+            placement = null;
+            hint = null;
+            var state = duel.GetPlayer(player);
+            int chosen = Buttons(_runChoice, new[] { "Continue", "Cancel" }, _width, 0, null, !_runPicked);
+            if (chosen >= 0 && (chosen != _runChoice || !_runPicked && _repressed))
+            {
+                _runChoice = chosen;
+                _runPicked = true;
+                GUIUtility.ExitGUI();
+            }
+            GUILayout.Space(4);
+            string progress = "Building " + Run.Preset.Name + ": part " + (Run.PartsDone + 1) + " of " + Run.PartCount + ".";
+            _cancelPreset = _runChoice == 1;
+            if (_cancelPreset)
+            {
+                GUILayout.Label(progress + " Cancel scraps the part in progress and ends the defence for good; finished parts stay.");
+                return state.HasWorkInProgress ? PlayerAction.Cancel() : PlayerAction.Pass();
+            }
+            if (state.HasWorkInProgress)
+            {
+                GUILayout.Label(progress + " Keep going. " + state.Work.TurnsRemaining + " turn(s) left on this part, including this one.");
+                return PlayerAction.Continue();
+            }
+            DrawingSpec spec; DrawingPace pace;
+            if (!Run.CurrentDrawing(duel, board, out spec, out placement, out pace, out hint))
+            {
+                hint = "The next part no longer fits (" + hint + "). Cancel to end the defence.";
+                return null;
+            }
+            GUILayout.Label(progress + " Start the next part, " + DescribePart(spec) + ".");
+            ShowPart(board, player, spec, placement);
+            return PlayerAction.Start(spec, pace);
+        }
+
+        private static string DescribePart(DrawingSpec spec)
+        {
+            switch (spec.Type)
+            {
+                case LineType.Warding: return spec.IsMarksCross ? "a Mark's Cross" : "a Line of Warding";
+                case LineType.Forbiddance: return "a Line of Forbiddance";
+                case LineType.Making: return spec.IsBound ? "a bound chalkling" : "a chalkling";
+                default: return "a line";
+            }
+        }
+
+        /// <summary>Shows a preset part on the board as a picked (light blue) placement.</summary>
+        private void ShowPart(ChalkBoard board, Player player, DrawingSpec spec, Placement placement)
+        {
+            var preview = new PlacementPreview { Player = player };
+            switch (spec.Type)
+            {
+                case LineType.Warding:
+                    IReadOnlyList<Vec2> points;
+                    preview.Ward = board.PreviewWard(player, spec, placement, out points);
+                    preview.WardBindPoints = points;
+                    preview.WardChosen = true;
+                    if (spec.IsMarksCross && preview.Ward != null) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
+                    break;
+                case LineType.Forbiddance:
+                    preview.Segment = board.PreviewForbiddance(player, placement);
+                    break;
+                case LineType.Making:
+                    preview.Point = placement.Kind == PlacementKind.FreePoint ? placement.PointA : board.BoundChalklingSpot(player, placement.BindPointA);
+                    preview.ChalklingGlyph = spec.Glyph;
+                    preview.ChalklingAnchor = preview.Point;
+                    break;
+            }
+            if (placement.BindPointA >= 0) preview.BindPoints.Add(placement.BindPointA);
+            if (placement.BindPointB >= 0) preview.BindPoints.Add(placement.BindPointB);
+            Preview = preview;
         }
 
         /// <summary>What can follow a cancel: the menu as it would be with nothing in progress.</summary>
