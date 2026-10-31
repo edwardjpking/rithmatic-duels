@@ -331,7 +331,7 @@ A **defence** is the arrangement of lines a player draws around their main LoW. 
 3. More bind points are placed where the **altitude through each vertex, extended to a full line**, intersects the circumference.
 4. This gives a **maximum of 12** bind points (3 edges and 3 altitude lines, each crossing the circle at up to 2 points).
 
-A set of default bind-point presets gives the standard circles (4, 6 and 9 points) used by the defences below. Players can also create and save their own triangle constructions as custom bind point layouts in the **bind point editor** (decided 2026-10-31, built in step 5). It follows the construction in Amelia's GeoGebra sketch (https://www.geogebra.org/geometry/pjutbhdb): place the triangle's three vertices around the circle, and the bind points appear where the edges and extended altitudes cross it. A custom layout can be picked as a main LoW's bind points like the standard ones, and its draw time follows the usual rule (bind points div 2).
+A set of default bind-point presets gives the standard circles (4, 6 and 9 points) used by the defences below. Players can also create and save their own triangle constructions as custom bind point layouts in the **bind point editor** (decided 2026-10-31, built in step 5). It follows the construction in Amelia's GeoGebra sketch (https://www.geogebra.org/geometry/pjutbhdb): place the triangle's three vertices around the circle, and the bind points appear where the edges and extended altitudes cross it. Every crossing is kept. When two bind points come close together, the vertex being dragged snaps to the nearest spot where they sit exactly on top of each other, and they count as one bind point (decided 2026-10-31; how close counts as close is a placeholder in data). A custom layout can be picked as a main LoW's bind points like the standard ones, and its draw time follows the usual rule (bind points div 2).
 
 ### 6.2 Vocabulary
 
@@ -450,7 +450,9 @@ Decided 2026-10-31 (built in build step 5).
 - **Cancelling.** Cancel scraps the part in progress and ends the preset. A cancelled preset can't be restarted that duel. Finished parts stay.
 - **Saving time, not drawing time.** A preset gives **no** reduction in drawing time, only in thinking time.
 - **Shipped presets.** For now one default preset per standard bind point layout (four-point, six-point and nine-point circles and the ellipse). More come later.
-- **Editors.** The defence editor and the bind point editor are two separate screens. They move into a main menu in build step 6; until then they are opened from the duel screen.
+- **Saving.** Custom presets and bind point layouts are saved in a file in Unity's per-user data folder (`Application.persistentDataPath`), outside the project folder, so they never end up in the repo. The default presets ship with the game.
+- **Chalklings.** A preset can include LoM; a chalkling's stats and glyph are set in the editor.
+- **Editors.** The defence editor and the bind point editor are two separate screens. They move into a main menu in build step 6; until then they are opened from two buttons in the duel screen's top bar, "Defence editor" and "Bind points editor". Defaults: Ballintain (four-point), Eskridge (six-point), Easton (nine-point) and Jordan (ellipse).
 
 **All defences are legal.** Some will be better than others, and that is intended. If one proves too strong it is rebalanced through its cost, not banned.
 
