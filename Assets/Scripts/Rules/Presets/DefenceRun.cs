@@ -11,7 +11,7 @@ namespace RithmaticDuels.Rules.Presets
         Finished,
         /// <summary>The player cancelled it. It can't be restarted this duel.</summary>
         Cancelled,
-        /// <summary>A part no longer fits (something got in the way); the preset ends and finished parts stay.</summary>
+        /// <summary>The main LoW couldn't be drawn; the preset ends. (Other parts that don't fit are skipped.)</summary>
         Blocked,
     }
 
@@ -65,6 +65,24 @@ namespace RithmaticDuels.Rules.Presets
         /// </summary>
         public bool CurrentDrawing(Duel duel, ChalkBoard board, out DrawingSpec spec, out Placement placement, out DrawingPace pace, out string problem)
         {
+            // A part that no longer fits (say the LoW it binds to was destroyed) is skipped, and the next part that
+            // can be built is loaded instead (Amelia, 2026-10-31). Only a main LoW that can't be drawn stops the run.
+            while (true)
+            {
+                bool ok = TryCurrent(duel, board, out spec, out placement, out pace, out problem);
+                if (ok || !IsRunning || CurrentIndex < 0) return ok;
+                if (duel.GetPlayer(Player).HasWorkInProgress) return false;
+                Skipped.Add(Preset.Components[CurrentIndex].Id);
+                CurrentIndex++;
+                if (CurrentIndex >= Preset.Components.Count) { State = DefenceRunState.Finished; return false; }
+            }
+        }
+
+        /// <summary>Parts skipped because they no longer fitted when their turn came.</summary>
+        public readonly List<int> Skipped = new List<int>();
+
+        private bool TryCurrent(Duel duel, ChalkBoard board, out DrawingSpec spec, out Placement placement, out DrawingPace pace, out string problem)
+        {
             spec = null; placement = null; pace = DrawingPace.Normal; problem = null;
             if (!IsRunning) { problem = "The defence isn't being built."; return false; }
             if (CurrentIndex < 0)
@@ -99,6 +117,8 @@ namespace RithmaticDuels.Rules.Presets
             DrawingSpec spec; DrawingPace pace; string problem;
             if (!CurrentDrawing(duel, board, out spec, out placement, out pace, out problem))
             {
+                placement = null;
+                if (!IsRunning) return null;
                 State = DefenceRunState.Blocked;
                 BlockedReason = problem;
                 placement = null;
