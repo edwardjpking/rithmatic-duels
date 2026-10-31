@@ -242,6 +242,8 @@ namespace RithmaticDuels.Rules
             var placed = new MovementResult();
             _movement.PlaceNewLines(this, placed);
             ApplyMovementResult(placed, report, breachTime);
+            // A line that finished bound to a bind point broken earlier this tick falls straight away (DESIGN.md section 4.1).
+            DestroyUnboundLines(report, breachTime);
 
             if (fatigueTurn > 0 && fatigueTurn % Config.ChalkFatigue.IntervalTurns == 0)
             {

@@ -19,6 +19,8 @@ namespace RithmaticDuels.Presentation
         public IReadOnlyList<Vec2> WardBindPoints;
         /// <summary>A previewed Mark's Cross's crossed LoF.</summary>
         public IReadOnlyList<Segment> Braces;
+        /// <summary>The crossed LoF of a Mark's Cross that only follows the mouse (<see cref="GhostWard"/>).</summary>
+        public IReadOnlyList<Segment> GhostBraces;
         /// <summary>Bind points that can't be picked for this drawing, filled in red.</summary>
         public IReadOnlyList<Vec2> BlockedBindPoints;
         /// <summary>Where the mouse is, if a click there would be ignored because nothing can be placed there: marked with a red cross.</summary>
@@ -46,6 +48,11 @@ namespace RithmaticDuels.Presentation
         public bool ChalklingHovered;
         /// <summary>A bind point under the mouse that a click would pick, ringed faintly.</summary>
         public Vec2? HoverBindPoint;
+        /// <summary>Every part of a picked saved defence, where it will be built: LoW, their bind points, LoF and chalklings.</summary>
+        public readonly List<WardShape> TemplateWards = new List<WardShape>();
+        public readonly List<Vec2> TemplateBindPoints = new List<Vec2>();
+        public readonly List<Segment> TemplateSegments = new List<Segment>();
+        public readonly List<KeyValuePair<Vec2, Glyph>> TemplateChalklings = new List<KeyValuePair<Vec2, Glyph>>();
         /// <summary>Bind points of the main LoW the player has picked.</summary>
         public readonly List<int> BindPoints = new List<int>();
     }
@@ -454,12 +461,15 @@ namespace RithmaticDuels.Presentation
             if (_presetChoice < 0) return null;
 
             var preset = Presets[_presetChoice];
-            GUILayout.Label("Builds " + preset.Name + " part by part (" + (preset.Components.Count + 1) + " parts), each at its normal drawing time. "
+            var built = TemplateOf(preset, duel.Config, player);
+            GUILayout.Label("Builds " + preset.Name + " part by part (" + (preset.Components.Count + 1) + " parts), each at its normal drawing time: "
+                + built.Turns + " turn(s) in all, before modifiers. "
                 + "You can only continue or cancel it, and a cancelled defence can't be restarted.");
             var trial = new DefenceRun(preset, player);
             DrawingSpec spec; DrawingPace pace;
             if (!trial.CurrentDrawing(duel, board, out spec, out placement, out pace, out hint)) return null;
             ShowPart(board, player, spec, placement);
+            ShowTemplate(built, player);
             _pickedPreset = preset;
             return PlayerAction.Start(spec, pace);
         }
@@ -518,6 +528,39 @@ namespace RithmaticDuels.Presentation
                 case LineType.Forbiddance: return "a Line of Forbiddance";
                 case LineType.Making: return spec.IsBound ? "a bound chalkling" : "a chalkling";
                 default: return "a line";
+            }
+        }
+
+        private DefenceTrial _template;
+        private DefencePreset _templateOf;
+        private Player _templateFor;
+
+        /// <summary>The picked defence built on a scratch board, worked out again only when the pick changes.</summary>
+        private DefenceTrial TemplateOf(DefencePreset preset, RulesConfig config, Player player)
+        {
+            if (_template == null || _templateOf != preset || _templateFor != player)
+            {
+                _template = DefenceCheck.Trial(preset, config, player);
+                _templateOf = preset;
+                _templateFor = player;
+            }
+            return _template;
+        }
+
+        /// <summary>Adds every part of a picked defence to the preview, as picked placements (Amelia, v0.31).</summary>
+        private void ShowTemplate(DefenceTrial built, Player player)
+        {
+            if (Preview == null) Preview = new PlacementPreview { Player = player };
+            foreach (var line in built.Duel.Lines)
+            {
+                if (line.Owner != player || !line.IsActive) continue;
+                var body = built.Board.BodyOf(line.Id);
+                var ward = body as WardBody;
+                if (ward != null) { Preview.TemplateWards.Add(ward.Shape); Preview.TemplateBindPoints.AddRange(ward.BindPoints); continue; }
+                var forbiddance = body as ForbiddanceBody;
+                if (forbiddance != null) { Preview.TemplateSegments.Add(forbiddance.Segment); continue; }
+                var chalkling = body as ChalklingBody;
+                if (chalkling != null) Preview.TemplateChalklings.Add(new KeyValuePair<Vec2, Glyph>(chalkling.Position, line.Glyph));
             }
         }
 
@@ -623,6 +666,14 @@ namespace RithmaticDuels.Presentation
         /// </summary>
         public bool HandleRightClick(ChalkBoard board, Player player, RulesConfig config)
         {
+            // A saved defence being built: stepping back returns to Continue, selected as the default (Amelia, v0.31).
+            if (Run != null && Run.IsRunning)
+            {
+                if (!_runPicked && _runChoice == 0) return false;
+                _runChoice = 0;
+                _runPicked = false;
+                return true;
+            }
             bool needsMain = board.MainWardOf(player) == null && config.MainWardFirst;
             if (Effective == ActionKind.StartDrawing)
             {
@@ -945,7 +996,13 @@ namespace RithmaticDuels.Presentation
                             if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
                             if (preview.Ward != null) GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability, before its modifier.");
                         }
-                        else preview.GhostWard = board.PreviewWard(player, spec, at);
+                        else
+                        {
+                            // Under the mouse, before it is picked: a Mark's Cross shows its crossed LoF too.
+                            IReadOnlyList<Vec2> ghostPoints;
+                            preview.GhostWard = board.PreviewWard(player, spec, at, out ghostPoints);
+                            if (preview.GhostWard != null && count == 0) preview.GhostBraces = ChalkBoard.MarksCrossBraces(preview.GhostWard, ghostPoints);
+                        }
                     }
                     preview.BlockedBindPoints = BlockedBindPoints(board, player);
                     break;
@@ -1157,7 +1214,11 @@ namespace RithmaticDuels.Presentation
             var placedTether = PlacedChalklingMode;
             BeginRow("Tether:");
             int tetherMask = _bindA >= 0 ? 1 << (int)ChalklingMode.Free : _pointA.HasValue ? 1 << (int)ChalklingMode.Bound : 0;
-            int chosenTether = ChooseShown(placedTether.HasValue ? (int)placedTether.Value : -1, ChalklingLabels, tetherMask, StepBackReason);
+            // A bound chalkling must Defend, so once Attack is chosen binding is greyed out (Amelia, v0.31).
+            bool attacking = _glyph == Glyph.Attack && !_pointA.HasValue && _bindA < 0;
+            if (attacking) tetherMask |= 1 << (int)ChalklingMode.Bound;
+            int chosenTether = ChooseShown(placedTether.HasValue ? (int)placedTether.Value : -1, ChalklingLabels, tetherMask,
+                attacking ? "A bound chalkling must Defend. Choose Defend to bind it." : StepBackReason);
             if (chosenTether >= 0)
             {
                 _chalklingMode = (ChalklingMode)chosenTether;
