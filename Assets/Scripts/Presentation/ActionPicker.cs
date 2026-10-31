@@ -240,6 +240,8 @@ namespace RithmaticDuels.Presentation
         public IList<DefencePreset> Presets = new List<DefencePreset>();
         // On turn 1: the saved defence picked (-1 for none, drawing by hand). While building: 0 Continue, 1 Cancel.
         private int _presetChoice = -1;
+        // Later in the duel the Defence row hides behind a "Use a saved defence" button until it is pressed (Amelia, v0.32).
+        private bool _showLaterPresets;
         private int _runChoice = 0;
         private bool _runPicked;
         private DefencePreset _pickedPreset;
@@ -445,6 +447,16 @@ namespace RithmaticDuels.Presentation
         {
             placement = null;
             hint = null;
+            if (board.MainWardOf(player) != null && !_showLaterPresets)
+            {
+                if (GUILayout.Button("Use a saved defence"))
+                {
+                    _showLaterPresets = true;
+                    GUIUtility.ExitGUI();
+                }
+                GUILayout.Space(4);
+                return null;
+            }
             var labels = new string[Presets.Count + 1];
             labels[0] = "Draw by hand";
             // With the main LoW already drawn, only defences on the same bind point layout can be picked (Amelia, v0.32).
@@ -468,6 +480,8 @@ namespace RithmaticDuels.Presentation
             if (chosen >= 0 && chosen - 1 != _presetChoice && !Unusable(unusable, chosen))
             {
                 _presetChoice = chosen - 1;
+                // Later in the duel, "Draw by hand" folds the row back into its button.
+                if (laterOffer && _presetChoice < 0) _showLaterPresets = false;
                 GUIUtility.ExitGUI();
             }
             GUILayout.Space(4);
@@ -684,6 +698,13 @@ namespace RithmaticDuels.Presentation
         /// </summary>
         public bool HandleRightClick(ChalkBoard board, Player player, RulesConfig config)
         {
+            // The later Defence row: un-pick the defence first, then fold the row back into its button.
+            if (_showLaterPresets && Run == null)
+            {
+                if (_presetChoice >= 0) _presetChoice = -1;
+                else _showLaterPresets = false;
+                return true;
+            }
             // A saved defence being built: stepping back returns to Continue, selected as the default (Amelia, v0.31).
             if (Run != null && Run.IsRunning)
             {
