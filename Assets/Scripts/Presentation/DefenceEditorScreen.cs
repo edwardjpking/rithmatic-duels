@@ -45,6 +45,8 @@ namespace RithmaticDuels.Presentation
         private int _dropIndex = -1;
         /// <summary>The part last clicked, which the Up and Down arrows move. -1 for none.</summary>
         private int _selected = -1;
+        /// <summary>A layout picked while the defence has parts, waiting for the player to confirm clearing them. -1 for none.</summary>
+        private int _pendingLayout = -1;
         private readonly List<Rect> _rowRects = new List<Rect>();
 
         private Texture2D _crossCursor;
@@ -227,8 +229,8 @@ namespace RithmaticDuels.Presentation
             var names = new List<string>();
             foreach (var p in _library.Presets) names.Add(p.IsDefault ? p.Name + " (default)" : p.Name);
             int picked = ButtonGrid(names, shown, width);
-            if (picked >= 0) { _message = null; _selected = -1; Then(() => Edit(_library.Presets[picked])); }
-            if (GUILayout.Button("New defence")) { _message = null; _selected = -1; Then(() => NewDefence(preset.Layout)); }
+            if (picked >= 0) { _message = null; _selected = -1; _pendingLayout = -1; Then(() => Edit(_library.Presets[picked])); }
+            if (GUILayout.Button("New defence")) { _message = null; _selected = -1; _pendingLayout = -1; Then(() => NewDefence(preset.Layout)); }
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("Name:", GUILayout.Width(100));
@@ -245,12 +247,28 @@ namespace RithmaticDuels.Presentation
                 layoutNames.Add(_library.Layouts[i].Name);
                 if (_library.Layouts[i].Name == preset.Layout.Name) layoutShown = i;
             }
-            bool layoutLocked = preset.Components.Count > 0;
-            GUI.enabled = !layoutLocked;
-            int layoutPicked = ButtonGrid(layoutNames, layoutShown, width);
-            GUI.enabled = true;
-            if (layoutLocked) GUILayout.Label("Remove every part to change the layout.");
-            if (layoutPicked >= 0 && layoutPicked != layoutShown && !layoutLocked) Then(() => _session.SetLayout(_library.Layouts[layoutPicked]));
+            int layoutPicked = ButtonGrid(layoutNames, _pendingLayout >= 0 ? _pendingLayout : layoutShown, width);
+            if (layoutPicked >= 0 && layoutPicked != layoutShown)
+            {
+                // With no parts nothing is lost, so the layout changes at once; otherwise ask first.
+                if (preset.Components.Count == 0) Then(() => _session.SetLayout(_library.Layouts[layoutPicked]));
+                else Then(() => _pendingLayout = layoutPicked);
+            }
+            else if (layoutPicked == layoutShown && _pendingLayout >= 0) Then(() => _pendingLayout = -1);
+            if (_pendingLayout >= 0 && _pendingLayout < _library.Layouts.Count)
+            {
+                // Every part is bound to bind points of this layout, so switching clears them.
+                Colored(MenuSkin.Refused, "Switching to " + _library.Layouts[_pendingLayout].Name + " removes all "
+                    + preset.Components.Count + " parts of this defence. This can't be undone.");
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("Switch and remove parts"))
+                {
+                    int chosen = _pendingLayout;
+                    Then(() => { _pendingLayout = -1; _selected = -1; _session.SetLayout(_library.Layouts[chosen]); });
+                }
+                if (GUILayout.Button("Keep current layout")) Then(() => _pendingLayout = -1);
+                GUILayout.EndHorizontal();
+            }
 
             DrawEllipseWidth();
 
