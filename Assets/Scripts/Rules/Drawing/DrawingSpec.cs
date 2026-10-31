@@ -46,6 +46,12 @@ namespace RithmaticDuels.Rules
         /// </summary>
         public float Length;
 
+        /// <summary>
+        /// Main LoW only: a custom bind point layout (DESIGN.md section 6.1). Null means the standard one for
+        /// <see cref="BindPoints"/>. When set, BindPoints must equal its bind point count.
+        /// </summary>
+        public Presets.BindPointLayout Layout;
+
         public int TotalStatBuffs { get { return DurabilityBuffs + DamageBuffs + SpeedBuffs; } }
 
         /// <summary>LoM only: a bound chalkling must carry the Defend glyph.</summary>

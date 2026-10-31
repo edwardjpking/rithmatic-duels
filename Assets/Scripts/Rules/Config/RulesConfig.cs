@@ -84,6 +84,7 @@ namespace RithmaticDuels.Rules
         public ForbiddanceConfig Forbiddance = new ForbiddanceConfig();
         public VigorConfig Vigor = new VigorConfig();
         public MakingConfig Making = new MakingConfig();
+        public PresetsConfig Presets = new PresetsConfig();
 
         public PaceConfig Rush = new PaceConfig { TimeMultiplier = 0.5, Rounding = RoundingMode.Up };
         public PaceConfig Steady = new PaceConfig { TimeMultiplier = 1.5, Rounding = RoundingMode.Up };
@@ -232,6 +233,19 @@ namespace RithmaticDuels.Rules
         /// <summary>Every main LoW loses DurabilityLoss once every this many fatigue turns.</summary>
         public int IntervalTurns = 3;
         public int DurabilityLoss = 1;
+    }
+
+    [Serializable]
+    /// <summary>Saved defence presets and bind point layouts (DESIGN.md sections 6.1 and 6.8). Placeholders.</summary>
+    public sealed class PresetsConfig
+    {
+        /// <summary>Fewest bind points a custom layout may have.</summary>
+        public int MinLayoutBindPoints = 3;
+        /// <summary>
+        /// In the bind point editor, when two bind points come this close (as a fraction of the circle's radius),
+        /// the dragged vertex snaps so they sit exactly on top of each other.
+        /// </summary>
+        public float LayoutSnapDistance = 0.08f;
     }
 
     [Serializable]
