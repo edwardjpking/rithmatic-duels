@@ -80,5 +80,34 @@ namespace RithmaticDuels.Rules.Tests
             session.Remove(wardId);
             Assert.AreEqual(0, session.Preset.Components.Count);
         }
+    
+        [Test]
+        public void MainEllipseWidth_CanBeSet_AndIsSaved()
+        {
+            var session = NewSession("Ellipse");
+            var sizes = session.MainEllipseSizes();
+            Assert.Greater(sizes.Count, 1);
+            Assert.IsTrue(session.SetMainSemiMinor(sizes[0]));
+            Assert.AreEqual(sizes[0], session.Preset.MainSemiMinor, 1e-4f);
+            Assert.AreEqual(sizes[0], session.MainSemiMinor, 1e-3f);
+            Assert.IsFalse(session.SetMainSemiMinor(99f));
+        }
+
+        [Test]
+        public void MainEllipseWidth_LeavesOutWidthsThatBreakAPart()
+        {
+            var session = NewSession("Ellipse");
+            Assert.IsTrue(session.SetMainSemiMinor(session.MainEllipseSizes()[0]));
+            int before = session.MainEllipseSizes().Count;
+            var centre = session.Board.MainWardOf(Player.A).Shape.Centre;
+            // A free LoF just outside the default ellipse's side: a wider ellipse would cross it.
+            float y = session.MainSemiMinor + 0.6f;
+            var a = centre + new Vec2(-1f, y);
+            var b = centre + new Vec2(1f, y);
+            var spec = session.Board.Measure(Player.A, DrawingSpec.Forbiddance(0), Placement.Segment(a, b));
+            string problem = session.Add(spec, Placement.Segment(a, b), DrawingPace.Normal);
+            Assume.That(problem, Is.Null, problem);
+            Assert.Less(session.MainEllipseSizes().Count, before);
+        }
     }
 }

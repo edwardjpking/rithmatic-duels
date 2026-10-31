@@ -43,6 +43,8 @@ namespace RithmaticDuels.Presentation
         private Vector2 _pressMouse;
         private bool _dragging;
         private int _dropIndex = -1;
+        /// <summary>The part last clicked, which the Up and Down arrows move. -1 for none.</summary>
+        private int _selected = -1;
         private readonly List<Rect> _rowRects = new List<Rect>();
 
         private Texture2D _crossCursor;
@@ -225,8 +227,8 @@ namespace RithmaticDuels.Presentation
             var names = new List<string>();
             foreach (var p in _library.Presets) names.Add(p.IsDefault ? p.Name + " (default)" : p.Name);
             int picked = ButtonGrid(names, shown, width);
-            if (picked >= 0) { _message = null; Then(() => Edit(_library.Presets[picked])); }
-            if (GUILayout.Button("New defence")) { _message = null; Then(() => NewDefence(preset.Layout)); }
+            if (picked >= 0) { _message = null; _selected = -1; Then(() => Edit(_library.Presets[picked])); }
+            if (GUILayout.Button("New defence")) { _message = null; _selected = -1; Then(() => NewDefence(preset.Layout)); }
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("Name:", GUILayout.Width(100));
@@ -250,8 +252,10 @@ namespace RithmaticDuels.Presentation
             if (layoutLocked) GUILayout.Label("Remove every part to change the layout.");
             if (layoutPicked >= 0 && layoutPicked != layoutShown && !layoutLocked) Then(() => _session.SetLayout(_library.Layouts[layoutPicked]));
 
+            DrawEllipseWidth();
+
             GUILayout.Space(4);
-            GUILayout.Label("Build order (drag to reorder; a part can't go above the line it is bound to):");
+            GUILayout.Label("Build order (drag, or click a part and use the Up and Down arrows; a part can't go above the line it is bound to):");
             DrawParts(width, Mathf.Min(220f, RowHeight * (preset.Components.Count + 1) + 8f));
 
             GUILayout.Space(4);
@@ -298,6 +302,34 @@ namespace RithmaticDuels.Presentation
                 _checkedProblem = _session.SaveProblem(_library, _editing);
             }
             return _checkedProblem;
+        }
+
+        /// <summary>
+        /// The main ellipse's width (DESIGN.md 4.1), stepped by one durability at its weakest point with - and +, as
+        /// the LoM stat boxes are. Widths that would stop a part being built aren't offered.
+        /// </summary>
+        private void DrawEllipseWidth()
+        {
+            if (!_session.Preset.Layout.IsEllipse) return;
+            var sizes = _session.MainEllipseSizes();
+            float now = _session.MainSemiMinor;
+            int index = -1;
+            for (int i = 0; i < sizes.Count; i++) if (Mathf.Abs(sizes[i] - now) < 1e-3f) index = i;
+            var main = _session.Board.MainWardOf(_session.Player);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Main ellipse width:", GUILayout.Width(140));
+            // Wider is weaker at its sides, so - and + follow durability, as scrolling does in a duel.
+            GUI.enabled = index >= 0 && index < sizes.Count - 1;
+            bool weaker = GUILayout.Button("-", GUILayout.Width(28));
+            GUI.enabled = true;
+            GUILayout.Label(now.ToString("0.00") + (main != null ? "  (weakest point " + main.Weakest + ")" : ""), GUILayout.Width(170));
+            GUI.enabled = index > 0;
+            bool stronger = GUILayout.Button("+", GUILayout.Width(28));
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+            if (sizes.Count > 0 && index < 0) GUILayout.Label("Pick a width with - or +.");
+            if (weaker) Then(() => _session.SetMainSemiMinor(sizes[index + 1]));
+            if (stronger) Then(() => _session.SetMainSemiMinor(sizes[index - 1]));
         }
 
         private void Save()
@@ -348,7 +380,7 @@ namespace RithmaticDuels.Presentation
                     if (outOfRange || failed) GUI.backgroundColor = MenuSkin.Refused;
                     // The part being dragged looks selected.
                     // Drawn as a label in the button look (the selected look while dragged), so it never takes the press itself.
-                    GUILayout.Label(label, _dragging && i == _pressIndex ? SelectedRow(style) : style, GUILayout.Height(RowHeight), GUILayout.ExpandWidth(true));
+                    GUILayout.Label(label, (_dragging && i == _pressIndex) || (!_dragging && i == _selected) ? SelectedRow(style) : style, GUILayout.Height(RowHeight), GUILayout.ExpandWidth(true));
                     GUI.backgroundColor = colour;
                     var rowRect = GUILayoutUtility.GetLastRect();
                     if (e.type == EventType.Repaint)
@@ -360,7 +392,7 @@ namespace RithmaticDuels.Presentation
                     {
                         int id = part.Id;
                         _message = null;
-                        Then(() => _session.Remove(id));
+                        _selected = -1; Then(() => _session.Remove(id));
                     }
                     GUILayout.EndHorizontal();
                 }
@@ -393,7 +425,17 @@ namespace RithmaticDuels.Presentation
                 _dragging = false;
                 _dropIndex = -1;
                 // A drop on a place it can't go does nothing; the red showed why.
-                if (wasDragging && to >= 0 && to != from) { _message = null; Then(() => _session.Move(from, to)); }
+                if (wasDragging && to >= 0 && to != from) { _message = null; _selected = -1; Then(() => _session.Move(from, to)); }
+                // A click without a drag selects the part for the arrow keys.
+                if (!wasDragging) { _selected = _selected == from ? -1 : from; e.Use(); }
+            }
+            // Up and Down move the selected part one place, but never above its parent or below a part built on it.
+            if (_selected >= 0 && e.type == EventType.KeyDown && (e.keyCode == KeyCode.UpArrow || e.keyCode == KeyCode.DownArrow)
+                && GUI.GetNameOfFocusedControl() != NameField)
+            {
+                int to = _selected + (e.keyCode == KeyCode.UpArrow ? -1 : 1);
+                e.Use();
+                if (_session.Preset.CanMove(_selected, to)) { _message = null; Then(() => { _session.Move(_selected, to); _selected = to; }); }
             }
         }
 
