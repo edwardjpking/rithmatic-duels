@@ -308,6 +308,11 @@ namespace RithmaticDuels.Presentation
                     Disc(bindPoints[index], BindPointSize / 2f + BindPointRingWidth / 2f, PreviewColour);
             if (preview.HoverBindPoint.HasValue)
                 Disc(preview.HoverBindPoint.Value, BindPointSize / 2f + BindPointRingWidth / 2f, WithAlpha(HoverPlacementColour, 0.6f));
+            // A picked saved defence: the whole template, in the picked-placement colour.
+            foreach (var shape in preview.TemplateWards) Outline(shape, false, PreviewColour);
+            foreach (var segment in preview.TemplateSegments) Line(segment.A, segment.B, ForbiddanceWidth, PreviewColour);
+            foreach (var chalkling in preview.TemplateChalklings) Chalkling(chalkling.Key, chalkling.Value, PreviewColour);
+            foreach (var point in preview.TemplateBindPoints) BindPoint(point, PreviewColour);
             if (preview.WardBindPoints != null)
                 foreach (var point in preview.WardBindPoints) BindPoint(point, PreviewColour);
             // Bind points that can't be picked for this drawing are filled in red, inside their ring.
@@ -326,6 +331,8 @@ namespace RithmaticDuels.Presentation
                 foreach (var spot in preview.Presets) Diamond(spot, 0.3f, WithAlpha(PreviewColour, 0.6f));
             // A main LoW placed freely (MainWardAtHome off) also follows the mouse as a ghost.
             if (preview.GhostWard != null) Outline(preview.GhostWard, true, WithAlpha(HoverPlacementColour, 0.6f));
+            if (preview.GhostBraces != null)
+                foreach (var brace in preview.GhostBraces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, WithAlpha(HoverPlacementColour, 0.6f));
             if (preview.Ward != null) Outline(preview.Ward, !preview.WardChosen, PreviewColour);
             if (preview.Braces != null)
                 foreach (var brace in preview.Braces) Line(brace.A, brace.B, ForbiddanceWidth * 0.7f, PreviewColour);

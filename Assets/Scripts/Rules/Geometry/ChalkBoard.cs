@@ -836,7 +836,12 @@ namespace RithmaticDuels.Rules.Geometry
                 if (!_bodies.TryGetValue(line.Id, out body))
                 {
                     // A Mark's Cross's crossed LoF go where its bind points are, so they have no placement of their own.
-                    body = CreateBody(line, line.BraceOf >= 0 ? Placement.Default() : TakePending(line));
+                    var lostAnchors = new List<Vec2>();
+                    body = CreateBody(line, line.BraceOf >= 0 ? Placement.Default() : TakePending(line, lostAnchors));
+                    // A bound drawing whose bind point went while it was drawn (its LoW broke, even in the tick it
+                    // finishes) is anchored where that point was, so it falls with its LoW like any bound line
+                    // (DESIGN.md section 4.1) instead of landing on whatever bind point now has its old index.
+                    if (lostAnchors.Count > 0) body.Anchors = lostAnchors.ToArray();
                     _bodies[line.Id] = body;
                     var newForbiddance = body as ForbiddanceBody;
                     if (newForbiddance != null) PutBehind(newForbiddance);
@@ -963,29 +968,52 @@ namespace RithmaticDuels.Rules.Geometry
             return true;
         }
 
-        private Placement TakePending(Line line)
+        private Placement TakePending(Line line, List<Vec2> lostAnchors)
         {
             var pending = _pending[(int)line.Owner];
             _pending[(int)line.Owner] = default(PendingPlacement);
             if (!pending.IsSet || pending.Type != line.Type) return Placement.Default();
-            return ResolvePending(line.Owner, pending);
+            return ResolvePending(line.Owner, pending, lostAnchors);
         }
 
         /// <summary>The pending placement with its bind points found again where they were when it was started.</summary>
-        private Placement ResolvePending(Player owner, PendingPlacement pending)
+        /// <summary>
+        /// The pending placement with its bind points found again where they were when it was started. A bind point
+        /// that is gone becomes -1 (never another point that now has its index) and its old spot goes into
+        /// <paramref name="lostAnchors"/>, if given.
+        /// </summary>
+        private Placement ResolvePending(Player owner, PendingPlacement pending, List<Vec2> lostAnchors = null)
         {
             var placement = pending.Placement.Clone();
             var points = BindPointsOf(owner);
-            if (placement.BindPositionA.HasValue) placement.BindPointA = NearestIndex(points, placement.BindPositionA.Value, placement.BindPointA);
-            if (placement.BindPositionB.HasValue) placement.BindPointB = NearestIndex(points, placement.BindPositionB.Value, placement.BindPointB);
+            if (placement.BindPositionA.HasValue)
+            {
+                placement.BindPointA = NearestIndex(points, placement.BindPositionA.Value);
+                if (placement.BindPointA < 0 && lostAnchors != null)
+                {
+                    lostAnchors.Add(placement.BindPositionA.Value);
+                    // Only so the line has some shape for the moment before it falls; it never stays.
+                    if (points.Count > 0) placement.BindPointA = 0;
+                }
+            }
+            if (placement.BindPositionB.HasValue)
+            {
+                placement.BindPointB = NearestIndex(points, placement.BindPositionB.Value);
+                if (placement.BindPointB < 0 && lostAnchors != null)
+                {
+                    lostAnchors.Add(placement.BindPositionB.Value);
+                    // Only so the line has some shape for the moment before it falls; it never stays.
+                    if (points.Count > 0) placement.BindPointB = 0;
+                }
+            }
             return placement;
         }
 
-        private static int NearestIndex(IReadOnlyList<Vec2> points, Vec2 position, int fallback)
+        private static int NearestIndex(IReadOnlyList<Vec2> points, Vec2 position)
         {
             for (int i = 0; i < points.Count; i++)
                 if (Vec2.Distance(points[i], position) < SameBindPoint) return i;
-            return fallback;
+            return -1;
         }
 
         private LineBody CreateBody(Line line, Placement placement)
