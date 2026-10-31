@@ -454,6 +454,9 @@ Decided 2026-10-31 (built in build step 5).
 - **Chalklings.** A preset can include LoM; a chalkling's stats and glyph are set in the editor.
 - **Editors.** The defence editor and the bind point editor are two separate screens. They move into a main menu in build step 6; until then they are opened from two buttons in the duel screen's top bar, "Defence editor" and "Bind points editor". Defaults: Ballintain (four-point), Eskridge (six-point), Easton (nine-point) and Jordan (ellipse).
 
+- **Shipped defaults, provisional (2026-10-31).** The four defaults are first readings of sections 6.4 to 6.7, built with the placeholder sizes, and are to be checked against the diagrams. Easton gets a LoW only at the bind points with room for one (7 of 9 at current sizes), and Jordan's cage is kept within the longest LoF allowed.
+- **When a part no longer fits (default, 2026-10-31).** If something gets in the way of the next part (only possible after the opponent's lines reach it), the preset stops as if cancelled, keeping finished parts.
+
 **All defences are legal.** Some will be better than others, and that is intended. If one proves too strong it is rebalanced through its cost, not banned.
 
 ## 7. Open questions and to-do
