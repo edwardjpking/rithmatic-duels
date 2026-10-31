@@ -33,7 +33,8 @@ namespace RithmaticDuels.Presentation
         private DefencePreset _editing;
         // The defence as last saved or opened, to tell whether it has unsaved changes.
         private string _baseline;
-        private bool _confirmDelete;
+        /// <summary>The confirm box over the arena for deleting and layout switches (shared with the bind points editor).</summary>
+        private readonly ConfirmOverlay _confirm = new ConfirmOverlay();
         private Rect _widthRow;
         private ActionPicker _picker;
         private Vector2 _menuScroll;
@@ -57,8 +58,6 @@ namespace RithmaticDuels.Presentation
         private int _dropIndex = -1;
         /// <summary>The part last clicked, which the Up and Down arrows move. -1 for none.</summary>
         private int _selected = -1;
-        /// <summary>A layout picked while the defence has parts, waiting for the player to confirm clearing them. -1 for none.</summary>
-        private int _pendingLayout = -1;
         private readonly List<Rect> _rowRects = new List<Rect>();
 
         private Texture2D _crossCursor;
@@ -84,7 +83,7 @@ namespace RithmaticDuels.Presentation
             _session = new DefenceEditorSession(_rules, new DefencePreset { Name = "", Layout = layout.Clone() });
             _picker = NewPicker();
             _baseline = Snapshot();
-            _confirmDelete = false;
+            _confirm.Close();
         }
 
         private void Edit(DefencePreset preset)
@@ -97,7 +96,7 @@ namespace RithmaticDuels.Presentation
             _picker = NewPicker();
             // A copy of a shipped defence isn't saved yet, so it counts as changed.
             _baseline = preset.IsDefault ? null : Snapshot();
-            _confirmDelete = false;
+            _confirm.Close();
         }
 
         private string Snapshot() { return JsonUtility.ToJson(_session.Preset); }
@@ -172,6 +171,7 @@ namespace RithmaticDuels.Presentation
             string focused = GUI.GetNameOfFocusedControl();
             bool editingStat = focused.StartsWith("stat-") || focused == NameField;
             MenuKeys.Track(current, !editingStat && !_dragging);
+            bool confirming = _confirm.HandleInput(current);
             if (boardPoint.HasValue && current.type == EventType.MouseDown && editingStat) GUI.FocusControl(null);
             if (current.type != EventType.Repaint && current.type != EventType.Layout)
             {
@@ -184,7 +184,7 @@ namespace RithmaticDuels.Presentation
             }
 
             // Placing a new part works exactly as in a duel (DESIGN.md 1.1).
-            if (_session.CanAdd && !_dragging)
+            if (_session.CanAdd && !_dragging && !confirming)
             {
                 var board = _session.Board;
                 var player = _session.Player;
@@ -222,6 +222,8 @@ namespace RithmaticDuels.Presentation
             float width = Screen.width / scale;
             float height = Screen.height / scale;
 
+            _confirm.BlockOutside(current);
+            GUI.enabled = !_confirm.Open;
             GUILayout.BeginArea(new Rect(10, 6, width - 20, HeaderHeight - 6));
             try
             {
@@ -235,7 +237,7 @@ namespace RithmaticDuels.Presentation
             finally { GUILayout.EndArea(); }
 
             // Scroll (or Shift + scroll) over the width row resizes the main ellipse, as over the board in a duel.
-            if (current.type == EventType.ScrollWheel && _widthRow.Contains(current.mousePosition - new Vector2(10, HeaderHeight)))
+            if (!confirming && current.type == EventType.ScrollWheel && _widthRow.Contains(current.mousePosition - new Vector2(10, HeaderHeight)))
             {
                 float delta = current.shift && Mathf.Abs(current.delta.y) < 1e-6f ? current.delta.x : current.delta.y;
                 if (ScrollEllipseWidth(delta)) { current.Use(); GUIUtility.ExitGUI(); }
@@ -246,6 +248,8 @@ namespace RithmaticDuels.Presentation
             GUILayout.BeginArea(new Rect(10, HeaderHeight, menuWidth - 20, height - HeaderHeight - 10));
             try { DrawMenu(menuWidth - 20, height - HeaderHeight - 10); }
             finally { GUILayout.EndArea(); }
+            GUI.enabled = true;
+            _confirm.Draw(new Rect(menuWidth, HeaderHeight, width - menuWidth, height - HeaderHeight));
 
             if (current.type == EventType.Repaint) UpdateInvalidCursor();
         }
@@ -262,8 +266,8 @@ namespace RithmaticDuels.Presentation
             foreach (var p in _library.Presets)
                 names.Add((p.IsDefault ? p.Name + " (default)" : p.Name) + (p == _editing && unsaved ? " *" : ""));
             int picked = ButtonGrid(names, shown, width);
-            if (picked >= 0) { _message = null; _selected = -1; _pendingLayout = -1; Then(() => Edit(_library.Presets[picked])); }
-            if (GUILayout.Button(_editing == null && unsaved ? "New defence *" : "New defence")) { _message = null; _selected = -1; _pendingLayout = -1; Then(() => NewDefence(preset.Layout)); }
+            if (picked >= 0) { _message = null; _selected = -1; Then(() => Edit(_library.Presets[picked])); }
+            if (GUILayout.Button(_editing == null && unsaved ? "New defence *" : "New defence")) { _message = null; _selected = -1; Then(() => NewDefence(preset.Layout)); }
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("Name:", GUILayout.Width(100));
@@ -280,29 +284,16 @@ namespace RithmaticDuels.Presentation
                 layoutNames.Add(_library.Layouts[i].Name);
                 if (_library.Layouts[i].Name == preset.Layout.Name) layoutShown = i;
             }
-            int layoutPicked = ButtonGrid(layoutNames, _pendingLayout >= 0 ? _pendingLayout : layoutShown, width);
+            int layoutPicked = ButtonGrid(layoutNames, layoutShown, width);
             if (layoutPicked >= 0 && layoutPicked != layoutShown)
             {
                 // With no parts nothing is lost, so the layout changes at once; otherwise ask first.
-                if (preset.Components.Count == 0) Then(() => _session.SetLayout(_library.Layouts[layoutPicked]));
-                else Then(() => _pendingLayout = layoutPicked);
+                var chosen = _library.Layouts[layoutPicked];
+                if (preset.Components.Count == 0) Then(() => _session.SetLayout(chosen));
+                else Then(() => _confirm.Ask("Switching to " + chosen.Name + " removes all " + preset.Components.Count
+                        + " parts of this defence. This can't be undone.", "Switch and remove parts", "Keep current layout",
+                    () => { _selected = -1; _session.SetLayout(chosen); }));
             }
-            else if (layoutPicked == layoutShown && _pendingLayout >= 0) Then(() => _pendingLayout = -1);
-            if (_pendingLayout >= 0 && _pendingLayout < _library.Layouts.Count)
-            {
-                // Every part is bound to bind points of this layout, so switching clears them.
-                Colored(MenuSkin.Refused, "Switching to " + _library.Layouts[_pendingLayout].Name + " removes all "
-                    + preset.Components.Count + " parts of this defence. This can't be undone.");
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button("Switch and remove parts"))
-                {
-                    int chosen = _pendingLayout;
-                    Then(() => { _pendingLayout = -1; _selected = -1; _session.SetLayout(_library.Layouts[chosen]); });
-                }
-                if (GUILayout.Button("Keep current layout")) Then(() => _pendingLayout = -1);
-                GUILayout.EndHorizontal();
-            }
-
             DrawEllipseWidth();
 
             GUILayout.Space(4);
@@ -333,21 +324,13 @@ namespace RithmaticDuels.Presentation
             string saveProblem = SaveProblem();
             if (saveProblem != null) Colored(MenuSkin.Refused, "Can't save yet: " + saveProblem);
             GUILayout.BeginHorizontal();
-            GUI.enabled = saveProblem == null && !_confirmDelete;
+            GUI.enabled = saveProblem == null && !_confirm.Open;
             if (GUILayout.Button("Save defence", GUILayout.Height(30))) Then(Save);
             // Only the player's own saved defences can be deleted; shipped ones and unsaved new ones can't.
-            GUI.enabled = _editing != null && !_confirmDelete;
-            if (GUILayout.Button("Delete defence", GUILayout.Height(30), GUILayout.Width(140))) Then(() => _confirmDelete = true);
-            GUI.enabled = true;
+            GUI.enabled = _editing != null && !_confirm.Open;
+            if (GUILayout.Button("Delete defence", GUILayout.Height(30), GUILayout.Width(140))) Then(() => _confirm.Ask("Delete " + _editing.Name + "? This can't be undone.", "Delete", "Keep it", Delete));
+            GUI.enabled = !_confirm.Open;
             GUILayout.EndHorizontal();
-            if (_confirmDelete && _editing != null)
-            {
-                Colored(MenuSkin.Refused, "Delete " + _editing.Name + "? This can't be undone.");
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button("Delete")) Then(Delete);
-                if (GUILayout.Button("Keep it")) Then(() => _confirmDelete = false);
-                GUILayout.EndHorizontal();
-            }
         }
 
         // Checking a defence builds it on a fresh board, so the answer is kept until the defence or its name changes.
@@ -386,13 +369,13 @@ namespace RithmaticDuels.Presentation
 
         private void Delete()
         {
-            _confirmDelete = false;
+            _confirm.Close();
             if (_editing == null) return;
             _library.Presets.Remove(_editing);
             PresetStore.Save(_library);
             _message = null;
             _selected = -1;
-            _pendingLayout = -1;
+           
             NewDefence(_session.Preset.Layout);
         }
 
