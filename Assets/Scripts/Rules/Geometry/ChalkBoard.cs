@@ -697,10 +697,12 @@ namespace RithmaticDuels.Rules.Geometry
         }
 
         /// <summary>The bind points a main LoW gets once that many are drawn: an ellipse's two ends, or a circle's preset.</summary>
-        private IReadOnlyList<Vec2> MainBindPoints(Player owner, WardShape shape, int count)
+        private IReadOnlyList<Vec2> MainBindPoints(Player owner, WardShape shape, int count, DrawingSpec spec)
         {
             if (count <= 0) return new List<Vec2>();
             if (!shape.IsCircle) return BindPoints.ForEllipse(shape);
+            var layout = spec != null ? spec.Layout : null;
+            if (layout != null && !layout.IsEllipse && layout.BindPointCount == count) return layout.Points(shape.Centre, shape.A, Facing(owner));
             return BindPoints.ForCircle(count, shape.Centre, shape.A, Facing(owner));
         }
 
@@ -708,7 +710,7 @@ namespace RithmaticDuels.Rules.Geometry
         public IReadOnlyList<Vec2> PreviewBindPoints(Player player, int count)
         {
             var main = MainWardOf(player);
-            return main != null ? MainBindPoints(player, main.Shape, count) : new List<Vec2>();
+            return main != null ? MainBindPoints(player, main.Shape, count, main.Line.Spec) : new List<Vec2>();
         }
 
         /// <summary>The bind point counts a player's main LoW can take: 2 on an ellipse; 4, 6 or 9 on a circle.</summary>
@@ -779,7 +781,7 @@ namespace RithmaticDuels.Rules.Geometry
                 case WorkKind.BindPoints:
                     var main = MainWardOf(owner);
                     sketch.Type = LineType.Warding;
-                    if (main != null) sketch.BindPoints = MainBindPoints(owner, main.Shape, main.Line.BindPointsDrawn + work.Amount);
+                    if (main != null) sketch.BindPoints = MainBindPoints(owner, main.Shape, main.Line.BindPointsDrawn + work.Amount, main.Line.Spec);
                     return sketch;
                 case WorkKind.Drawing:
                     break;
@@ -848,7 +850,7 @@ namespace RithmaticDuels.Rules.Geometry
                 var ward = body as WardBody;
                 if (ward == null) continue;
                 if (line.IsMainWard && ward.BindPoints.Count != line.BindPointsDrawn)
-                    ward.BindPoints = MainBindPoints(line.Owner, ward.Shape, line.BindPointsDrawn);
+                    ward.BindPoints = MainBindPoints(line.Owner, ward.Shape, line.BindPointsDrawn, line.Spec);
                 int delta = line.Durability - ward.Weakest;
                 if (delta != 0) ward.ApplyEverywhere(delta);
                 if (ward.Weakest != line.Durability || ward.WeakestMax != line.MaxDurability)
@@ -995,7 +997,7 @@ namespace RithmaticDuels.Rules.Geometry
                     IReadOnlyList<Vec2> bindPoints;
                     var shape = WardGeometry(owner, line.Spec, placement, out bindPoints, line.IsMainWard);
                     var wardBody = new WardBody(line, shape, bindPoints, _config);
-                    if (line.IsMainWard) wardBody.BindPoints = MainBindPoints(owner, shape, line.BindPointsDrawn);
+                    if (line.IsMainWard) wardBody.BindPoints = MainBindPoints(owner, shape, line.BindPointsDrawn, line.Spec);
                     else
                     {
                         // Bound where it touches the LoW it is attached to.
@@ -1111,7 +1113,9 @@ namespace RithmaticDuels.Rules.Geometry
                     return ellipse;
                 }
                 float radius = _config.Warding.DefaultMainRadius;
-                bindPoints = BindPoints.ForCircle(spec.BindPoints, home, radius, facing);
+                bindPoints = spec.Layout != null && !spec.Layout.IsEllipse && spec.Layout.BindPointCount == spec.BindPoints
+                    ? spec.Layout.Points(home, radius, facing)
+                    : BindPoints.ForCircle(spec.BindPoints, home, radius, facing);
                 return WardShape.Circle(home, radius);
             }
 

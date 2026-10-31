@@ -1,0 +1,346 @@
+using System.Collections.Generic;
+using RithmaticDuels.Rules;
+using RithmaticDuels.Rules.Geometry;
+using RithmaticDuels.Rules.Presets;
+using UnityEngine;
+
+namespace RithmaticDuels.Presentation
+{
+    /// <summary>
+    /// The bind point editor (DESIGN.md section 6.1): drag a triangle's three vertices around a main LoW circle; bind
+    /// points appear where its edges and extended altitudes cross the circle. Saved layouts can be picked as a main
+    /// LoW's bind points in a duel. Opened from the top bar for now; it moves to the main menu in build step 6.
+    /// Drawn with IMGUI and GL by <see cref="DuelController"/>, in GUI units (the controller's GUI scale applies).
+    /// </summary>
+    public sealed class BindPointEditor
+    {
+        // Colours. Bind points, the circle and the triangle use player A's chalk, as on the board. The vertices you drag
+        // are light blue, the colour of a picked placement you can still change. Red marks a spot you can't use.
+        private static readonly Color Chalk = new Color(0.95f, 0.95f, 0.9f);
+        private static readonly Color Construction = new Color(0.95f, 0.95f, 0.9f, 0.35f);
+        private static readonly Color VertexColour = new Color(0.6f, 0.9f, 1f, 0.9f);
+        private static readonly Color Backdrop = new Color(0.12f, 0.2f, 0.16f);
+
+        private const float PanelWidth = 300f;
+        /// <summary>How close (GUI units) the mouse must be to a vertex to grab it.</summary>
+        private const float GrabRadius = 14f;
+
+        private readonly RulesConfig _config;
+        private PresetLibrary _library;
+        private Vec2[] _vertices;
+        private string _name = "";
+        /// <summary>The saved layout being edited, replaced on save; null for a new one.</summary>
+        private BindPointLayout _editing;
+        private int _dragging = -1;
+        private Vec2 _dragStart;
+        private readonly Stack<Vec2[]> _undo = new Stack<Vec2[]>();
+        /// <summary>Where the mouse is, in GUI units, if it is over a spot the dragged vertex can't go.</summary>
+        private Vector2? _refusedAt;
+        private int _hovered = -1;
+        private string _status;
+        private Material _material;
+        private Rect _canvas;
+
+        public BindPointEditor(RulesConfig config, PresetLibrary library)
+        {
+            _config = config;
+            _library = library;
+            StartFrom(_library.FindLayout("Six-point circle"), false);
+        }
+
+        /// <summary>True when the player closes the editor.</summary>
+        public bool Closed { get; private set; }
+        public PresetLibrary Library { get { return _library; } }
+
+        private void StartFrom(BindPointLayout layout, bool edit)
+        {
+            _vertices = layout != null && !layout.IsEllipse
+                ? (Vec2[])layout.Vertices.Clone()
+                : new[] { new Vec2(1f, 0f), new Vec2(-0.5f, 0.87f), new Vec2(-0.5f, -0.87f) };
+            _editing = edit ? layout : null;
+            _name = edit ? layout.Name : "";
+            _undo.Clear();
+            _dragging = -1;
+            _status = null;
+        }
+
+        private BindPointLayout Current()
+        {
+            return BindPointLayout.Triangle(_name.Trim(), _vertices[0], _vertices[1], _vertices[2]);
+        }
+
+        /// <summary>Call from OnGUI with the GUI matrix already scaled; width and height are in GUI units, scale is GUI units to pixels.</summary>
+        public void Draw(float top, float width, float height, float scale)
+        {
+            var e = Event.current;
+            GUI.DrawTexture(new Rect(0, top, width, height - top), Texture2D.whiteTexture, ScaleMode.StretchToFill, false, 0, Backdrop, 0, 0);
+            _canvas = new Rect(PanelWidth + 20, top + 10, width - PanelWidth - 30, height - top - 20);
+            HandleInput(e);
+            DrawPanel(new Rect(10, top + 10, PanelWidth, height - top - 20));
+            if (e.type == EventType.Repaint) DrawCanvas(scale);
+        }
+
+        // ---- Input ----
+
+        private float CanvasScale { get { return Mathf.Min(_canvas.width, _canvas.height) / (2f * _config.Presets.LayoutMaxVertexRadius + 0.4f); } }
+
+        private Vector2 ToGui(Vec2 p)
+        {
+            return new Vector2(_canvas.center.x + p.X * CanvasScale, _canvas.center.y - p.Y * CanvasScale);
+        }
+
+        private Vec2 ToUnit(Vector2 gui)
+        {
+            return new Vec2((gui.x - _canvas.center.x) / CanvasScale, (_canvas.center.y - gui.y) / CanvasScale);
+        }
+
+        private int VertexAt(Vector2 mouse)
+        {
+            int best = -1;
+            float bestDistance = GrabRadius;
+            for (int i = 0; i < 3; i++)
+            {
+                float d = Vector2.Distance(ToGui(_vertices[i]), mouse);
+                if (d < bestDistance) { bestDistance = d; best = i; }
+            }
+            return best;
+        }
+
+        private void HandleInput(Event e)
+        {
+            bool inCanvas = _canvas.Contains(e.mousePosition);
+            _hovered = _dragging >= 0 ? _dragging : (inCanvas ? VertexAt(e.mousePosition) : -1);
+
+            if (e.type == EventType.MouseDown && e.button == 0 && inCanvas)
+            {
+                int vertex = VertexAt(e.mousePosition);
+                if (vertex >= 0)
+                {
+                    _dragging = vertex;
+                    _dragStart = _vertices[vertex];
+                    _undo.Push((Vec2[])_vertices.Clone());
+                    _status = null;
+                    e.Use();
+                }
+            }
+            else if (e.type == EventType.MouseDrag && _dragging >= 0)
+            {
+                MoveDragged(e.mousePosition);
+                e.Use();
+            }
+            else if (e.type == EventType.MouseUp && e.button == 0 && _dragging >= 0)
+            {
+                // A drag that ended where it started isn't a step to undo.
+                if (_undo.Count > 0 && Vec2.Distance(_vertices[_dragging], _dragStart) < 1e-6f) _undo.Pop();
+                _dragging = -1;
+                _refusedAt = null;
+                e.Use();
+            }
+            else if (e.type == EventType.MouseDown && e.button == 1 || MenuKeys.TakeBack())
+            {
+                // Right-click (or Backspace / Esc) goes back one step: cancel the drag, or undo the last move.
+                if (_dragging >= 0) { _vertices[_dragging] = _dragStart; if (_undo.Count > 0) _undo.Pop(); _dragging = -1; }
+                else if (_undo.Count > 0) _vertices = _undo.Pop();
+                _refusedAt = null;
+                if (e.type == EventType.MouseDown) e.Use();
+            }
+        }
+
+        private void MoveDragged(Vector2 mouse)
+        {
+            var presets = _config.Presets;
+            Vec2 desired = ToUnit(mouse);
+            // Like a size that is capped to what fits, a vertex dragged past the edge stays on the edge.
+            if (desired.Length > presets.LayoutMaxVertexRadius) desired = desired.Normalized * presets.LayoutMaxVertexRadius;
+            Vec2 snapped = BindPointLayout.SnapVertex(_vertices, _dragging, desired, presets.LayoutSnapDistance);
+            if (!BindPointLayout.VertexAllowed(_vertices, _dragging, snapped, presets)) snapped = desired;
+            if (BindPointLayout.VertexAllowed(_vertices, _dragging, snapped, presets))
+            {
+                _vertices[_dragging] = snapped;
+                _refusedAt = null;
+            }
+            else _refusedAt = mouse; // the vertex stays at its last allowed spot
+        }
+
+        // ---- Panel ----
+
+        private void DrawPanel(Rect area)
+        {
+            GUILayout.BeginArea(area);
+            GUILayout.Label("Bind points editor");
+            GUILayout.Label("Drag the triangle's corners. Bind points appear where its sides and extended heights cross the circle. Points that come close snap together. Right-click undoes a move.");
+            GUILayout.Space(6);
+
+            var layout = Current();
+            GUILayout.Label(layout.BindPointCount + " bind points");
+            GUILayout.Space(6);
+
+            GUILayout.Label("Name:");
+            _name = GUILayout.TextField(_name, 40);
+            string problem = _library.LayoutSaveProblem(layout, _config, _editing);
+            if (problem == null && _editing != null && _editing.IsDefault) problem = "The standard layouts can't be changed.";
+            GUI.enabled = problem == null;
+            if (GUILayout.Button(_editing != null ? "Save changes" : "Save layout", GUILayout.Height(32)))
+            {
+                if (_library.SaveLayout(layout, _config, _editing))
+                {
+                    _editing = _library.FindLayout(layout.Name);
+                    PresetStore.Save(_library);
+                    _status = "Saved \"" + layout.Name + "\". It can now be picked for a main LoW's bind points.";
+                }
+            }
+            GUI.enabled = true;
+            if (problem != null) { var old = GUI.contentColor; GUI.contentColor = MenuSkin.Refused; GUILayout.Label(problem); GUI.contentColor = old; }
+            if (_status != null) GUILayout.Label(_status);
+
+            GUILayout.Space(10);
+            GUILayout.Label("Start from a layout:");
+            foreach (var saved in _library.Layouts)
+            {
+                if (saved.IsEllipse) continue;
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(saved.Name + " (" + saved.BindPointCount + ")");
+                if (GUILayout.Button(saved.IsDefault ? "Copy" : "Edit", GUILayout.Width(60))) { StartFrom(saved, !saved.IsDefault); GUIUtility.ExitGUI(); }
+                GUI.enabled = !saved.IsDefault;
+                if (GUILayout.Button("Delete", GUILayout.Width(60)))
+                {
+                    _library.Layouts.Remove(saved);
+                    PresetStore.Save(_library);
+                    if (_editing == saved) _editing = null;
+                    _status = "Deleted \"" + saved.Name + "\".";
+                    GUI.enabled = true;
+                    GUIUtility.ExitGUI();
+                }
+                GUI.enabled = true;
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Back to the duel", GUILayout.Height(32))) Closed = true;
+            GUILayout.EndArea();
+        }
+
+        // ---- Canvas ----
+
+        private void DrawCanvas(float scale)
+        {
+            EnsureMaterial();
+            _material.SetPass(0);
+            GL.PushMatrix();
+            GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
+            GL.Begin(GL.QUADS);
+            _pixels = scale;
+
+            float r = CanvasScale;
+            Ring(ToGui(Vec2.Zero), r, 3f, Chalk);
+            // Which way the LoW faces: the opponent is to the right.
+            var front = ToGui(new Vec2(_config.Presets.LayoutMaxVertexRadius, 0f));
+            Line(ToGui(new Vec2(1.15f, 0f)), front, 1.5f, Construction, true);
+
+            for (int i = 0; i < 3; i++)
+            {
+                Vec2 from = _vertices[i], to = _vertices[(i + 1) % 3], opposite = _vertices[(i + 2) % 3];
+                // Each side solid (only its own length counts); each height dashed and extended to a full line.
+                Line(ToGui(from), ToGui(to), 2f, Construction, false);
+                Vec2 foot = FootOn(opposite, from, to);
+                Vec2 dir = (foot - opposite).Length > 1e-5f ? (foot - opposite).Normalized : (to - from).Perp.Normalized;
+                float reach = 2f * _config.Presets.LayoutMaxVertexRadius;
+                Line(ToGui(opposite - dir * reach), ToGui(opposite + dir * reach), 1.5f, Construction, true);
+            }
+
+            foreach (var p in Current().PointsOnUnitCircle())
+            {
+                Ring(ToGui(p), 9f, 2.5f, Chalk);
+                Disc(ToGui(p), 3f, Chalk);
+            }
+
+            for (int i = 0; i < 3; i++)
+            {
+                var c = ToGui(_vertices[i]);
+                Ring(c, 10f, 2.5f, VertexColour);
+                // Filled while under the mouse or being dragged, so the difference doesn't rest on colour.
+                if (i == _hovered || i == _dragging) Disc(c, 6f, VertexColour);
+            }
+
+            if (_refusedAt.HasValue)
+            {
+                var m = _refusedAt.Value;
+                Line(m + new Vector2(-8, -8), m + new Vector2(8, 8), 3f, MenuSkin.Refused, false);
+                Line(m + new Vector2(-8, 8), m + new Vector2(8, -8), 3f, MenuSkin.Refused, false);
+            }
+            GL.End();
+            GL.PopMatrix();
+        }
+
+        private static Vec2 FootOn(Vec2 point, Vec2 a, Vec2 b)
+        {
+            Vec2 ab = b - a;
+            float t = Vec2.Dot(point - a, ab) / Mathf.Max(1e-8f, ab.LengthSquared);
+            return a + ab * t;
+        }
+
+        // GL helpers in GUI units; _pixels converts to screen pixels.
+        private float _pixels = 1f;
+
+        private void V(Vector2 gui) { GL.Vertex3(gui.x * _pixels, gui.y * _pixels, 0f); }
+
+        private void Line(Vector2 a, Vector2 b, float width, Color colour, bool dashed)
+        {
+            GL.Color(colour);
+            float length = Vector2.Distance(a, b);
+            if (length < 1e-4f) return;
+            Vector2 dir = (b - a) / length;
+            Vector2 side = new Vector2(-dir.y, dir.x) * (width / 2f);
+            const float dash = 8f, gap = 6f;
+            float step = dashed ? dash + gap : length;
+            for (float s = 0f; s < length; s += step)
+            {
+                Vector2 p = a + dir * s, q = a + dir * Mathf.Min(length, s + (dashed ? dash : length));
+                V(p - side); V(p + side); V(q + side); V(q - side);
+            }
+        }
+
+        private const int Steps = 48;
+
+        private static Vector2 Around(Vector2 centre, float radius, int step)
+        {
+            float angle = 2f * Mathf.PI * step / Steps;
+            return centre + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+        }
+
+        private void Ring(Vector2 centre, float radius, float width, Color colour)
+        {
+            GL.Color(colour);
+            float inner = radius - width / 2f, outer = radius + width / 2f;
+            for (int i = 0; i < Steps; i++)
+            {
+                V(Around(centre, inner, i)); V(Around(centre, outer, i)); V(Around(centre, outer, i + 1)); V(Around(centre, inner, i + 1));
+            }
+        }
+
+        private void Disc(Vector2 centre, float radius, Color colour)
+        {
+            GL.Color(colour);
+            for (int i = 0; i < Steps; i++)
+            {
+                V(centre); V(Around(centre, radius, i)); V(Around(centre, radius, i + 1)); V(Around(centre, radius, i + 1));
+            }
+        }
+
+        private void EnsureMaterial()
+        {
+            if (_material != null) return;
+            _material = new Material(Shader.Find("Hidden/Internal-Colored")) { hideFlags = HideFlags.HideAndDontSave };
+            _material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            _material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            _material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            _material.SetInt("_ZWrite", 0);
+            _material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+        }
+
+        public void Dispose()
+        {
+            if (_material != null) Object.Destroy(_material);
+        }
+    }
+}

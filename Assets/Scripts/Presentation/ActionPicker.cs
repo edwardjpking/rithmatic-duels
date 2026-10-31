@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using RithmaticDuels.Rules;
 using RithmaticDuels.Rules.Geometry;
+using RithmaticDuels.Rules.Presets;
 using UnityEngine;
 
 namespace RithmaticDuels.Presentation
@@ -54,6 +55,10 @@ namespace RithmaticDuels.Presentation
     {
         public PlayerAction Action;
         public Placement Placement;
+        /// <summary>A saved defence picked on turn 1: the controller starts building it (DESIGN.md section 6.8).</summary>
+        public DefencePreset StartPreset;
+        /// <summary>The player cancelled the defence being built, for good.</summary>
+        public bool CancelsPreset;
     }
 
     /// <summary>
@@ -88,6 +93,21 @@ namespace RithmaticDuels.Presentation
         private static readonly string[] ShapeLabels = { "Circle", "Ellipse" };
         private static readonly string[] CircleBindPointLabels = { "4", "6", "9" };
         private static readonly int[] CircleBindPointCounts = { 4, 6, 9 };
+
+        /// <summary>
+        /// Every saved bind point layout (DESIGN.md section 6.1), set by the duel controller. The player's own circle
+        /// layouts are offered after 4, 6 and 9 when choosing a main LoW's bind points.
+        /// </summary>
+        public static IReadOnlyList<RithmaticDuels.Rules.Presets.BindPointLayout> CustomLayouts { get; set; }
+
+        private static List<RithmaticDuels.Rules.Presets.BindPointLayout> OwnCircleLayouts()
+        {
+            var own = new List<RithmaticDuels.Rules.Presets.BindPointLayout>();
+            if (CustomLayouts != null)
+                foreach (var layout in CustomLayouts)
+                    if (!layout.IsDefault && !layout.IsEllipse) own.Add(layout);
+            return own;
+        }
         // A LoW added during the duel: a Mark's Cross, or a LoW with this many bind points (0 means Mark's Cross).
         private static readonly string[] AttachedWardLabels = { "Mark's Cross", "2 (ellipse)", "4", "6", "9" };
         private static readonly int[] AttachedWardBindPoints = { 0, 2, 4, 6, 9 };
@@ -131,6 +151,14 @@ namespace RithmaticDuels.Presentation
         private const float FlashSeconds = 0.6f;
         /// <summary>How long the reason a key press was refused stays in the problem line, in seconds.</summary>
         private const float ReasonSeconds = 3f;
+
+        /// <summary>
+        /// Set by the defence editor (DESIGN.md section 6.8): the menu only places new lines (no action row), Lines
+        /// of Vigor are greyed out, and Lock in reads <see cref="LockLabel"/>.
+        /// </summary>
+        public bool DefenceEditor;
+        /// <summary>The text on the menu's main button.</summary>
+        public string LockLabel = "Lock in";
 
         public ActionPicker()
         {
@@ -199,6 +227,17 @@ namespace RithmaticDuels.Presentation
         private Vec2? _hover;
         private string _clickKey;
 
+        /// <summary>The saved defence this player is building, if any. Set by the duel controller.</summary>
+        public DefenceRun Run;
+        /// <summary>Saved defences offered on turn 1 (DESIGN.md section 6.8). Empty once the player has used or cancelled one.</summary>
+        public IList<DefencePreset> Presets = new List<DefencePreset>();
+        // On turn 1: the saved defence picked (-1 for none, drawing by hand). While building: 0 Continue, 1 Cancel.
+        private int _presetChoice = -1;
+        private int _runChoice = 0;
+        private bool _runPicked;
+        private DefencePreset _pickedPreset;
+        private bool _cancelPreset;
+
         /// <summary>What to draw on the board for the choice in progress. Null when there is nothing to show.</summary>
         public PlacementPreview Preview { get; private set; }
 
@@ -253,12 +292,31 @@ namespace RithmaticDuels.Presentation
             // Unity's clip stack balanced when it does (otherwise: "pushing more GUIClips than popping").
             try
             {
+                if (Run != null && Run.IsRunning)
+                {
+                    action = DrawPresetRun(duel, board, player, out placement, out hint);
+                }
+                else if (OffersPresets(duel, player) && (action = DrawPresetChoice(duel, board, player, out placement, out hint)) != null)
+                {
+                    // A saved defence was picked: its first part (the main LoW) is the action.
+                }
+                else if (_presetChoice >= 0)
+                {
+                    // Picked, but its main LoW can't be drawn: the hint says why.
+                }
+                else
+                {
                 if (_kind.HasValue && !available.Contains(_kind.Value)) _kind = null;
                 // Mid-drawing, carrying on is the usual choice, so it starts selected.
                 if (!_kind.HasValue && !_defaultChosen && available.Contains(ActionKind.ContinueDrawing)) _kind = ActionKind.ContinueDrawing;
                 _defaultChosen = true;
 
-                if (available.Count == 1 && available[0] == ActionKind.StartDrawing && board.MainWardOf(player) == null)
+                if (DefenceEditor && available.Contains(ActionKind.StartDrawing))
+                {
+                    // The defence editor only places new parts.
+                    _kind = ActionKind.StartDrawing;
+                }
+                else if (available.Count == 1 && available[0] == ActionKind.StartDrawing && board.MainWardOf(player) == null)
                 {
                     // Setting up the main LoW is the only thing to do, so there is no action to pick.
                     _kind = ActionKind.StartDrawing;
@@ -323,6 +381,7 @@ namespace RithmaticDuels.Presentation
                 }
                 if (cancelling && action != null)
                     action = action.Kind == ActionKind.Pass ? PlayerAction.Cancel() : action.AfterCancelling();
+                }
 
             }
             catch (ExitGUIException)
@@ -348,7 +407,7 @@ namespace RithmaticDuels.Presentation
             }
 
             GUI.enabled = problem == null;
-            bool locked = GUILayout.Button("Lock in", GUILayout.Height(34));
+            bool locked = GUILayout.Button(LockLabel, GUILayout.Height(34));
             GUI.enabled = true;
             // A click on Lock in while it is greyed out flashes the problem line, as Space does.
             if (Event.current.type != EventType.Layout) RefuseClick(GUILayoutUtility.GetLastRect(), problem != null, null, null);
@@ -363,7 +422,130 @@ namespace RithmaticDuels.Presentation
                 }
             }
             if (!locked) return null;
-            return new LockedChoice { Action = action, Placement = placement };
+            return new LockedChoice { Action = action, Placement = placement, StartPreset = _pickedPreset, CancelsPreset = _cancelPreset };
+        }
+
+        private bool OffersPresets(Duel duel, Player player)
+        {
+            return Presets != null && Presets.Count > 0 && Run == null && DefenceRun.CanOffer(duel, player);
+        }
+
+        /// <summary>
+        /// Turn 1 (DESIGN.md section 6.8): a row of saved defences above the main LoW setup. Picking one replaces the
+        /// setup with that defence's main LoW, shown as a picked placement. Returns null while none is picked.
+        /// </summary>
+        private PlayerAction DrawPresetChoice(Duel duel, ChalkBoard board, Player player, out Placement placement, out string hint)
+        {
+            placement = null;
+            hint = null;
+            var labels = new string[Presets.Count + 1];
+            labels[0] = "Draw by hand";
+            for (int i = 0; i < Presets.Count; i++) labels[i + 1] = Presets[i].Name;
+            BeginRow("Defence:");
+            int chosen = Buttons(_presetChoice + 1, labels, NextRowWidth(), 0, null, _presetChoice < 0);
+            GUILayout.EndHorizontal();
+            if (chosen >= 0 && chosen - 1 != _presetChoice)
+            {
+                _presetChoice = chosen - 1;
+                GUIUtility.ExitGUI();
+            }
+            GUILayout.Space(4);
+            _pickedPreset = null;
+            if (_presetChoice < 0) return null;
+
+            var preset = Presets[_presetChoice];
+            GUILayout.Label("Builds " + preset.Name + " part by part (" + (preset.Components.Count + 1) + " parts), each at its normal drawing time. "
+                + "You can only continue or cancel it, and a cancelled defence can't be restarted.");
+            var trial = new DefenceRun(preset, player);
+            DrawingSpec spec; DrawingPace pace;
+            if (!trial.CurrentDrawing(duel, board, out spec, out placement, out pace, out hint)) return null;
+            ShowPart(board, player, spec, placement);
+            _pickedPreset = preset;
+            return PlayerAction.Start(spec, pace);
+        }
+
+        /// <summary>
+        /// A saved defence being built (DESIGN.md section 6.8): only Continue or Cancel, like a multi-turn drawing. The
+        /// next part shows on the board like a picked placement.
+        /// </summary>
+        private PlayerAction DrawPresetRun(Duel duel, ChalkBoard board, Player player, out Placement placement, out string hint)
+        {
+            placement = null;
+            hint = null;
+            var state = duel.GetPlayer(player);
+            int chosen = Buttons(_runChoice, new[] { "Continue", "Cancel" }, _width, 0, null, !_runPicked);
+            if (chosen >= 0 && (chosen != _runChoice || !_runPicked && _repressed))
+            {
+                _runChoice = chosen;
+                _runPicked = true;
+                GUIUtility.ExitGUI();
+            }
+            GUILayout.Space(4);
+            string progress = "Building " + Run.Preset.Name + ": part " + (Run.PartsDone + 1) + " of " + Run.PartCount + ".";
+            _cancelPreset = _runChoice == 1;
+            if (_cancelPreset)
+            {
+                GUILayout.Label(progress + " Cancel scraps the part in progress and ends the defence for good; finished parts stay.");
+                return state.HasWorkInProgress ? PlayerAction.Cancel() : PlayerAction.Pass();
+            }
+            if (state.HasWorkInProgress)
+            {
+                GUILayout.Label(progress + " Keep going. " + state.Work.TurnsRemaining + " turn(s) left on this part, including this one.");
+                return PlayerAction.Continue();
+            }
+            DrawingSpec spec; DrawingPace pace;
+            if (!Run.CurrentDrawing(duel, board, out spec, out placement, out pace, out hint))
+            {
+                if (Run.State == DefenceRunState.Finished)
+                {
+                    GUILayout.Label(Run.Preset.Name + " is done: the remaining parts no longer fit.");
+                    return PlayerAction.Pass();
+                }
+                hint = "The next part can't be drawn (" + hint + "). Cancel to end the defence.";
+                return null;
+            }
+            if (Run.Skipped.Count > 0) progress += " " + Run.Skipped.Count + " part(s) skipped because they no longer fit.";
+            GUILayout.Label(progress + " Start the next part, " + DescribePart(spec) + ".");
+            ShowPart(board, player, spec, placement);
+            return PlayerAction.Start(spec, pace);
+        }
+
+        private static string DescribePart(DrawingSpec spec)
+        {
+            switch (spec.Type)
+            {
+                case LineType.Warding: return spec.IsMarksCross ? "a Mark's Cross" : "a Line of Warding";
+                case LineType.Forbiddance: return "a Line of Forbiddance";
+                case LineType.Making: return spec.IsBound ? "a bound chalkling" : "a chalkling";
+                default: return "a line";
+            }
+        }
+
+        /// <summary>Shows a preset part on the board as a picked (light blue) placement.</summary>
+        private void ShowPart(ChalkBoard board, Player player, DrawingSpec spec, Placement placement)
+        {
+            var preview = new PlacementPreview { Player = player };
+            switch (spec.Type)
+            {
+                case LineType.Warding:
+                    IReadOnlyList<Vec2> points;
+                    preview.Ward = board.PreviewWard(player, spec, placement, out points);
+                    preview.WardBindPoints = points;
+                    preview.WardChosen = true;
+                    if (spec.IsMarksCross && preview.Ward != null) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
+                    break;
+                case LineType.Forbiddance:
+                    preview.Segment = board.PreviewForbiddance(player, placement);
+                    break;
+                case LineType.Making:
+                    preview.Point = placement.Kind == PlacementKind.FreePoint ? placement.PointA : board.BoundChalklingSpot(player, placement.BindPointA);
+                    preview.ChalklingGlyph = spec.Glyph;
+                    preview.ChalklingAnchor = preview.Point;
+                    break;
+            }
+            if (placement.BindPointA >= 0) preview.BindPoints.Add(placement.BindPointA);
+            if (placement.BindPointB >= 0) preview.BindPoints.Add(placement.BindPointB);
+            Preview = preview;
         }
 
         /// <summary>What can follow a cancel: the menu as it would be with nothing in progress.</summary>
@@ -611,6 +793,7 @@ namespace RithmaticDuels.Presentation
 
             BeginRow((atHome ? "2" : "3") + ". Bind points:");
             int bindPoints = -1;
+            DrawingSpec chosenSpec = null;
             if (ellipse)
             {
                 GUILayout.Label("2, at the ends of its long axis.");
@@ -620,9 +803,25 @@ namespace RithmaticDuels.Presentation
             else
             {
                 GUI.enabled = _pointA.HasValue;
-                Choose(ref _bindPointChoice, CircleBindPointLabels, 0, "Place it on the board first.");
+                var own = OwnCircleLayouts();
+                var labels = new string[CircleBindPointLabels.Length + own.Count];
+                CircleBindPointLabels.CopyTo(labels, 0);
+                for (int i = 0; i < own.Count; i++) labels[CircleBindPointLabels.Length + i] = own[i].Name + " (" + own[i].BindPointCount + ")";
+                Choose(ref _bindPointChoice, labels, 0, "Place it on the board first.");
                 GUI.enabled = true;
-                if (_pointA.HasValue && _bindPointChoice >= 0) bindPoints = CircleBindPointCounts[_bindPointChoice];
+                if (_bindPointChoice >= labels.Length) _bindPointChoice = -1;
+                if (_pointA.HasValue && _bindPointChoice >= 0)
+                {
+                    if (_bindPointChoice < CircleBindPointCounts.Length) bindPoints = CircleBindPointCounts[_bindPointChoice];
+                    else
+                    {
+                        // A saved layout from the bind points editor.
+                        var layout = own[_bindPointChoice - CircleBindPointCounts.Length];
+                        bindPoints = layout.BindPointCount;
+                        chosenSpec = DrawingSpec.Warding(bindPoints);
+                        chosenSpec.Layout = layout.Clone();
+                    }
+                }
             }
             GUILayout.EndHorizontal();
 
@@ -642,7 +841,7 @@ namespace RithmaticDuels.Presentation
             if (_pointA.HasValue)
             {
                 IReadOnlyList<Vec2> points;
-                preview.Ward = board.PreviewWard(player, bindPoints > 0 ? DrawingSpec.Warding(bindPoints) : shapeSpec, Placement.MainWard(_pointA.Value, semiMinor), out points);
+                preview.Ward = board.PreviewWard(player, bindPoints > 0 ? chosenSpec ?? DrawingSpec.Warding(bindPoints) : shapeSpec, Placement.MainWard(_pointA.Value, semiMinor), out points);
                 preview.WardChosen = true;
                 if (bindPoints > 0) preview.WardBindPoints = points;
                 GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward, true) + " durability (the main LoW has double).");
@@ -660,7 +859,7 @@ namespace RithmaticDuels.Presentation
                 return null;
             }
 
-            var spec = DrawingSpec.Warding(bindPoints);
+            var spec = chosenSpec ?? DrawingSpec.Warding(bindPoints);
             placement = Placement.MainWard(_pointA.Value, semiMinor);
             GUILayout.Space(4);
             _pace = DrawingPace.Normal; // the main LoW can't be rushed or steadied
@@ -686,7 +885,7 @@ namespace RithmaticDuels.Presentation
             // or after placing, and a setting that wouldn't fit what is already placed is greyed out.
             ResetClicksIfChanged(_lineType.ToString());
             placement = null;
-            Choose(ref _lineType, LineTypeLabels);
+            Choose(ref _lineType, LineTypeLabels, DefenceEditor ? 1 << (int)LineType.Vigor : 0, "A defence can't hold a Line of Vigor.");
             if (!_lineType.HasValue)
             {
                 hint = "Choose a line type.";

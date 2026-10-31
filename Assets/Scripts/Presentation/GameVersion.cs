@@ -6,10 +6,10 @@ namespace RithmaticDuels.Presentation
     /// </summary>
     public static class GameVersion
     {
-        public const string Number = "0.30";
+        public const string Number = "0.31";
         public const string Date = "2026-10-31";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "no tether line, stat button flash fix";
+        public const string Summary = "defence presets and editors";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }

@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using RithmaticDuels.Rules;
+using RithmaticDuels.Rules.Presets;
 using RithmaticDuels.Rules.Geometry;
+using RithmaticDuels.Rules.Presets;
 using UnityEngine;
 
 namespace RithmaticDuels.Presentation
@@ -52,6 +54,9 @@ namespace RithmaticDuels.Presentation
         private LockedChoice _lockedA;
         // Replaced with a fresh picker each time a player starts choosing, so no choice carries over.
         private readonly ActionPicker[] _pickers = { new ActionPicker(), new ActionPicker() };
+        // Saved defences (DESIGN.md section 6.8): the library, loaded at the start of each duel, and each player's defence being built.
+        private PresetLibrary _library;
+        private readonly DefenceRun[] _runs = new DefenceRun[2];
         private readonly List<string> _log = new List<string>();
         private Vector2 _logScroll;
         // Each log line's height, measured once for the width they were measured at (see DrawLog).
@@ -73,6 +78,8 @@ namespace RithmaticDuels.Presentation
         private int _boardHoverLineId = -1;
         /// <summary>The line whose entry in a lines list is under the mouse, highlighted on the board. -1 for none.</summary>
         private int _listHoverLineId = -1;
+        /// <summary>The bind point editor while it is open, covering the duel; null otherwise.</summary>
+        private BindPointEditor _bindPointEditor;
         /// <summary>Whether the line info key is held, read each OnGUI so LateUpdate can light up the hovered line.</summary>
         private bool _lineInfoHeld;
 
@@ -143,6 +150,10 @@ namespace RithmaticDuels.Presentation
             _currentSeed = _seed != 0 ? (ulong)_seed : (ulong)UnityEngine.Random.Range(1, int.MaxValue);
             _board = new ChalkBoard(_rules);
             _error = null;
+            _runs[0] = null;
+            _runs[1] = null;
+            _library = PresetStore.Load(_rules);
+            ActionPicker.CustomLayouts = _library.Layouts;
             try
             {
                 _duel = new Duel(_rules, _currentSeed, _board);
@@ -205,6 +216,11 @@ namespace RithmaticDuels.Presentation
         {
             // Unity resets the skin every OnGUI, so set ours each time (it restyles the scroll bars).
             GUI.skin = MenuSkin.Get();
+            if (_bindPointEditor != null)
+            {
+                DrawBindPointEditor();
+                return;
+            }
             // Read the click in screen pixels before scaling the GUI.
             GUI.matrix = Matrix4x4.identity;
             var current = Event.current;
@@ -463,7 +479,7 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>A red cross with a dark outline, so it shows on both the board and the menus.</summary>
-        private static Texture2D MakeCrossCursor(int size)
+        internal static Texture2D MakeCrossCursor(int size)
         {
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
             var red = new Color(0.95f, 0.3f, 0.25f, 1f);
@@ -650,8 +666,25 @@ namespace RithmaticDuels.Presentation
             }
             GUILayout.FlexibleSpace();
             GUILayout.Label(GameVersion.Label);
+            if (_bindPointEditor != null) { GUILayout.EndHorizontal(); return; }
+            // Until the main menu exists (build step 6), the editors open from here.
+            if (GUILayout.Button("Defence editor", GUILayout.Width(130))) Then(OpenDefenceEditor);
+            if (GUILayout.Button("Bind points editor", GUILayout.Width(150))) Then(OpenBindPointEditor);
             if (GUILayout.Button("New duel", GUILayout.Width(100))) Then(NewDuel);
             GUILayout.EndHorizontal();
+        }
+
+        /// <summary>
+        /// Opens the defence editor (DESIGN.md section 6.8) in place of the duel screen, which keeps its duel and
+        /// carries on when the editor is closed. Moves to the main menu in build step 6.
+        /// </summary>
+        private void OpenDefenceEditor()
+        {
+            var editor = GetComponent<DefenceEditorScreen>();
+            if (editor == null) editor = gameObject.AddComponent<DefenceEditorScreen>();
+            enabled = false;
+            // The same library as the duel's, so a defence saved in the editor is offered in the duel straight away.
+            editor.Open(this, _rules, _camera, _renderer, Library());
         }
 
         private void DrawWardStatus()
@@ -676,7 +709,7 @@ namespace RithmaticDuels.Presentation
             if (GUILayout.Button("I'm " + TurnNarrator.PlayerName(_chooser) + ", show my choices", GUILayout.Height(50)) || MenuKeys.TakeNext())
                 Then(() =>
                 {
-                    _pickers[(int)_chooser] = new ActionPicker();
+                    _pickers[(int)_chooser] = NewPicker(_chooser);
                     _showLines = false;
                     _menuScroll = Vector2.zero;
                     _phase = Phase.Choosing;
@@ -692,8 +725,20 @@ namespace RithmaticDuels.Presentation
             if (choice != null) Then(() => Lock(choice));
         }
 
+        private ActionPicker NewPicker(Player player)
+        {
+            if (_library == null) _library = PresetStore.Load(_rules);
+            var picker = new ActionPicker { Run = _runs[(int)player] };
+            // Offered on turn 1 only, and never again once one is used or cancelled.
+            if (_runs[(int)player] == null) picker.Presets = _library.Presets;
+            return picker;
+        }
+
         private void Lock(LockedChoice choice)
         {
+            if (choice.StartPreset != null) _runs[(int)_chooser] = new DefenceRun(choice.StartPreset, _chooser);
+            if (choice.CancelsPreset && _runs[(int)_chooser] != null) _runs[(int)_chooser].Cancel(_duel);
+
             if (choice.Action.Kind == ActionKind.StartDrawing)
                 _board.SetPendingPlacement(_chooser, choice.Action.Spec, choice.Placement);
 
@@ -711,6 +756,7 @@ namespace RithmaticDuels.Presentation
                 _error = null;
                 _log.Add("— Turn " + report.Turn + " —");
                 _log.AddRange(TurnNarrator.Describe(_duel, report, _board.LastTickNotes));
+                foreach (var run in _runs) if (run != null) run.Observe(_duel, report);
                 _logScroll.y = float.MaxValue;
             }
             catch (System.InvalidOperationException e)
@@ -832,6 +878,47 @@ namespace RithmaticDuels.Presentation
         /// Applies a click that changes what is on screen, then stops this GUI pass, since the rest of
         /// it was laid out for the old screen (see <see cref="ActionPicker"/>).
         /// </summary>
+        private void OpenBindPointEditor()
+        {
+            _showLines = false;
+            _bindPointEditor = new BindPointEditor(_rules, Library());
+        }
+
+        /// <summary>The saved layouts and defences, read from disk the first time they are needed.</summary>
+        private PresetLibrary Library()
+        {
+            if (_library == null)
+            {
+                _library = PresetStore.Load(_rules);
+                ActionPicker.CustomLayouts = _library.Layouts;
+            }
+            return _library;
+        }
+
+        /// <summary>The bind point editor covers the whole screen below the top bar, and the duel waits underneath.</summary>
+        private void DrawBindPointEditor()
+        {
+            var current = Event.current;
+            float scale = GuiScale();
+            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+            // Backspace and Esc step back in the editor, except while typing the layout's name.
+            MenuKeys.Track(current, GUIUtility.keyboardControl == 0);
+            float width = Screen.width / scale;
+            float height = Screen.height / scale;
+            GUILayout.BeginArea(new Rect(10, 6, width - 20, HeaderHeight - 6));
+            try { DrawHeader(); }
+            finally { GUILayout.EndArea(); }
+            _bindPointEditor.Draw(HeaderHeight, width, height, scale);
+            if (_bindPointEditor.Closed)
+            {
+                _library = _bindPointEditor.Library;
+                ActionPicker.CustomLayouts = _library.Layouts;
+                _bindPointEditor.Dispose();
+                _bindPointEditor = null;
+                GUIUtility.ExitGUI();
+            }
+        }
+
         private static void Then(System.Action change)
         {
             change();

@@ -37,9 +37,12 @@ Each item says what the friction is and a likely fix. None are built yet unless 
 - **The log moves on its own.** It jumps to the newest entry whenever it changes. A setting to stop this is already on the settings list. Players should also be able to scroll back without losing their place.
 - **Screen readers.** IMGUI is not read by screen readers. The log and menus could later be mirrored to a text output a screen reader can use. This is a large change, so it is noted rather than planned.
 
+- **Reordering by drag (defence editor, v0.31).** Dragging needs steady pointer control, so parts can also be moved with the keyboard: click one, then Up and Down.
+
 ## Time pressure
 
 - **Decision timer.** Online duels will need a timer (DESIGN.md section 2). Offer the longest setting and an "off" choice wherever both players agree, and show the time left as text as well as any bar.
+- **Bind points editor needs a mouse drag.** Triangle corners can only be moved by dragging, with small targets. Later: let arrow keys nudge a selected corner, and make the grab area larger (2026-10-31).
 
 ## Future features
 

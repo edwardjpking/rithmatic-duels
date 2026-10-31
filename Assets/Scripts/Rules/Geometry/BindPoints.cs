@@ -126,6 +126,13 @@ namespace RithmaticDuels.Rules.Geometry
         /// </summary>
         private static List<Vec2> NinePointCircle(Vec2 centre, float radius)
         {
+            var v = NinePointTriangle(centre, radius);
+            return FromTriangle(centre, radius, v[0], v[1], v[2]);
+        }
+
+        /// <summary>The vertices of the triangle whose nine-point circle is this circle (see <see cref="NinePointCircle"/>).</summary>
+        public static Vec2[] NinePointTriangle(Vec2 centre, float radius)
+        {
             // Angles of the triangle, in degrees. Any acute, scalene choice works.
             const float angleA = 50f, angleB = 60f, angleC = 70f;
             // Circumradius is twice the nine-point radius. Vertex positions on the circumcircle are set
@@ -138,7 +145,16 @@ namespace RithmaticDuels.Rules.Geometry
             // centre is halfway to it.
             Vec2 shift = centre - (a + b + c) * 0.5f;
             if (Math.Abs(angleA + angleB + angleC - 180f) > 1e-3f) throw new InvalidOperationException("Triangle angles must sum to 180.");
-            return FromTriangle(centre, radius, a + shift, b + shift, c + shift);
+            return new[] { a + shift, b + shift, c + shift };
+        }
+
+        /// <summary>Sort points anticlockwise round the centre, starting from the one at (or just after) <paramref name="facing"/>. Doesn't move them.</summary>
+        public static List<Vec2> Sorted(List<Vec2> points, Vec2 centre, Vec2 facing)
+        {
+            var sorted = new List<Vec2>(points);
+            float facingAngle = facing.Angle;
+            sorted.Sort((p, q) => Positive(WrapAngle((p - centre).Angle - facingAngle)).CompareTo(Positive(WrapAngle((q - centre).Angle - facingAngle))));
+            return sorted;
         }
 
         /// <summary>Rotate the set about the centre so the point nearest <paramref name="facing"/> faces it exactly, then sort anticlockwise from there.</summary>
