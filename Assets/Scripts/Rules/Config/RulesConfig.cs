@@ -246,6 +246,13 @@ namespace RithmaticDuels.Rules
         /// the dragged vertex snaps so they sit exactly on top of each other.
         /// </summary>
         public float LayoutSnapDistance = 0.08f;
+        /// <summary>How far from the circle's centre (in radii) the bind point editor lets a triangle vertex go.</summary>
+        public float LayoutMaxVertexRadius = 3f;
+        /// <summary>
+        /// The bind point editor refuses a vertex spot closer than this (in radii) to another vertex or to the line
+        /// through the other two, so the triangle never flattens into a line.
+        /// </summary>
+        public float LayoutMinVertexGap = 0.1f;
     }
 
     [Serializable]

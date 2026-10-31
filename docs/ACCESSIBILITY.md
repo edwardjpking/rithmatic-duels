@@ -43,6 +43,7 @@ Each item says what the friction is and a likely fix. None are built yet unless 
 ## Time pressure
 
 - **Decision timer.** Online duels will need a timer (DESIGN.md section 2). Offer the longest setting and an "off" choice wherever both players agree, and show the time left as text as well as any bar.
+- **Bind points editor needs a mouse drag.** Triangle corners can only be moved by dragging, with small targets. Later: let arrow keys nudge a selected corner, and make the grab area larger (2026-10-31).
 
 ## Future features
 

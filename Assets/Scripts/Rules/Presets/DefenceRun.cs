@@ -24,7 +24,6 @@ namespace RithmaticDuels.Rules.Presets
     public sealed class DefenceRun
     {
         private readonly Dictionary<int, int> _lineIds = new Dictionary<int, int>();
-        private int _startedIndex = int.MinValue;
 
         public DefencePreset Preset { get; private set; }
         public Player Player { get; private set; }
@@ -105,7 +104,6 @@ namespace RithmaticDuels.Rules.Presets
                 placement = null;
                 return null;
             }
-            _startedIndex = CurrentIndex;
             return PlayerAction.Start(spec, pace);
         }
 
@@ -117,7 +115,10 @@ namespace RithmaticDuels.Rules.Presets
             return duel.GetPlayer(Player).HasWorkInProgress ? PlayerAction.Cancel() : PlayerAction.Pass();
         }
 
-        /// <summary>Follow what happened in a turn: when the part in progress finishes, the next one is loaded.</summary>
+        /// <summary>
+        /// Follow what happened in a turn: when the part in progress finishes, the next one is loaded. While the run
+        /// is going, the player draws nothing else, so any drawing they finish is the current part.
+        /// </summary>
         public void Observe(Duel duel, TurnReport report)
         {
             if (!IsRunning) return;
@@ -125,7 +126,7 @@ namespace RithmaticDuels.Rules.Presets
             {
                 if (e.Player != Player) continue;
                 if (e.Type == TurnEventType.WorkCancelled) { State = DefenceRunState.Cancelled; return; }
-                if (e.Type == TurnEventType.DrawingCompleted && _startedIndex == CurrentIndex)
+                if (e.Type == TurnEventType.DrawingCompleted)
                 {
                     int componentId = CurrentIndex < 0 ? DefencePreset.MainWardId : Preset.Components[CurrentIndex].Id;
                     _lineIds[componentId] = e.LineId;
@@ -136,7 +137,6 @@ namespace RithmaticDuels.Rules.Presets
             if (_lineIds.ContainsKey(currentId) && !duel.GetPlayer(Player).HasWorkInProgress)
             {
                 CurrentIndex++;
-                _startedIndex = int.MinValue;
                 if (CurrentIndex >= Preset.Components.Count) State = DefenceRunState.Finished;
             }
         }

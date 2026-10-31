@@ -50,13 +50,13 @@ namespace RithmaticDuels.Presentation
         private bool _crossShown;
 
         /// <summary>Opens the editor in place of the duel screen.</summary>
-        public void Open(DuelController duelScreen, RulesConfig rules, Camera camera, BoardRenderer renderer)
+        public void Open(DuelController duelScreen, RulesConfig rules, Camera camera, BoardRenderer renderer, PresetLibrary library)
         {
             _duelScreen = duelScreen;
             _rules = rules;
             _camera = camera;
             _renderer = renderer;
-            _library = PresetStore.Load(rules);
+            _library = library;
             _message = null;
             NewDefence(_library.Layouts.Count > 0 ? _library.Layouts[0] : new BindPointLayout());
             enabled = true;
