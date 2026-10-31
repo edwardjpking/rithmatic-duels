@@ -145,6 +145,8 @@ Separate from the tutorial, and the lowest priority. It shares the tutorial's se
 
 ## Other ideas
 
+- **Real defence presets (Amelia, 2026-10-31).** Create proper default defences. The four shipped in v0.31 (Ballintain, Eskridge, Easton, Jordan) are placeholders and not correct readings.
+
 ### Continuous attributes
 
 - **LoV frequency slider.** Replace the Low / Medium / High tiers (DESIGN.md 4.3) with a continuous frequency choice, where draw time, speed and damage scale with it. Build the tier system so this swap is a data and UI change, not a rules rewrite.
