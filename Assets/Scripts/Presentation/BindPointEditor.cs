@@ -47,8 +47,8 @@ namespace RithmaticDuels.Presentation
         private bool _showCentre;
         /// <summary>Whether the free hand key (Ctrl, or Cmd on macOS) is held: it stops snapping, as in a duel.</summary>
         private bool _freeHandHeld;
-        /// <summary>The saved layout waiting for its delete to be confirmed, if any.</summary>
-        private BindPointLayout _confirmDelete;
+        /// <summary>The confirm box over the canvas for deleting a layout (shared with the defence editor).</summary>
+        private readonly ConfirmOverlay _confirm = new ConfirmOverlay();
         /// <summary>The side picked for the lock options (side i joins vertices i and i+1), or -1.</summary>
         private int _selectedEdge = -1;
         /// <summary>The one locked side (only one at a time, since every two sides share a vertex), or -1.</summary>
@@ -75,7 +75,7 @@ namespace RithmaticDuels.Presentation
             _name = edit ? layout.Name : "";
             _undo.Clear();
             _dragging = -1;
-            _confirmDelete = null;
+            _confirm.Close();
             _selectedEdge = -1;
             _lockedEdge = -1;
             _lock = EdgeLock.None;
@@ -93,9 +93,13 @@ namespace RithmaticDuels.Presentation
             var e = Event.current;
             GUI.DrawTexture(new Rect(0, top, width, height - top), Texture2D.whiteTexture, ScaleMode.StretchToFill, false, 0, Backdrop, 0, 0);
             _canvas = new Rect(PanelWidth + 20, top + 10, width - PanelWidth - 30, height - top - 20);
-            HandleInput(e);
+            if (!_confirm.HandleInput(e)) HandleInput(e);
+            _confirm.BlockOutside(e);
+            GUI.enabled = !_confirm.Open;
             DrawPanel(new Rect(10, top + 10, PanelWidth, height - top - 20));
+            GUI.enabled = true;
             if (e.type == EventType.Repaint) DrawCanvas(scale);
+            _confirm.Draw(_canvas);
         }
 
         // ---- Input ----
@@ -263,9 +267,8 @@ namespace RithmaticDuels.Presentation
             }
             else if (e.type == EventType.MouseDown && e.button == 1 || MenuKeys.TakeBack())
             {
-                // Right-click (or Backspace / Esc) goes back one step: cancel a delete, cancel the drag, or undo the last move.
-                if (_confirmDelete != null) _confirmDelete = null;
-                else if (_dragging < 0 && _selectedEdge >= 0) _selectedEdge = -1;
+                // Right-click (or Backspace / Esc) goes back one step: cancel the drag, or undo the last move.
+                if (_dragging < 0 && _selectedEdge >= 0) _selectedEdge = -1;
                 else if (_dragging >= 0) { _vertices[_dragging] = _dragStart; if (_undo.Count > 0) _undo.Pop(); _dragging = -1; }
                 else if (_undo.Count > 0) _vertices = _undo.Pop();
                 _refusedAt = null;
@@ -302,6 +305,14 @@ namespace RithmaticDuels.Presentation
             else _refusedAt = mouse; // the vertex stays at its last allowed spot
         }
 
+        private void Delete(BindPointLayout saved)
+        {
+            _library.Layouts.Remove(saved);
+            PresetStore.Save(_library);
+            if (_editing == saved) _editing = null;
+            _status = "Deleted \"" + saved.Name + "\".";
+        }
+
         // ---- Panel ----
 
         private void DrawPanel(Rect area)
@@ -316,7 +327,7 @@ namespace RithmaticDuels.Presentation
             _showCentre = GUILayout.Toggle(_showCentre, " Show the circle's centre");
             GUI.enabled = _pan.sqrMagnitude > 0.01f;
             if (GUILayout.Button("Recentre view")) _pan = Vector2.zero;
-            GUI.enabled = true;
+            GUI.enabled = !_confirm.Open;
             GUILayout.Space(6);
             DrawEdgeOptions();
             GUILayout.Space(6);
@@ -335,7 +346,7 @@ namespace RithmaticDuels.Presentation
                     _status = "Saved \"" + layout.Name + "\". It can now be picked for a main LoW's bind points.";
                 }
             }
-            GUI.enabled = true;
+            GUI.enabled = !_confirm.Open;
             if (problem != null) { var old = GUI.contentColor; GUI.contentColor = MenuSkin.Refused; GUILayout.Label(problem); GUI.contentColor = old; }
             if (_status != null) GUILayout.Label(_status);
 
@@ -345,28 +356,11 @@ namespace RithmaticDuels.Presentation
             {
                 if (saved.IsEllipse) continue;
                 GUILayout.BeginHorizontal();
-                if (_confirmDelete == saved)
-                {
-                    // Deleting can't be undone, so it asks first. Right-click, Backspace or Esc also keeps it.
-                    GUILayout.Label("Delete " + saved.Name + "?");
-                    if (GUILayout.Button("Delete", GUILayout.Width(60)))
-                    {
-                        _library.Layouts.Remove(saved);
-                        PresetStore.Save(_library);
-                        if (_editing == saved) _editing = null;
-                        _confirmDelete = null;
-                        _status = "Deleted \"" + saved.Name + "\".";
-                        GUIUtility.ExitGUI();
-                    }
-                    if (GUILayout.Button("Keep", GUILayout.Width(60))) { _confirmDelete = null; GUIUtility.ExitGUI(); }
-                    GUILayout.EndHorizontal();
-                    continue;
-                }
                 GUILayout.Label(saved.Name + " (" + saved.BindPointCount + ")");
                 if (GUILayout.Button(saved.IsDefault ? "Copy" : "Edit", GUILayout.Width(60))) { StartFrom(saved, !saved.IsDefault); GUIUtility.ExitGUI(); }
                 GUI.enabled = !saved.IsDefault;
-                if (GUILayout.Button("Delete", GUILayout.Width(60))) { _confirmDelete = saved; GUI.enabled = true; GUIUtility.ExitGUI(); }
-                GUI.enabled = true;
+                if (GUILayout.Button("Delete", GUILayout.Width(60))) { var doomed = saved; _confirm.Ask("Delete " + saved.Name + "? This can't be undone.", "Delete", "Keep it", () => Delete(doomed)); GUI.enabled = true; GUIUtility.ExitGUI(); }
+                GUI.enabled = !_confirm.Open;
                 GUILayout.EndHorizontal();
             }
 
@@ -400,7 +394,7 @@ namespace RithmaticDuels.Presentation
                 bool possible = option == EdgeLock.None || LockPossible(option);
                 GUI.enabled = possible;
                 bool on = GUILayout.Toggle(current == option, " " + LockNames[i] + (possible ? "" : " (no room)"));
-                GUI.enabled = true;
+                GUI.enabled = !_confirm.Open;
                 if (on && current != option) { SetLock(option); GUIUtility.ExitGUI(); }
             }
         }
