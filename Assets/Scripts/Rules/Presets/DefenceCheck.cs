@@ -39,6 +39,11 @@ namespace RithmaticDuels.Rules.Presets
                 var report = duel.ResolveTurn(action, StandIn(duel, Player.B));
                 run.Observe(duel, report);
             }
+            if (run.Skipped.Count > 0)
+            {
+                failedIndex = run.Preset.IndexOf(run.Skipped[0]);
+                return "Part " + (failedIndex + 1) + " doesn't fit.";
+            }
             if (run.State == DefenceRunState.Finished) return null;
             failedIndex = run.CurrentIndex;
             return run.BlockedReason ?? "Part of the defence couldn't be built.";

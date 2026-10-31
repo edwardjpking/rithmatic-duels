@@ -211,6 +211,25 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreEqual(2, duel.Lines.Count(l => l.Owner == Player.A && l.IsActive));
         }
 
+        [Test]
+        public void Run_PartThatNoLongerFits_IsSkipped()
+        {
+            var preset = DefaultPresets.Eskridge(Layout("Six-point circle"), _config);
+            var board = new ChalkBoard(_config);
+            var duel = new Duel(_config, new ScriptedRandom(Rolls.NoModifier), board);
+            var run = new DefenceRun(preset, Player.A);
+            int ward = preset.Components.FindIndex(c => c.Type == LineType.Warding);
+            // Swap the outer LoW for one at a bind point it can't use, so it and the LoF across it can't be built.
+            preset = run.Preset;
+            preset.Components[ward].A = BindRef.Main(1);
+            preset.Components.Insert(ward, DefenceComponent.Ward(99, BindRef.Main(1), 4, _config.Geometry.AttachedWardMinRadius));
+            int guard = 0;
+            while (run.IsRunning && guard++ < 300) Step(duel, board, run, null);
+            Assert.AreEqual(DefenceRunState.Finished, run.State);
+            Assert.Greater(run.Skipped.Count, 0);
+            Assert.IsNotNull(DefenceCheck.Problem(preset, _config));
+        }
+
         private static void Step(Duel duel, ChalkBoard board, DefenceRun a, DefenceRun b)
         {
             Placement pa = null, pb = null;

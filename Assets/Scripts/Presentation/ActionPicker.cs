@@ -496,9 +496,15 @@ namespace RithmaticDuels.Presentation
             DrawingSpec spec; DrawingPace pace;
             if (!Run.CurrentDrawing(duel, board, out spec, out placement, out pace, out hint))
             {
-                hint = "The next part no longer fits (" + hint + "). Cancel to end the defence.";
+                if (Run.State == DefenceRunState.Finished)
+                {
+                    GUILayout.Label(Run.Preset.Name + " is done: the remaining parts no longer fit.");
+                    return PlayerAction.Pass();
+                }
+                hint = "The next part can't be drawn (" + hint + "). Cancel to end the defence.";
                 return null;
             }
+            if (Run.Skipped.Count > 0) progress += " " + Run.Skipped.Count + " part(s) skipped because they no longer fit.";
             GUILayout.Label(progress + " Start the next part, " + DescribePart(spec) + ".");
             ShowPart(board, player, spec, placement);
             return PlayerAction.Start(spec, pace);
