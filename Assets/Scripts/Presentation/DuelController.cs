@@ -78,8 +78,6 @@ namespace RithmaticDuels.Presentation
         private int _boardHoverLineId = -1;
         /// <summary>The line whose entry in a lines list is under the mouse, highlighted on the board. -1 for none.</summary>
         private int _listHoverLineId = -1;
-        /// <summary>Saved bind point layouts and defences, with the defaults (DESIGN.md sections 6.1 and 6.8).</summary>
-        private PresetLibrary _library;
         /// <summary>The bind point editor while it is open, covering the duel; null otherwise.</summary>
         private BindPointEditor _bindPointEditor;
         /// <summary>Whether the line info key is held, read each OnGUI so LateUpdate can light up the hovered line.</summary>
@@ -155,6 +153,7 @@ namespace RithmaticDuels.Presentation
             _runs[0] = null;
             _runs[1] = null;
             _library = PresetStore.Load(_rules);
+            ActionPicker.CustomLayouts = _library.Layouts;
             try
             {
                 _duel = new Duel(_rules, _currentSeed, _board);
@@ -165,7 +164,6 @@ namespace RithmaticDuels.Presentation
                 _error = e.Message;
                 return;
             }
-            Library();
             _log.Clear();
             _log.Add("New duel (seed " + _currentSeed + "). Both players start by setting up a main Line of Warding.");
             _chooser = Player.A;
