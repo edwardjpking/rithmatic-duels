@@ -6,8 +6,8 @@ The order the game is being built in. Each step ends with something you can open
 2. **Rough playable duel.** Hot-seat duel on one screen with text menus and a turn log. *(Done.)*
 3. **The board.** Continuous 2D space with bind points, LoV movement, reflection off LoF and hits on LoW, drawn with simple shapes. Lines are placed by clicking the board. *(Done.)*
 4. **Drawing input.** Placing lines with snapping and free-hand mode. *(Done, v0.30. Chalk visuals moved to step 6 polish.)*
-5. **Chalklings and glyphs**, then saved defence presets. Behaviour as in `DESIGN.md` 4.4 (settled 2026-10-27): Attack chalklings walk straight at the opponent's main LoW, Defend chalklings guard their anchor, all move then all attack at once in stage 3; new chalkling looks and previews; the 2-turn minimum and LoV carrying through chalklings. *(Current step. Chalklings were mostly built in rounds v0.24 to v0.30; presets remain.)*
-6. **AI opponent**, then polish (including chalk visuals for lines). Online play last.
+5. **Chalklings and glyphs**, then saved defence presets, a defence editor, and a bind point editor for custom layouts (DESIGN.md 6.1, 6.8). Behaviour as in `DESIGN.md` 4.4 (settled 2026-10-27): Attack chalklings walk straight at the opponent's main LoW, Defend chalklings guard their anchor, all move then all attack at once in stage 3; new chalkling looks and previews; the 2-turn minimum and LoV carrying through chalklings. *(Current step. Chalklings were mostly built in rounds v0.24 to v0.30; presets remain.)*
+6. **AI opponent**, then a main menu (holding the editors), then polish (including chalk visuals for lines). Online play last.
 
 ## Playing the prototype
 

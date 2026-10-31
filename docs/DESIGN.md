@@ -77,7 +77,7 @@ The main LoW can't be rushed or steadied. When both players have locked in:
 - **Nothing else can be drawn until the bind points are complete.** Meanwhile a player can Continue, Cancel or Pass.
 - **Cancelling the bind points** leaves the outline in place and scraps the bind points. The player can start new bind points immediately (in the same turn, possibly a different count) or pass and start them on a later turn.
 
-Players can pick a saved defence preset (section 6.8) so they do not have to select each line every duel. Players can pick a saved defence preset (section 6.8) so they do not have to select each line every duel.
+Players can pick a saved defence preset (section 6.8) on turn 1 so they do not have to select each line every duel.
 
 ### 2.1 End game: chalk fatigue and tiebreak
 
@@ -331,7 +331,7 @@ A **defence** is the arrangement of lines a player draws around their main LoW. 
 3. More bind points are placed where the **altitude through each vertex, extended to a full line**, intersects the circumference.
 4. This gives a **maximum of 12** bind points (3 edges and 3 altitude lines, each crossing the circle at up to 2 points).
 
-A set of default bind-point presets gives the standard circles (4, 6 and 9 points) used by the defences below. Players can also create and save their own triangle constructions as presets.
+A set of default bind-point presets gives the standard circles (4, 6 and 9 points) used by the defences below. Players can also create and save their own triangle constructions as custom bind point layouts in the **bind point editor** (decided 2026-10-31, built in step 5). It follows the construction in Amelia's GeoGebra sketch (https://www.geogebra.org/geometry/pjutbhdb): place the triangle's three vertices around the circle, and the bind points appear where the edges and extended altitudes cross it. A custom layout can be picked as a main LoW's bind points like the standard ones, and its draw time follows the usual rule (bind points div 2).
 
 ### 6.2 Vocabulary
 
@@ -442,9 +442,15 @@ Nine bind points derived from a triangle: the midpoints of its sides plus the po
 
 ### 6.8 Saved defence presets
 
-Players can save their own defences as presets and pick one at the start of a duel, so they do not have to select each line every time. The game ships every named defence above as a default preset (this may change).
+Decided 2026-10-31 (built in build step 5).
 
-A preset gives **no** reduction in drawing time, only in thinking time. It queues the drawings; each line still costs its normal drawing time, one drawing in progress at a time.
+- **What a preset is.** A saved construction of any number of LoW, LoF and LoM, built on one bind point layout (standard or custom). Presets are made **outside duels**, in the **defence editor**. The editor never lets a player save an invalid defence.
+- **Order.** The order the parts are built in matters. The editor lists the parts in build order, and the player drags them up and down to reorder them. A part can never be dragged above its parent (the line it is bound to), so no part is built before its parent.
+- **In a duel.** On turn 1 the action menu offers the saved presets as options. Once one is picked, the action menu shows it like a multi-turn drawing: only Continue or Cancel, not the full menu. Each part costs its normal drawing time, one at a time. When a part finishes, the next loads automatically and shows on the board like a picked placement.
+- **Cancelling.** Cancel scraps the part in progress and ends the preset. A cancelled preset can't be restarted that duel. Finished parts stay.
+- **Saving time, not drawing time.** A preset gives **no** reduction in drawing time, only in thinking time.
+- **Shipped presets.** For now one default preset per standard bind point layout (four-point, six-point and nine-point circles and the ellipse). More come later.
+- **Editors.** The defence editor and the bind point editor are two separate screens. They move into a main menu in build step 6; until then they are opened from the duel screen.
 
 **All defences are legal.** Some will be better than others, and that is intended. If one proves too strong it is rebalanced through its cost, not banned.
 
