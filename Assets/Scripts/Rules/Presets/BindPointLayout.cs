@@ -97,6 +97,22 @@ namespace RithmaticDuels.Rules.Presets
             return gap <= Merged && Vec2.Distance(best, desired) <= 3f * snapDistance ? best : desired;
         }
 
+        /// <summary>
+        /// Whether vertex <paramref name="index"/> may go to <paramref name="spot"/> in the bind point editor: within
+        /// LayoutMaxVertexRadius of the centre, and at least LayoutMinVertexGap from the other two vertices and from
+        /// the line through them, so the triangle can't flatten (DESIGN.md sections 1.1 and 6.1).
+        /// </summary>
+        public static bool VertexAllowed(Vec2[] vertices, int index, Vec2 spot, PresetsConfig config)
+        {
+            if (spot.Length > config.LayoutMaxVertexRadius + 1e-5f) return false;
+            Vec2 a = vertices[(index + 1) % 3], b = vertices[(index + 2) % 3];
+            float gap = config.LayoutMinVertexGap;
+            if (Vec2.Distance(spot, a) < gap || Vec2.Distance(spot, b) < gap) return false;
+            float baseLength = Vec2.Distance(a, b);
+            if (baseLength < 1e-6f) return false;
+            return Math.Abs(Vec2.Cross(b - a, spot - a)) / baseLength >= gap;
+        }
+
         /// <summary>Two crossings this close count as the same bind point when snapping.</summary>
         private const float Merged = 1e-4f;
 
