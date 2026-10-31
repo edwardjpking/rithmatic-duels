@@ -868,6 +868,8 @@ namespace RithmaticDuels.Presentation
                     else if (_pointA.HasValue) anchor = _pointA;
                     else if (_chalklingMode != ChalklingMode.Bound && !preview.InvalidHover.HasValue) anchor = _hover;
                     bool boundAt = anchorBind >= 0;
+                    // Hovering a bound placement highlights its bind point, as a LoF's hover preview does.
+                    if (_bindA < 0 && boundAt && anchorBind < bindSpots.Count) preview.HoverBindPoint = bindSpots[anchorBind];
                     preview.ChalklingAnchor = anchor;
                     preview.ChalklingHovered = _bindA < 0 && !_pointA.HasValue;
                     // A bound chalkling always defends. Until a glyph is chosen, it shows no glyph, ring or path.
@@ -1603,6 +1605,9 @@ namespace RithmaticDuels.Presentation
                 if (int.TryParse(entry.Text, out wanted))
                 {
                     buffs = BuffsFor(wanted, baseValue, perBuff, 0, MaxStatBuffs);
+                    // A typed value past a limit is capped there, and the button for that direction flashes red to say so.
+                    if (wanted > baseValue + MaxStatBuffs * perBuff) Flash(control + "+", name + " can't go any higher.");
+                    else if (wanted < baseValue) Flash(control + "-", name + " can't go any lower.");
                     entry.ShownBuffs = buffs;
                 }
             }
@@ -1624,6 +1629,9 @@ namespace RithmaticDuels.Presentation
             {
                 scrollStep = Event.current.delta.y < 0f ? 1 : Event.current.delta.y > 0f ? -1 : 0;
                 Event.current.Use();
+                // Scrolling past a limit changes nothing: the button for that direction flashes red, as a click on it would.
+                if (scrollStep > 0 && buffs >= MaxStatBuffs) Flash(control + "+", name + " can't go any higher.");
+                else if (scrollStep < 0 && buffs <= 0) Flash(control + "-", name + " can't go any lower.");
             }
 
             int next = Mathf.Clamp(buffs + step + scrollStep, 0, MaxStatBuffs);
@@ -1900,10 +1908,14 @@ namespace RithmaticDuels.Presentation
             float strength = FlashStrength();
             if (strength <= 0f) return;
             var colour = GUI.color;
+            // Greyed-out buttons are drawn with GUI.enabled off, which would halve the flash too: paint it at full strength.
+            bool enabled = GUI.enabled;
+            GUI.enabled = true;
             var red = MenuSkin.Refused;
             GUI.color = new Color(red.r, red.g, red.b, red.a * MenuSkin.RefusedFlashAlpha * strength);
             MenuSkin.FlashBox.Draw(rect, false, false, false, false);
             GUI.color = colour;
+            GUI.enabled = enabled;
         }
 
         /// <summary>

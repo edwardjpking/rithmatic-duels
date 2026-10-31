@@ -240,9 +240,9 @@ namespace RithmaticDuels.Presentation
             if (HoverChalkling != null)
             {
                 ChalklingReach(HoverChalkling.Owner, HoverChalkling.Line.Glyph, HoverChalkling.Anchor, HoverChalkling.Position, HoverChalkling.GuardDistance);
-                // A bound chalkling points to its bind point with a dashed line in the aim-line blue, like an Attack path.
+                // A bound chalkling's bind point is highlighted, the same as in the selected preview of a bound chalkling.
                 if (HoverChalkling.BindPoint.HasValue)
-                    DashedPath(new[] { HoverChalkling.Position, HoverChalkling.BindPoint.Value }, PreviewColour);
+                    Disc(HoverChalkling.BindPoint.Value, BindPointSize / 2f + BindPointRingWidth / 2f, PreviewColour);
             }
         }
 
