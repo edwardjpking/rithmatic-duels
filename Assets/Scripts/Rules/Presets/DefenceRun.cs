@@ -45,11 +45,60 @@ namespace RithmaticDuels.Rules.Presets
             CurrentIndex = -1;
         }
 
-        /// <summary>Presets are offered on turn 1 only, to a player who hasn't started anything (DESIGN.md section 6.8).</summary>
+        /// <summary>
+        /// Presets are offered on turn 1 to a player who hasn't started anything, and again whenever the main LoW and
+        /// its bind points are finished and nothing is in progress (Amelia, v0.32; DESIGN.md section 6.8). Only a
+        /// preset that <see cref="Matches"/> the main LoW can then be picked.
+        /// </summary>
         public static bool CanOffer(Duel duel, Player player)
         {
             var state = duel.GetPlayer(player);
-            return duel.Turn == 0 && state.MainWard == null && !state.HasWorkInProgress;
+            if (state.HasWorkInProgress) return false;
+            if (state.MainWard == null) return duel.Turn == 0;
+            return !state.NeedsBindPoints && state.MainWard.IsActive;
+        }
+
+        /// <summary>
+        /// Null if the preset can be built on this player's board now, otherwise why not. With the main LoW already
+        /// drawn, the preset's bind point layout must give exactly the bind points it has (same shape, same spots).
+        /// </summary>
+        public static string MatchProblem(DefencePreset preset, Duel duel, ChalkBoard board, Player player)
+        {
+            var main = board.MainWardOf(player);
+            if (main == null) return null;
+            if (preset.Components.Count == 0) return "This defence has nothing to add to your main Line of Warding.";
+            bool ellipse = !main.Shape.IsCircle;
+            if (preset.Layout.IsEllipse != ellipse)
+                return "This defence needs " + (preset.Layout.IsEllipse ? "an ellipse" : "a circle") + " for its main Line of Warding.";
+            var expected = board.PreviewBindPoints(player, preset.MainWardSpec());
+            var actual = main.BindPoints;
+            bool same = expected.Count == actual.Count;
+            for (int i = 0; same && i < actual.Count; i++) same = Vec2.Distance(expected[i], actual[i]) < 0.02f;
+            return same ? null : "This defence needs the " + preset.Layout.Name + " bind points on your main Line of Warding.";
+        }
+
+        /// <summary>
+        /// Starts a preset for this player. If their main LoW is already drawn (it must match, see
+        /// <see cref="MatchProblem"/>), it stands in for the preset's main LoW and building starts at the first part.
+        /// Parts that clash with lines already on the board are skipped when their turn comes, as usual.
+        /// </summary>
+        public static DefenceRun Begin(DefencePreset preset, Player player, ChalkBoard board)
+        {
+            var run = new DefenceRun(preset, player);
+            var main = board.MainWardOf(player);
+            if (main != null)
+            {
+                run._lineIds[DefencePreset.MainWardId] = main.Line.Id;
+                run.CurrentIndex = 0;
+                if (run.Preset.Components.Count == 0) run.State = DefenceRunState.Finished;
+            }
+            return run;
+        }
+
+        /// <summary>What the decision timer does when it runs out mid-defence: presses Continue (Amelia, v0.32).</summary>
+        public PlayerAction TimeoutAction(Duel duel, ChalkBoard board, out Placement placement)
+        {
+            return ContinueAction(duel, board, out placement) ?? duel.TimeoutAction(Player);
         }
 
         /// <summary>The line built for a part (0 for the main LoW), or -1 if it isn't built.</summary>

@@ -729,14 +729,14 @@ namespace RithmaticDuels.Presentation
         {
             if (_library == null) _library = PresetStore.Load(_rules);
             var picker = new ActionPicker { Run = _runs[(int)player] };
-            // Offered on turn 1 only, and never again once one is used or cancelled.
+            // Offered on turn 1, or once the main LoW's bind points are done; never again once one is used or cancelled.
             if (_runs[(int)player] == null) picker.Presets = _library.Presets;
             return picker;
         }
 
         private void Lock(LockedChoice choice)
         {
-            if (choice.StartPreset != null) _runs[(int)_chooser] = new DefenceRun(choice.StartPreset, _chooser);
+            if (choice.StartPreset != null) _runs[(int)_chooser] = DefenceRun.Begin(choice.StartPreset, _chooser, _board);
             if (choice.CancelsPreset && _runs[(int)_chooser] != null) _runs[(int)_chooser].Cancel(_duel);
 
             if (choice.Action.Kind == ActionKind.StartDrawing)

@@ -46,10 +46,17 @@ namespace RithmaticDuels.Rules
             return new PlayerAction(ActionKind.DismissForbiddance) { TargetLineId = forbiddanceLineId };
         }
 
-        public static PlayerAction DrawBindPoints(int count)
+        /// <summary>
+        /// Redraw the main LoW's bind points. <paramref name="layout"/> is a saved circle layout from the bind points
+        /// editor, or null for the standard spots for that count (DESIGN.md section 6.1).
+        /// </summary>
+        public static PlayerAction DrawBindPoints(int count, Presets.BindPointLayout layout = null)
         {
-            return new PlayerAction(ActionKind.DrawBindPoints) { Amount = count };
+            return new PlayerAction(ActionKind.DrawBindPoints) { Amount = count, Layout = layout == null ? null : layout.Clone() };
         }
+
+        /// <summary>For <see cref="ActionKind.DrawBindPoints"/>: the saved layout to use, or null for the standard one.</summary>
+        public Presets.BindPointLayout Layout { get; private set; }
 
         /// <summary>This action, done straight after cancelling the drawing in progress.</summary>
         public PlayerAction AfterCancelling()
