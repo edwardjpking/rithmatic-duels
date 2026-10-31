@@ -170,7 +170,6 @@ namespace RithmaticDuels.Presentation
             var chalkling = body as ChalklingBody;
             if (chalkling != null)
             {
-                if (chalkling.BindPoint.HasValue) Line(chalkling.BindPoint.Value, chalkling.Position, 0.02f, WithAlpha(colour, 0.4f));
                 Chalkling(chalkling.Position, chalkling.Line.Glyph, colour);
             }
         }
@@ -222,7 +221,6 @@ namespace RithmaticDuels.Presentation
                 default:
                     if (!sketch.Point.HasValue) return;
                     // Its glyph stays hidden until it is finished, so only a faint dashed circle shows.
-                    if (sketch.Tether.HasValue) DashedLine(sketch.Tether.Value, sketch.Point.Value, 0.02f, colour);
                     Ring(sketch.Point.Value, ChalklingRadius, 0.05f, colour, true);
                     return;
             }
