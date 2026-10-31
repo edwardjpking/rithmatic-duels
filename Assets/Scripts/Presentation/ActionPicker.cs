@@ -1615,13 +1615,8 @@ namespace RithmaticDuels.Presentation
             GUILayout.Label(note, GUILayout.Width(70));
             int step = 0;
             bool enabled = GUI.enabled;
-            GUI.enabled = enabled && buffs > 0;
-            if (GUILayout.Button("-", GUILayout.Width(30))) step = -1;
-            StatButtonDecor(control + "-", enabled && buffs <= 0, name + " can't go any lower.");
-            GUI.enabled = enabled && buffs < MaxStatBuffs;
-            if (GUILayout.Button("+", GUILayout.Width(30))) step = 1;
-            StatButtonDecor(control + "+", enabled && buffs >= MaxStatBuffs, name + " can't go any higher.");
-            GUI.enabled = enabled;
+            if (StatButton("-", control + "-", enabled, buffs <= 0, name + " can't go any lower.")) step = -1;
+            if (StatButton("+", control + "+", enabled, buffs >= MaxStatBuffs, name + " can't go any higher.")) step = 1;
             GUILayout.EndHorizontal();
             // Scrolling anywhere on the row changes the stat by one step, like scroll changes a drawing's size.
             int scrollStep = 0;
@@ -1640,13 +1635,20 @@ namespace RithmaticDuels.Presentation
             if (changed) GUIUtility.ExitGUI();
         }
 
-        /// <summary>A stat's - or + button, just drawn: a click while it is greyed out flashes it red and says why.</summary>
-        private static void StatButtonDecor(string key, bool greyed, string why)
+        /// <summary>
+        /// A stat's - or + button. A click on it while it is greyed out (at the limit) flashes it red and says why.
+        /// The click is checked before the button is drawn, so the greyed-out button can't swallow it first.
+        /// </summary>
+        private static bool StatButton(string label, string key, bool enabled, bool atLimit, string why)
         {
-            if (Event.current.type == EventType.Layout) return;
-            Rect rect = GUILayoutUtility.GetLastRect();
-            RefuseClick(rect, greyed, key, why);
+            Rect rect = GUILayoutUtility.GetRect(new GUIContent(label), GUI.skin.button, GUILayout.Width(30));
+            bool greyed = enabled && atLimit;
+            if (Event.current.type != EventType.Layout) RefuseClick(rect, greyed, key, why);
+            GUI.enabled = enabled && !atLimit;
+            bool clicked = GUI.Button(rect, label);
+            GUI.enabled = enabled;
             if (Event.current.type == EventType.Repaint) FlashOver(rect, key);
+            return clicked;
         }
 
         /// <summary>
