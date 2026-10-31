@@ -49,6 +49,11 @@ namespace RithmaticDuels.Presentation
         private bool _freeHandHeld;
         /// <summary>The saved layout waiting for its delete to be confirmed, if any.</summary>
         private BindPointLayout _confirmDelete;
+        /// <summary>The side picked for the lock options (side i joins vertices i and i+1), or -1.</summary>
+        private int _selectedEdge = -1;
+        /// <summary>The one locked side (only one at a time, since every two sides share a vertex), or -1.</summary>
+        private int _lockedEdge = -1;
+        private EdgeLock _lock = EdgeLock.None;
 
         public BindPointEditor(RulesConfig config, PresetLibrary library)
         {
@@ -71,6 +76,9 @@ namespace RithmaticDuels.Presentation
             _undo.Clear();
             _dragging = -1;
             _confirmDelete = null;
+            _selectedEdge = -1;
+            _lockedEdge = -1;
+            _lock = EdgeLock.None;
             _status = null;
         }
 
@@ -127,6 +135,52 @@ namespace RithmaticDuels.Presentation
             return best;
         }
 
+        private int EdgeAt(Vector2 mouse)
+        {
+            int best = -1;
+            float bestDistance = GrabRadius;
+            for (int i = 0; i < 3; i++)
+            {
+                Vector2 a = ToGui(_vertices[i]), b = ToGui(_vertices[(i + 1) % 3]);
+                Vector2 ab = b - a;
+                float t = Mathf.Clamp01(Vector2.Dot(mouse - a, ab) / Mathf.Max(1e-6f, ab.sqrMagnitude));
+                float d = Vector2.Distance(mouse, a + ab * t);
+                if (d < bestDistance) { bestDistance = d; best = i; }
+            }
+            return best;
+        }
+
+        /// <summary>The vertex the lock moves when <paramref name="moved"/> moves, or -1 if none.</summary>
+        private int LockPartner(int moved)
+        {
+            if (_lockedEdge < 0 || _lock == EdgeLock.None) return -1;
+            if (moved == _lockedEdge) return (_lockedEdge + 1) % 3;
+            if (moved == (_lockedEdge + 1) % 3) return _lockedEdge;
+            return -1;
+        }
+
+        /// <summary>Puts a lock on the selected side, moving its second vertex to match the first if that spot is allowed.</summary>
+        private void SetLock(EdgeLock edgeLock)
+        {
+            if (edgeLock == EdgeLock.None) { _lockedEdge = -1; _lock = EdgeLock.None; return; }
+            int first = _selectedEdge, second = (_selectedEdge + 1) % 3;
+            var trial = (Vec2[])_vertices.Clone();
+            trial[second] = BindPointLayout.LockedPartner(edgeLock, trial[first], trial[second]);
+            if (!BindPointLayout.VertexAllowed(_vertices, second, trial[second], _config.Presets)) return;
+            _undo.Push((Vec2[])_vertices.Clone());
+            _vertices = trial;
+            _lockedEdge = first;
+            _lock = edgeLock;
+        }
+
+        /// <summary>Whether the lock can be put on the selected side (its second vertex has an allowed spot to go to).</summary>
+        private bool LockPossible(EdgeLock edgeLock)
+        {
+            int first = _selectedEdge, second = (_selectedEdge + 1) % 3;
+            var spot = BindPointLayout.LockedPartner(edgeLock, _vertices[first], _vertices[second]);
+            return BindPointLayout.VertexAllowed(_vertices, second, spot, _config.Presets);
+        }
+
         private void HandleInput(Event e)
         {
             bool inCanvas = _canvas.Contains(e.mousePosition);
@@ -150,6 +204,13 @@ namespace RithmaticDuels.Presentation
                     _dragStart = _vertices[vertex];
                     _undo.Push((Vec2[])_vertices.Clone());
                     _status = null;
+                    e.Use();
+                }
+                else if (EdgeAt(e.mousePosition) >= 0)
+                {
+                    // Clicking a side picks it for the lock options (clicking it again lets it go).
+                    int edge = EdgeAt(e.mousePosition);
+                    _selectedEdge = _selectedEdge == edge ? -1 : edge;
                     e.Use();
                 }
                 else
@@ -204,6 +265,7 @@ namespace RithmaticDuels.Presentation
             {
                 // Right-click (or Backspace / Esc) goes back one step: cancel a delete, cancel the drag, or undo the last move.
                 if (_confirmDelete != null) _confirmDelete = null;
+                else if (_dragging < 0 && _selectedEdge >= 0) _selectedEdge = -1;
                 else if (_dragging >= 0) { _vertices[_dragging] = _dragStart; if (_undo.Count > 0) _undo.Pop(); _dragging = -1; }
                 else if (_undo.Count > 0) _vertices = _undo.Pop();
                 _refusedAt = null;
@@ -217,12 +279,24 @@ namespace RithmaticDuels.Presentation
             Vec2 desired = ToUnit(mouse);
             // Like a size that is capped to what fits, a vertex dragged past the edge stays on the edge.
             if (desired.Length > presets.LayoutMaxVertexRadius) desired = desired.Normalized * presets.LayoutMaxVertexRadius;
-            // Holding the free hand key stops snapping, as in a duel (DESIGN.md 1.1).
-            Vec2 snapped = _freeHandHeld ? desired : BindPointLayout.SnapVertex(_vertices, _dragging, desired, presets.LayoutSnapDistance);
+            int partner = LockPartner(_dragging);
+            // Holding the free hand key stops snapping, as in a duel (DESIGN.md 1.1). A locked side doesn't snap
+            // either, since snapping one vertex would pull its partner off the lock.
+            Vec2 snapped = _freeHandHeld || partner >= 0 ? desired : BindPointLayout.SnapVertex(_vertices, _dragging, desired, presets.LayoutSnapDistance);
             if (!BindPointLayout.VertexAllowed(_vertices, _dragging, snapped, presets)) snapped = desired;
-            if (BindPointLayout.VertexAllowed(_vertices, _dragging, snapped, presets))
+            var trial = (Vec2[])_vertices.Clone();
+            trial[_dragging] = snapped;
+            bool ok = BindPointLayout.VertexAllowed(_vertices, _dragging, snapped, presets);
+            if (ok && partner >= 0)
             {
-                _vertices[_dragging] = snapped;
+                // The other vertex of the locked side follows, and must land somewhere allowed too.
+                trial[partner] = BindPointLayout.LockedPartner(_lock, snapped, _vertices[partner]);
+                ok = BindPointLayout.VertexAllowed(trial, partner, trial[partner], presets)
+                    && BindPointLayout.VertexAllowed(trial, _dragging, snapped, presets);
+            }
+            if (ok)
+            {
+                _vertices = trial;
                 _refusedAt = null;
             }
             else _refusedAt = mouse; // the vertex stays at its last allowed spot
@@ -240,6 +314,11 @@ namespace RithmaticDuels.Presentation
             var layout = Current();
             GUILayout.Label(layout.BindPointCount + " bind points");
             _showCentre = GUILayout.Toggle(_showCentre, " Show the circle's centre");
+            GUI.enabled = _pan.sqrMagnitude > 0.01f;
+            if (GUILayout.Button("Recentre view")) _pan = Vector2.zero;
+            GUI.enabled = true;
+            GUILayout.Space(6);
+            DrawEdgeOptions();
             GUILayout.Space(6);
 
             GUILayout.Label("Name:");
@@ -296,6 +375,36 @@ namespace RithmaticDuels.Presentation
             GUILayout.EndArea();
         }
 
+        private static readonly string[] LockNames =
+        {
+            "Free",
+            "Mirror across horizontal",
+            "Mirror across vertical",
+            "Side horizontal",
+            "Side vertical",
+        };
+
+        private void DrawEdgeOptions()
+        {
+            if (_selectedEdge < 0)
+            {
+                GUILayout.Label(_lockedEdge >= 0 ? "One side is locked (" + LockNames[(int)_lock].ToLower() + "). Click a side for its options."
+                    : "Click a side of the triangle to lock it.");
+                return;
+            }
+            GUILayout.Label("Selected side: lock it so dragging either end moves the other. Only one side can be locked; locking another frees the first.");
+            EdgeLock current = _lockedEdge == _selectedEdge ? _lock : EdgeLock.None;
+            for (int i = 0; i < LockNames.Length; i++)
+            {
+                var option = (EdgeLock)i;
+                bool possible = option == EdgeLock.None || LockPossible(option);
+                GUI.enabled = possible;
+                bool on = GUILayout.Toggle(current == option, " " + LockNames[i] + (possible ? "" : " (no room)"));
+                GUI.enabled = true;
+                if (on && current != option) { SetLock(option); GUIUtility.ExitGUI(); }
+            }
+        }
+
         // ---- Canvas ----
 
         private void DrawCanvas(float scale)
@@ -319,7 +428,16 @@ namespace RithmaticDuels.Presentation
             {
                 Vec2 from = _vertices[i], to = _vertices[(i + 1) % 3], opposite = _vertices[(i + 2) % 3];
                 // Each side solid (only its own length counts); each height dashed and extended to a full line.
-                Line(ToGui(from), ToGui(to), 2f, Construction, false);
+                // The picked side is light blue and thicker, like a picked placement; a locked side has two ticks across its middle.
+                bool picked = i == _selectedEdge;
+                Line(ToGui(from), ToGui(to), picked ? 4f : 2f, picked ? VertexColour : Construction, false);
+                if (i == _lockedEdge)
+                {
+                    Vector2 a = ToGui(from), b = ToGui(to), mid = (a + b) / 2f;
+                    Vector2 along = (b - a).normalized, across = new Vector2(-along.y, along.x) * 7f;
+                    foreach (float off in new[] { -3f, 3f })
+                        Line(mid + along * off - across, mid + along * off + across, 2f, Chalk, false);
+                }
                 Vec2 foot = FootOn(opposite, from, to);
                 Vec2 dir = (foot - opposite).Length > 1e-5f ? (foot - opposite).Normalized : (to - from).Perp.Normalized;
                 float reach = 2f * _config.Presets.LayoutMaxVertexRadius;

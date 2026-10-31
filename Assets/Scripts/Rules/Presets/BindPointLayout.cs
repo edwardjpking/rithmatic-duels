@@ -11,6 +11,13 @@ namespace RithmaticDuels.Rules.Presets
     /// crossings that sit on top of each other count once. An ellipse layout has no triangle and always 2 points.
     /// Plain data so it can be saved as JSON.
     /// </summary>
+    /// <summary>
+    /// A lock on one side of the triangle in the bind point editor (DESIGN.md section 6.1). The mirror locks keep the
+    /// side's two vertices mirror images across the horizontal (or vertical) line through the circle's centre; the
+    /// others keep the side horizontal (or vertical).
+    /// </summary>
+    public enum EdgeLock { None, MirrorHorizontal, MirrorVertical, Horizontal, Vertical }
+
     [Serializable]
     public sealed class BindPointLayout
     {
@@ -168,6 +175,23 @@ namespace RithmaticDuels.Rules.Presets
                 Triangle("Six-point circle", OnUnit(0f), OnUnit(120f), OnUnit(240f), true),
                 Triangle("Nine-point circle", nine[0], nine[1], nine[2], true),
             };
+        }
+
+        /// <summary>
+        /// Where the other vertex of a locked side must be when one of its vertices is at <paramref name="moved"/>
+        /// (DESIGN.md section 6.1). <paramref name="partner"/> is the other vertex's current spot, used by the
+        /// horizontal and vertical locks, which only fix one coordinate.
+        /// </summary>
+        public static Vec2 LockedPartner(EdgeLock edgeLock, Vec2 moved, Vec2 partner)
+        {
+            switch (edgeLock)
+            {
+                case EdgeLock.MirrorHorizontal: return new Vec2(moved.X, -moved.Y);
+                case EdgeLock.MirrorVertical: return new Vec2(-moved.X, moved.Y);
+                case EdgeLock.Horizontal: return new Vec2(partner.X, moved.Y);
+                case EdgeLock.Vertical: return new Vec2(moved.X, partner.Y);
+                default: return partner;
+            }
         }
 
         /// <summary>The vertices turned by <paramref name="radians"/> about the circle's centre (anticlockwise).</summary>

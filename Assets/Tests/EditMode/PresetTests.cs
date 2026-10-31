@@ -58,6 +58,17 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void LockedPartner_FollowsTheLock()
+        {
+            var moved = new Vec2(0.5f, 0.8f);
+            var partner = new Vec2(-1f, -0.2f);
+            Assert.AreEqual(new Vec2(0.5f, -0.8f), BindPointLayout.LockedPartner(EdgeLock.MirrorHorizontal, moved, partner));
+            Assert.AreEqual(new Vec2(-0.5f, 0.8f), BindPointLayout.LockedPartner(EdgeLock.MirrorVertical, moved, partner));
+            Assert.AreEqual(new Vec2(-1f, 0.8f), BindPointLayout.LockedPartner(EdgeLock.Horizontal, moved, partner));
+            Assert.AreEqual(new Vec2(0.5f, -0.2f), BindPointLayout.LockedPartner(EdgeLock.Vertical, moved, partner));
+        }
+
+        [Test]
         public void Layout_RotatedKeepsCountAndTurnsPoints()
         {
             var six = BindPointLayout.Triangle("x", Vec2.FromAngle(0f), Vec2.FromAngle(2.0944f), Vec2.FromAngle(4.18879f));
