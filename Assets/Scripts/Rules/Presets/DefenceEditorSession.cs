@@ -119,6 +119,48 @@ namespace RithmaticDuels.Rules.Presets
             Rebuild();
         }
 
+        private List<float> _ellipseSizes;
+        private int _ellipseSizesVersion = -1;
+
+        /// <summary>
+        /// The widths (semi-minor axes) the main ellipse can be given: the duel's steps of one durability each,
+        /// leaving out any that would stop a part being built (DESIGN.md 1.1). Empty unless the layout is the ellipse.
+        /// </summary>
+        public List<float> MainEllipseSizes()
+        {
+            if (_ellipseSizesVersion == Version && _ellipseSizes != null) return _ellipseSizes;
+            var sizes = new List<float>();
+            if (Preset.Layout != null && Preset.Layout.IsEllipse)
+            {
+                bool buildsNow = FailedIndex == -2;
+                foreach (float size in new ChalkBoard(_config).MainEllipseSizes(Player))
+                {
+                    if (!buildsNow) { sizes.Add(size); continue; }
+                    var trial = Preset.Clone();
+                    trial.MainSemiMinor = size;
+                    int failed;
+                    if (DefenceCheck.BuildProblem(trial, _config, out failed) == null) sizes.Add(size);
+                }
+            }
+            _ellipseSizes = sizes;
+            _ellipseSizesVersion = Version;
+            return sizes;
+        }
+
+        /// <summary>The main ellipse's current width, as the board draws it.</summary>
+        public float MainSemiMinor { get { return Board.EllipseSemiMinor(Placement.MainWard(Board.Home(Player), Preset.MainSemiMinor)); } }
+
+        /// <summary>Sets the main ellipse's width. False (and nothing changes) if it isn't one of <see cref="MainEllipseSizes"/>.</summary>
+        public bool SetMainSemiMinor(float size)
+        {
+            bool offered = false;
+            foreach (float s in MainEllipseSizes()) offered |= System.Math.Abs(s - size) < 1e-4f;
+            if (!offered) return false;
+            Preset.MainSemiMinor = size;
+            Rebuild();
+            return true;
+        }
+
         /// <summary>The line built for a part on the practice board (0 for the main LoW), or -1.</summary>
         public int LineOf(int componentId) { return Run.LineOf(componentId); }
 
