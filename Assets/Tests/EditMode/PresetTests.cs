@@ -234,5 +234,18 @@ namespace RithmaticDuels.Rules.Tests
             Assert.AreNotEqual(DefenceRunState.Blocked, a.State, a.BlockedReason);
             return turns;
         }
+    
+        [Test]
+        public void EditorVertex_RefusesFlatTriangleAndFarSpots()
+        {
+            var v = new[] { new Vec2(1f, 0f), new Vec2(-0.5f, 0.87f), new Vec2(-0.5f, -0.87f) };
+            Assert.IsTrue(BindPointLayout.VertexAllowed(v, 0, new Vec2(0.9f, 0.1f), _config.Presets));
+            // On the line through the other two vertices.
+            Assert.IsFalse(BindPointLayout.VertexAllowed(v, 0, new Vec2(-0.5f, 0.3f), _config.Presets));
+            // On top of another vertex.
+            Assert.IsFalse(BindPointLayout.VertexAllowed(v, 0, new Vec2(-0.5f, 0.88f), _config.Presets));
+            // Too far out.
+            Assert.IsFalse(BindPointLayout.VertexAllowed(v, 0, new Vec2(_config.Presets.LayoutMaxVertexRadius + 0.5f, 0f), _config.Presets));
+        }
     }
 }

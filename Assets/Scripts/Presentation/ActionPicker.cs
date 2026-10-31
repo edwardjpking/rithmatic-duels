@@ -93,6 +93,21 @@ namespace RithmaticDuels.Presentation
         private static readonly string[] ShapeLabels = { "Circle", "Ellipse" };
         private static readonly string[] CircleBindPointLabels = { "4", "6", "9" };
         private static readonly int[] CircleBindPointCounts = { 4, 6, 9 };
+
+        /// <summary>
+        /// Every saved bind point layout (DESIGN.md section 6.1), set by the duel controller. The player's own circle
+        /// layouts are offered after 4, 6 and 9 when choosing a main LoW's bind points.
+        /// </summary>
+        public static IReadOnlyList<RithmaticDuels.Rules.Presets.BindPointLayout> CustomLayouts { get; set; }
+
+        private static List<RithmaticDuels.Rules.Presets.BindPointLayout> OwnCircleLayouts()
+        {
+            var own = new List<RithmaticDuels.Rules.Presets.BindPointLayout>();
+            if (CustomLayouts != null)
+                foreach (var layout in CustomLayouts)
+                    if (!layout.IsDefault && !layout.IsEllipse) own.Add(layout);
+            return own;
+        }
         // A LoW added during the duel: a Mark's Cross, or a LoW with this many bind points (0 means Mark's Cross).
         private static readonly string[] AttachedWardLabels = { "Mark's Cross", "2 (ellipse)", "4", "6", "9" };
         private static readonly int[] AttachedWardBindPoints = { 0, 2, 4, 6, 9 };
@@ -759,6 +774,7 @@ namespace RithmaticDuels.Presentation
 
             BeginRow((atHome ? "2" : "3") + ". Bind points:");
             int bindPoints = -1;
+            DrawingSpec chosenSpec = null;
             if (ellipse)
             {
                 GUILayout.Label("2, at the ends of its long axis.");
@@ -768,9 +784,25 @@ namespace RithmaticDuels.Presentation
             else
             {
                 GUI.enabled = _pointA.HasValue;
-                Choose(ref _bindPointChoice, CircleBindPointLabels, 0, "Place it on the board first.");
+                var own = OwnCircleLayouts();
+                var labels = new string[CircleBindPointLabels.Length + own.Count];
+                CircleBindPointLabels.CopyTo(labels, 0);
+                for (int i = 0; i < own.Count; i++) labels[CircleBindPointLabels.Length + i] = own[i].Name + " (" + own[i].BindPointCount + ")";
+                Choose(ref _bindPointChoice, labels, 0, "Place it on the board first.");
                 GUI.enabled = true;
-                if (_pointA.HasValue && _bindPointChoice >= 0) bindPoints = CircleBindPointCounts[_bindPointChoice];
+                if (_bindPointChoice >= labels.Length) _bindPointChoice = -1;
+                if (_pointA.HasValue && _bindPointChoice >= 0)
+                {
+                    if (_bindPointChoice < CircleBindPointCounts.Length) bindPoints = CircleBindPointCounts[_bindPointChoice];
+                    else
+                    {
+                        // A saved layout from the bind points editor.
+                        var layout = own[_bindPointChoice - CircleBindPointCounts.Length];
+                        bindPoints = layout.BindPointCount;
+                        chosenSpec = DrawingSpec.Warding(bindPoints);
+                        chosenSpec.Layout = layout.Clone();
+                    }
+                }
             }
             GUILayout.EndHorizontal();
 
@@ -790,7 +822,7 @@ namespace RithmaticDuels.Presentation
             if (_pointA.HasValue)
             {
                 IReadOnlyList<Vec2> points;
-                preview.Ward = board.PreviewWard(player, bindPoints > 0 ? DrawingSpec.Warding(bindPoints) : shapeSpec, Placement.MainWard(_pointA.Value, semiMinor), out points);
+                preview.Ward = board.PreviewWard(player, bindPoints > 0 ? chosenSpec ?? DrawingSpec.Warding(bindPoints) : shapeSpec, Placement.MainWard(_pointA.Value, semiMinor), out points);
                 preview.WardChosen = true;
                 if (bindPoints > 0) preview.WardBindPoints = points;
                 GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward, true) + " durability (the main LoW has double).");
@@ -808,7 +840,7 @@ namespace RithmaticDuels.Presentation
                 return null;
             }
 
-            var spec = DrawingSpec.Warding(bindPoints);
+            var spec = chosenSpec ?? DrawingSpec.Warding(bindPoints);
             placement = Placement.MainWard(_pointA.Value, semiMinor);
             GUILayout.Space(4);
             _pace = DrawingPace.Normal; // the main LoW can't be rushed or steadied

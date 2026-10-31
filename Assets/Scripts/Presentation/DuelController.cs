@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using RithmaticDuels.Rules;
+using RithmaticDuels.Rules.Presets;
 using RithmaticDuels.Rules.Geometry;
 using RithmaticDuels.Rules.Presets;
 using UnityEngine;
@@ -77,6 +78,10 @@ namespace RithmaticDuels.Presentation
         private int _boardHoverLineId = -1;
         /// <summary>The line whose entry in a lines list is under the mouse, highlighted on the board. -1 for none.</summary>
         private int _listHoverLineId = -1;
+        /// <summary>Saved bind point layouts and defences, with the defaults (DESIGN.md sections 6.1 and 6.8).</summary>
+        private PresetLibrary _library;
+        /// <summary>The bind point editor while it is open, covering the duel; null otherwise.</summary>
+        private BindPointEditor _bindPointEditor;
         /// <summary>Whether the line info key is held, read each OnGUI so LateUpdate can light up the hovered line.</summary>
         private bool _lineInfoHeld;
 
@@ -160,6 +165,7 @@ namespace RithmaticDuels.Presentation
                 _error = e.Message;
                 return;
             }
+            Library();
             _log.Clear();
             _log.Add("New duel (seed " + _currentSeed + "). Both players start by setting up a main Line of Warding.");
             _chooser = Player.A;
@@ -212,6 +218,11 @@ namespace RithmaticDuels.Presentation
         {
             // Unity resets the skin every OnGUI, so set ours each time (it restyles the scroll bars).
             GUI.skin = MenuSkin.Get();
+            if (_bindPointEditor != null)
+            {
+                DrawBindPointEditor();
+                return;
+            }
             // Read the click in screen pixels before scaling the GUI.
             GUI.matrix = Matrix4x4.identity;
             var current = Event.current;
@@ -657,6 +668,9 @@ namespace RithmaticDuels.Presentation
             }
             GUILayout.FlexibleSpace();
             GUILayout.Label(GameVersion.Label);
+            if (_bindPointEditor != null) { GUILayout.EndHorizontal(); return; }
+            // Until the main menu exists (build step 6), the editors open from here.
+            if (GUILayout.Button("Bind points editor", GUILayout.Width(150))) Then(OpenBindPointEditor);
             if (GUILayout.Button("New duel", GUILayout.Width(100))) Then(NewDuel);
             GUILayout.EndHorizontal();
         }
@@ -852,6 +866,47 @@ namespace RithmaticDuels.Presentation
         /// Applies a click that changes what is on screen, then stops this GUI pass, since the rest of
         /// it was laid out for the old screen (see <see cref="ActionPicker"/>).
         /// </summary>
+        private void OpenBindPointEditor()
+        {
+            _showLines = false;
+            _bindPointEditor = new BindPointEditor(_rules, Library());
+        }
+
+        /// <summary>The saved layouts and defences, read from disk the first time they are needed.</summary>
+        private PresetLibrary Library()
+        {
+            if (_library == null)
+            {
+                _library = PresetStore.Load(_rules);
+                ActionPicker.CustomLayouts = _library.Layouts;
+            }
+            return _library;
+        }
+
+        /// <summary>The bind point editor covers the whole screen below the top bar, and the duel waits underneath.</summary>
+        private void DrawBindPointEditor()
+        {
+            var current = Event.current;
+            float scale = GuiScale();
+            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+            // Backspace and Esc step back in the editor, except while typing the layout's name.
+            MenuKeys.Track(current, GUIUtility.keyboardControl == 0);
+            float width = Screen.width / scale;
+            float height = Screen.height / scale;
+            GUILayout.BeginArea(new Rect(10, 6, width - 20, HeaderHeight - 6));
+            try { DrawHeader(); }
+            finally { GUILayout.EndArea(); }
+            _bindPointEditor.Draw(HeaderHeight, width, height, scale);
+            if (_bindPointEditor.Closed)
+            {
+                _library = _bindPointEditor.Library;
+                ActionPicker.CustomLayouts = _library.Layouts;
+                _bindPointEditor.Dispose();
+                _bindPointEditor = null;
+                GUIUtility.ExitGUI();
+            }
+        }
+
         private static void Then(System.Action change)
         {
             change();
