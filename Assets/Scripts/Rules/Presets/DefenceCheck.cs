@@ -13,6 +13,8 @@ namespace RithmaticDuels.Rules.Presets
         public Duel Duel;
         /// <summary>Turns taken to build it, with no modifiers.</summary>
         public int Turns;
+        /// <summary>Of <see cref="Turns"/>, those spent on the main LoW and its bind points.</summary>
+        public int MainWardTurns;
         /// <summary>False if it stopped before every part was built.</summary>
         public bool Complete;
     }
@@ -71,7 +73,7 @@ namespace RithmaticDuels.Rules.Presets
             var duel = new Duel(config, new FixedRandom(), board);
             var run = new DefenceRun(preset, player);
             var other = player == Player.A ? Player.B : Player.A;
-            int turns = 0;
+            int turns = 0, mainTurns = 0;
             while (run.IsRunning && turns < 1000)
             {
                 Placement placement;
@@ -82,8 +84,9 @@ namespace RithmaticDuels.Rules.Presets
                 var report = player == Player.A ? duel.ResolveTurn(action, otherAction) : duel.ResolveTurn(otherAction, action);
                 turns++;
                 run.Observe(duel, report);
+                if (mainTurns == 0 && run.CurrentIndex >= 0) mainTurns = turns;
             }
-            return new DefenceTrial { Board = board, Duel = duel, Turns = turns, Complete = run.State == DefenceRunState.Finished };
+            return new DefenceTrial { Board = board, Duel = duel, Turns = turns, MainWardTurns = mainTurns, Complete = run.State == DefenceRunState.Finished };
         }
 
         /// <summary>

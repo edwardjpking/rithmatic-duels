@@ -9,7 +9,7 @@ namespace RithmaticDuels.Presentation
         public const string Number = "0.32";
         public const string Date = "2026-10-31";
         /// <summary>What this version added, in a few words.</summary>
-        public const string Summary = "v0.31 feedback: presets, editors, confirm boxes";
+        public const string Summary = "v0.31 feedback: presets, editors, confirm boxes, later presets";
 
         public static string Label { get { return "v" + Number + " (" + Date + ": " + Summary + ")"; } }
     }

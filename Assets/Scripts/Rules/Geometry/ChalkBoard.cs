@@ -713,6 +713,16 @@ namespace RithmaticDuels.Rules.Geometry
             return main != null ? MainBindPoints(player, main.Shape, count, main.Line.Spec) : new List<Vec2>();
         }
 
+        /// <summary>
+        /// Where a player's main LoW bind points would go with this spec (its count and layout), for previews and for
+        /// matching a saved defence to the main LoW already drawn.
+        /// </summary>
+        public IReadOnlyList<Vec2> PreviewBindPoints(Player player, DrawingSpec spec)
+        {
+            var main = MainWardOf(player);
+            return main != null ? MainBindPoints(player, main.Shape, spec.BindPoints, spec) : new List<Vec2>();
+        }
+
         /// <summary>The bind point counts a player's main LoW can take: 2 on an ellipse; 4, 6 or 9 on a circle.</summary>
         public int[] BindPointChoices(Player player)
         {

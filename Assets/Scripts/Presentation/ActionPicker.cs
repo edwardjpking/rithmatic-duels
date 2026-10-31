@@ -447,11 +447,25 @@ namespace RithmaticDuels.Presentation
             hint = null;
             var labels = new string[Presets.Count + 1];
             labels[0] = "Draw by hand";
-            for (int i = 0; i < Presets.Count; i++) labels[i + 1] = Presets[i].Name;
+            // With the main LoW already drawn, only defences on the same bind point layout can be picked (Amelia, v0.32).
+            int unusable = 0;
+            string why = null;
+            for (int i = 0; i < Presets.Count; i++)
+            {
+                labels[i + 1] = Presets[i].Name;
+                string problem = DefenceRun.MatchProblem(Presets[i], duel, board, player);
+                if (problem == null) continue;
+                if (i + 1 < 31) unusable |= 1 << (i + 1);
+                why = why == null ? problem : "Greyed-out defences don't match your main Line of Warding's bind points.";
+            }
+            if (_presetChoice >= 0 && Unusable(unusable, _presetChoice + 1)) _presetChoice = -1;
             BeginRow("Defence:");
-            int chosen = Buttons(_presetChoice + 1, labels, NextRowWidth(), 0, null, _presetChoice < 0);
+            // On turn 1 "Draw by hand" is only a default, so the number keys pick here first. Later in the duel the row
+            // is optional, so it counts as chosen and the keys go on to the action row as usual.
+            bool laterOffer = board.MainWardOf(player) != null;
+            int chosen = Buttons(_presetChoice + 1, labels, NextRowWidth(), unusable, why, _presetChoice < 0 && !laterOffer);
             GUILayout.EndHorizontal();
-            if (chosen >= 0 && chosen - 1 != _presetChoice)
+            if (chosen >= 0 && chosen - 1 != _presetChoice && !Unusable(unusable, chosen))
             {
                 _presetChoice = chosen - 1;
                 GUIUtility.ExitGUI();
@@ -462,10 +476,14 @@ namespace RithmaticDuels.Presentation
 
             var preset = Presets[_presetChoice];
             var built = TemplateOf(preset, duel.Config, player);
-            GUILayout.Label("Builds " + preset.Name + " part by part (" + (preset.Components.Count + 1) + " parts), each at its normal drawing time: "
-                + built.Turns + " turn(s) in all, before modifiers. "
+            bool onMain = laterOffer;
+            int parts = preset.Components.Count + (onMain ? 0 : 1);
+            int turns = onMain ? built.Turns - built.MainWardTurns : built.Turns;
+            GUILayout.Label("Builds " + preset.Name + (onMain ? " on your main Line of Warding" : "") + " part by part (" + parts + " parts), each at its normal drawing time: "
+                + turns + " turn(s) in all, before modifiers. "
+                + (onMain ? "Parts that clash with lines already drawn are skipped. " : "")
                 + "You can only continue or cancel it, and a cancelled defence can't be restarted.");
-            var trial = new DefenceRun(preset, player);
+            var trial = DefenceRun.Begin(preset, player, board);
             DrawingSpec spec; DrawingPace pace;
             if (!trial.CurrentDrawing(duel, board, out spec, out placement, out pace, out hint)) return null;
             ShowPart(board, player, spec, placement);
@@ -1166,26 +1184,35 @@ namespace RithmaticDuels.Presentation
             return PlayerAction.Start(spec, _pace);
         }
 
-        /// <summary>Redrawing the main LoW's bind points after a cancel. The count is offered as the shape allows.</summary>
+        /// <summary>
+        /// Redrawing the main LoW's bind points after a cancel. The same choices as at setup: on a circle 4, 6, 9 and
+        /// the player's saved circle layouts; on an ellipse its two ends (Amelia, v0.32).
+        /// </summary>
         private PlayerAction DrawBindPointsMenu(Duel duel, ChalkBoard board, Player player, out string hint)
         {
             var choices = board.BindPointChoices(player);
-            var labels = new string[choices.Length];
+            var main = board.MainWardOf(player);
+            var own = main != null && main.Shape.IsCircle ? OwnCircleLayouts() : new List<RithmaticDuels.Rules.Presets.BindPointLayout>();
+            var labels = new string[choices.Length + own.Count];
             for (int i = 0; i < choices.Length; i++) labels[i] = choices[i].ToString();
-            if (choices.Length == 1) _bindPointChoice = 0;
+            for (int i = 0; i < own.Count; i++) labels[choices.Length + i] = own[i].Name + " (" + own[i].BindPointCount + ")";
+            if (labels.Length == 1) _bindPointChoice = 0;
             BeginRow("Bind points:");
             Choose(ref _bindPointChoice, labels);
             GUILayout.EndHorizontal();
-            if (_bindPointChoice < 0 || _bindPointChoice >= choices.Length)
+            if (_bindPointChoice < 0 || _bindPointChoice >= labels.Length)
             {
                 hint = "Choose how many bind points to draw.";
                 return null;
             }
-            int count = choices[_bindPointChoice];
-            Preview = new PlacementPreview { Player = player, WardBindPoints = board.PreviewBindPoints(player, count) };
+            RithmaticDuels.Rules.Presets.BindPointLayout layout = _bindPointChoice < choices.Length ? null : own[_bindPointChoice - choices.Length];
+            int count = layout != null ? layout.BindPointCount : choices[_bindPointChoice];
+            var spec = DrawingSpec.Warding(count);
+            if (layout != null) spec.Layout = layout.Clone();
+            Preview = new PlacementPreview { Player = player, WardBindPoints = board.PreviewBindPoints(player, spec) };
             GUILayout.Label(BindPointTimingText(duel.Config, count) + " Nothing else can be drawn until they are done.");
             hint = null;
-            return PlayerAction.DrawBindPoints(count);
+            return PlayerAction.DrawBindPoints(count, layout);
         }
 
         private static string BindPointTimingText(RulesConfig config, int count)

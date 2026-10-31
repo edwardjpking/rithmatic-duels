@@ -56,6 +56,8 @@ namespace RithmaticDuels.Presentation
         private Vector2 _pressMouse;
         private bool _dragging;
         private int _dropIndex = -1;
+        // Whether the dragged part is over a place it can't go: the pointer turns into the duel's red cross then.
+        private bool _dropInvalid;
         /// <summary>The part last clicked, which the Up and Down arrows move. -1 for none.</summary>
         private int _selected = -1;
         private readonly List<Rect> _rowRects = new List<Rect>();
@@ -428,7 +430,7 @@ namespace RithmaticDuels.Presentation
             {
                 int min = 0, max = preset.Components.Count - 1;
                 if (_dragging) preset.MoveRange(_pressIndex, out min, out max);
-                if (e.type == EventType.Repaint) _rowRects.Clear();
+                if (e.type == EventType.Repaint) { _rowRects.Clear(); _dropInvalid = false; }
 
                 // The main LoW is always built first and can't move.
                 GUILayout.Label("1. Main LoW (" + preset.Layout.Name + ")", GUILayout.Height(RowHeight));
@@ -485,6 +487,7 @@ namespace RithmaticDuels.Presentation
                     // Where the part would land: a line above or below the row it would take the place of.
                     var target = _rowRects[_dropIndex];
                     bool allowed = _dropIndex >= min && _dropIndex <= max;
+                    _dropInvalid = !allowed;
                     float y = _dropIndex <= _pressIndex ? target.y - 1f : target.yMax - 1f;
                     var colour = GUI.color;
                     GUI.color = allowed ? Color.white : MenuSkin.Refused;
@@ -584,7 +587,8 @@ namespace RithmaticDuels.Presentation
         private void UpdateInvalidCursor()
         {
             var preview = _session.CanAdd ? _picker.Preview : null;
-            bool show = preview != null && preview.InvalidHover.HasValue && !_dragging;
+            // The same red cross as a refused spot in a duel: over the board, and over a build-order place a dragged part can't go.
+            bool show = _dragging ? _dropInvalid : preview != null && preview.InvalidHover.HasValue;
             int size = 32;
             if (_camera != null && _camera.orthographicSize > 0f)
             {
