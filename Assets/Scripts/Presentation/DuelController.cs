@@ -218,7 +218,7 @@ namespace RithmaticDuels.Presentation
             TrackLineInfoKey(current);
             if (current.type == EventType.KeyUp && current.keyCode == KeyCode.Tab) _tabDown = false;
             bool editingStat = GUI.GetNameOfFocusedControl().StartsWith("stat-");
-            // The menu keys (numbers, Space, Backspace) do nothing while the lines list covers the menu, and type
+            // The menu keys (numbers, Space, Backspace, Esc) do nothing while the lines list covers the menu, and type
             // into a LoM stat box while the player is typing there.
             MenuKeys.Track(current, _duel != null && !_showLines && !editingStat);
             // Unity sends a key press twice, once with its key code and once with its character. Its own Tab
@@ -281,7 +281,7 @@ namespace RithmaticDuels.Presentation
                 }
                 else if (MenuKeys.TakeBack())
                 {
-                    // Backspace steps back one choice, like a right-click.
+                    // Backspace or Esc steps back one choice, like a right-click.
                     picker.HandleRightClick(_board, _chooser, _rules);
                     changed = true;
                 }

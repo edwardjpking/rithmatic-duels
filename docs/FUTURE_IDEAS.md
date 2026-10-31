@@ -162,6 +162,10 @@ Separate from the tutorial, and the lowest priority. It shares the tutorial's se
 - **Mode label while a key is held (Amelia, 2026-10-29).** Show a small "Free hand" or "Line info" label in the menu while Ctrl/Cmd or Alt is held. Only if player feedback asks for it; not thought necessary for now.
 - **In-game key helper overlay (Amelia, 2026-10-29).** An overlay the player can bring up during a duel listing the controls. Keys are otherwise learnt through the tutorial, with no permanent on-screen key hints (they would be clutter).
 
+### Testing backlog
+
+- **Revisit: LoF finished over a chalkling or LoV (Amelia, 2026-10-29).** v0.27 tests 7 and 8 were impractical to set up by hand, so they are assumed to work for now: a chalkling under a friendly LoF is held by it while an enemy LoF must be attacked to get through, and a LoV under a LoF reflects and folds back. Suggested: a debug scenario or setup tool that places lines directly on the board, so edge cases like this can be tested quickly.
+
 ### Settings
 
 Player settings to add later (the list started 2026-10-27). Accessibility settings are also tracked in `docs/ACCESSIBILITY.md`.
@@ -169,7 +173,7 @@ Player settings to add later (the list started 2026-10-27). Accessibility settin
 - **Scroll direction for turning a circle (Amelia, 2026-10-27).** Which way the scroll wheel turns a nine-point circle (Shift + scroll, DESIGN.md 4.1) should be a player setting. The default was flipped in v0.18 because the first direction felt wrong.
 - **Holding Tab for the lines list (Amelia, 2026-10-27).** As well as pressing Tab to open and close the lines list (DESIGN.md section 2, Information), let the player choose to hold Tab to show it and release it to return to the menu.
 - **Rebind the line info key (Amelia, 2026-10-29).** Holding Alt (Option on macOS) while hovering a line shows its stats and highlight. The key should be rebindable, with a press-to-toggle option (`docs/ACCESSIBILITY.md`).
-- **Rebind the menu keys (Amelia, 2026-10-29).** The number keys (pick in the first row with nothing chosen), Space (the page's main button) and Backspace (back one step) that work the action menu (DESIGN.md 5.1) should be rebindable. They are defined in one place (`MenuKeys`).
+- **Rebind the menu keys (Amelia, 2026-10-29).** The number keys (pick in the first row with nothing chosen), Space (the page's main button) and Backspace or Esc (back one step) that work the action menu (DESIGN.md 5.1) should be rebindable. They are defined in one place (`MenuKeys`).
 - **Stop the log jumping to the newest entry (Amelia, 2026-10-27).** Today the log scrolls to the end whenever it changes. Not everyone wants that, so it should be possible to turn off.
 - **Line info key (Amelia, 2026-10-29).** The key held to show a hovered line's stats box and highlight (Alt by default, DESIGN.md section 2, Information) should be configurable, like the free hand key (Ctrl, or Cmd on macOS).
 - **Configurable colours (Amelia, 2026-10-27).** Every colour that carries meaning (players, highlights, hover marks, placement preview, red for invalid) should be changeable, including colour-blind presets. See `docs/ACCESSIBILITY.md`.
