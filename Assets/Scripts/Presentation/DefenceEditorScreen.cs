@@ -31,9 +31,22 @@ namespace RithmaticDuels.Presentation
         private DefenceEditorSession _session;
         /// <summary>The saved defence being edited (replaced on save), or null for a new one.</summary>
         private DefencePreset _editing;
+        // The defence as last saved or opened, to tell whether it has unsaved changes.
+        private string _baseline;
+        /// <summary>The confirm box over the arena for deleting and layout switches (shared with the bind points editor).</summary>
+        private readonly ConfirmOverlay _confirm = new ConfirmOverlay();
+        private Rect _widthRow;
         private ActionPicker _picker;
         private Vector2 _menuScroll;
         private Vector2 _partsScroll;
+        // While dragging a part: the mouse height within the visible parts box, and that box's height.
+        private float _dragViewY;
+        private float _partsViewHeight;
+        private float _lastAutoScroll;
+        /// <summary>Height of the band at each end of the parts box where a dragged part scrolls the list, in GUI pixels.</summary>
+        private const float AutoScrollBand = 30f;
+        /// <summary>Fastest auto-scroll speed (at the very edge), in GUI pixels per second.</summary>
+        private const float AutoScrollSpeed = 400f;
         private string _message;
         private bool _freeHandHeld;
         private int _hoverPartLine = -1;
@@ -43,10 +56,10 @@ namespace RithmaticDuels.Presentation
         private Vector2 _pressMouse;
         private bool _dragging;
         private int _dropIndex = -1;
+        // Whether the dragged part is over a place it can't go: the pointer turns into the duel's red cross then.
+        private bool _dropInvalid;
         /// <summary>The part last clicked, which the Up and Down arrows move. -1 for none.</summary>
         private int _selected = -1;
-        /// <summary>A layout picked while the defence has parts, waiting for the player to confirm clearing them. -1 for none.</summary>
-        private int _pendingLayout = -1;
         private readonly List<Rect> _rowRects = new List<Rect>();
 
         private Texture2D _crossCursor;
@@ -71,6 +84,8 @@ namespace RithmaticDuels.Presentation
             _editing = null;
             _session = new DefenceEditorSession(_rules, new DefencePreset { Name = "", Layout = layout.Clone() });
             _picker = NewPicker();
+            _baseline = Snapshot();
+            _confirm.Close();
         }
 
         private void Edit(DefencePreset preset)
@@ -81,7 +96,15 @@ namespace RithmaticDuels.Presentation
             if (preset.IsDefault) { copy.IsDefault = false; copy.Name = preset.Name + " copy"; }
             _session = new DefenceEditorSession(_rules, copy);
             _picker = NewPicker();
+            // A copy of a shipped defence isn't saved yet, so it counts as changed.
+            _baseline = preset.IsDefault ? null : Snapshot();
+            _confirm.Close();
         }
+
+        private string Snapshot() { return JsonUtility.ToJson(_session.Preset); }
+
+        /// <summary>True when the defence being edited differs from how it was last saved.</summary>
+        private bool Unsaved() { return _baseline != Snapshot(); }
 
         private static ActionPicker NewPicker()
         {
@@ -150,6 +173,7 @@ namespace RithmaticDuels.Presentation
             string focused = GUI.GetNameOfFocusedControl();
             bool editingStat = focused.StartsWith("stat-") || focused == NameField;
             MenuKeys.Track(current, !editingStat && !_dragging);
+            bool confirming = _confirm.HandleInput(current);
             if (boardPoint.HasValue && current.type == EventType.MouseDown && editingStat) GUI.FocusControl(null);
             if (current.type != EventType.Repaint && current.type != EventType.Layout)
             {
@@ -162,7 +186,7 @@ namespace RithmaticDuels.Presentation
             }
 
             // Placing a new part works exactly as in a duel (DESIGN.md 1.1).
-            if (_session.CanAdd && !_dragging)
+            if (_session.CanAdd && !_dragging && !confirming)
             {
                 var board = _session.Board;
                 var player = _session.Player;
@@ -184,6 +208,8 @@ namespace RithmaticDuels.Presentation
                 {
                     float delta = current.shift && Mathf.Abs(current.delta.y) < 1e-6f ? current.delta.x : current.delta.y;
                     changed = _picker.HandleScroll(board, player, _rules, delta, current.shift);
+                    // With nothing in progress to resize, scroll over the board resizes the main ellipse.
+                    if (!changed) changed = ScrollEllipseWidth(delta);
                 }
                 if (changed)
                 {
@@ -198,6 +224,8 @@ namespace RithmaticDuels.Presentation
             float width = Screen.width / scale;
             float height = Screen.height / scale;
 
+            _confirm.BlockOutside(current);
+            GUI.enabled = !_confirm.Open;
             GUILayout.BeginArea(new Rect(10, 6, width - 20, HeaderHeight - 6));
             try
             {
@@ -210,11 +238,20 @@ namespace RithmaticDuels.Presentation
             }
             finally { GUILayout.EndArea(); }
 
+            // Scroll (or Shift + scroll) over the width row resizes the main ellipse, as over the board in a duel.
+            if (!confirming && current.type == EventType.ScrollWheel && _widthRow.Contains(current.mousePosition - new Vector2(10, HeaderHeight)))
+            {
+                float delta = current.shift && Mathf.Abs(current.delta.y) < 1e-6f ? current.delta.x : current.delta.y;
+                if (ScrollEllipseWidth(delta)) { current.Use(); GUIUtility.ExitGUI(); }
+            }
+
             float menuWidth = width * MenuFraction();
             if (current.type == EventType.Repaint) _hoverPartLine = -1;
             GUILayout.BeginArea(new Rect(10, HeaderHeight, menuWidth - 20, height - HeaderHeight - 10));
             try { DrawMenu(menuWidth - 20, height - HeaderHeight - 10); }
             finally { GUILayout.EndArea(); }
+            GUI.enabled = true;
+            _confirm.Draw(new Rect(menuWidth, HeaderHeight, width - menuWidth, height - HeaderHeight));
 
             if (current.type == EventType.Repaint) UpdateInvalidCursor();
         }
@@ -227,10 +264,12 @@ namespace RithmaticDuels.Presentation
             GUILayout.Label("Defences:");
             int shown = _editing != null ? _library.Presets.IndexOf(_editing) : -1;
             var names = new List<string>();
-            foreach (var p in _library.Presets) names.Add(p.IsDefault ? p.Name + " (default)" : p.Name);
+            bool unsaved = Unsaved();
+            foreach (var p in _library.Presets)
+                names.Add((p.IsDefault ? p.Name + " (default)" : p.Name) + (p == _editing && unsaved ? " *" : ""));
             int picked = ButtonGrid(names, shown, width);
-            if (picked >= 0) { _message = null; _selected = -1; _pendingLayout = -1; Then(() => Edit(_library.Presets[picked])); }
-            if (GUILayout.Button("New defence")) { _message = null; _selected = -1; _pendingLayout = -1; Then(() => NewDefence(preset.Layout)); }
+            if (picked >= 0) { _message = null; _selected = -1; Then(() => Edit(_library.Presets[picked])); }
+            if (GUILayout.Button(_editing == null && unsaved ? "New defence *" : "New defence")) { _message = null; _selected = -1; Then(() => NewDefence(preset.Layout)); }
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("Name:", GUILayout.Width(100));
@@ -247,29 +286,16 @@ namespace RithmaticDuels.Presentation
                 layoutNames.Add(_library.Layouts[i].Name);
                 if (_library.Layouts[i].Name == preset.Layout.Name) layoutShown = i;
             }
-            int layoutPicked = ButtonGrid(layoutNames, _pendingLayout >= 0 ? _pendingLayout : layoutShown, width);
+            int layoutPicked = ButtonGrid(layoutNames, layoutShown, width);
             if (layoutPicked >= 0 && layoutPicked != layoutShown)
             {
                 // With no parts nothing is lost, so the layout changes at once; otherwise ask first.
-                if (preset.Components.Count == 0) Then(() => _session.SetLayout(_library.Layouts[layoutPicked]));
-                else Then(() => _pendingLayout = layoutPicked);
+                var chosen = _library.Layouts[layoutPicked];
+                if (preset.Components.Count == 0) Then(() => _session.SetLayout(chosen));
+                else Then(() => _confirm.Ask("Switching to " + chosen.Name + " removes all " + preset.Components.Count
+                        + " parts of this defence. This can't be undone.", "Switch and remove parts", "Keep current layout",
+                    () => { _selected = -1; _session.SetLayout(chosen); }));
             }
-            else if (layoutPicked == layoutShown && _pendingLayout >= 0) Then(() => _pendingLayout = -1);
-            if (_pendingLayout >= 0 && _pendingLayout < _library.Layouts.Count)
-            {
-                // Every part is bound to bind points of this layout, so switching clears them.
-                Colored(MenuSkin.Refused, "Switching to " + _library.Layouts[_pendingLayout].Name + " removes all "
-                    + preset.Components.Count + " parts of this defence. This can't be undone.");
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button("Switch and remove parts"))
-                {
-                    int chosen = _pendingLayout;
-                    Then(() => { _pendingLayout = -1; _selected = -1; _session.SetLayout(_library.Layouts[chosen]); });
-                }
-                if (GUILayout.Button("Keep current layout")) Then(() => _pendingLayout = -1);
-                GUILayout.EndHorizontal();
-            }
-
             DrawEllipseWidth();
 
             GUILayout.Space(4);
@@ -299,9 +325,14 @@ namespace RithmaticDuels.Presentation
             if (_message != null) Colored(MenuSkin.Refused, _message);
             string saveProblem = SaveProblem();
             if (saveProblem != null) Colored(MenuSkin.Refused, "Can't save yet: " + saveProblem);
-            GUI.enabled = saveProblem == null;
+            GUILayout.BeginHorizontal();
+            GUI.enabled = saveProblem == null && !_confirm.Open;
             if (GUILayout.Button("Save defence", GUILayout.Height(30))) Then(Save);
-            GUI.enabled = true;
+            // Only the player's own saved defences can be deleted; shipped ones and unsaved new ones can't.
+            GUI.enabled = _editing != null && !_confirm.Open;
+            if (GUILayout.Button("Delete defence", GUILayout.Height(30), GUILayout.Width(140))) Then(() => _confirm.Ask("Delete " + _editing.Name + "? This can't be undone.", "Delete", "Keep it", Delete));
+            GUI.enabled = !_confirm.Open;
+            GUILayout.EndHorizontal();
         }
 
         // Checking a defence builds it on a fresh board, so the answer is kept until the defence or its name changes.
@@ -323,31 +354,54 @@ namespace RithmaticDuels.Presentation
         }
 
         /// <summary>
-        /// The main ellipse's width (DESIGN.md 4.1), stepped by one durability at its weakest point with - and +, as
-        /// the LoM stat boxes are. Widths that would stop a part being built aren't offered.
+        /// The main ellipse's width (DESIGN.md 4.1). Scroll over this row, or over the board when nothing is being
+        /// placed, steps it by one durability at its weakest point, as scrolling the main ellipse does in a duel.
         /// </summary>
         private void DrawEllipseWidth()
         {
-            if (!_session.Preset.Layout.IsEllipse) return;
-            var sizes = _session.MainEllipseSizes();
-            float now = _session.MainSemiMinor;
-            int index = -1;
-            for (int i = 0; i < sizes.Count; i++) if (Mathf.Abs(sizes[i] - now) < 1e-3f) index = i;
+            if (!_session.Preset.Layout.IsEllipse) { _widthRow = Rect.zero; return; }
             var main = _session.Board.MainWardOf(_session.Player);
             GUILayout.BeginHorizontal();
             GUILayout.Label("Main ellipse width:", GUILayout.Width(140));
-            // Wider is weaker at its sides, so - and + follow durability, as scrolling does in a duel.
-            GUI.enabled = index >= 0 && index < sizes.Count - 1;
-            bool weaker = GUILayout.Button("-", GUILayout.Width(28));
-            GUI.enabled = true;
-            GUILayout.Label(now.ToString("0.00") + (main != null ? "  (weakest point " + main.Weakest + ")" : ""), GUILayout.Width(170));
-            GUI.enabled = index > 0;
-            bool stronger = GUILayout.Button("+", GUILayout.Width(28));
-            GUI.enabled = true;
+            GUILayout.Label(_session.MainSemiMinor.ToString("0.00") + (main != null ? "  (weakest point " + main.Weakest + ")" : "")
+                + "   scroll here to change");
             GUILayout.EndHorizontal();
-            if (sizes.Count > 0 && index < 0) GUILayout.Label("Pick a width with - or +.");
-            if (weaker) Then(() => _session.SetMainSemiMinor(sizes[index + 1]));
-            if (stronger) Then(() => _session.SetMainSemiMinor(sizes[index - 1]));
+            if (Event.current.type == EventType.Repaint) _widthRow = GUILayoutUtility.GetLastRect();
+        }
+
+        private void Delete()
+        {
+            _confirm.Close();
+            if (_editing == null) return;
+            _library.Presets.Remove(_editing);
+            PresetStore.Save(_library);
+            _message = null;
+            _selected = -1;
+           
+            NewDefence(_session.Preset.Layout);
+        }
+
+        /// <summary>
+        /// Steps the main ellipse one durability at its weakest point, the way scrolling does in a duel: scrolling up
+        /// makes it wider. Widths that would stop a part being built are skipped. True if it changed.
+        /// </summary>
+        private bool ScrollEllipseWidth(float delta)
+        {
+            if (!_session.Preset.Layout.IsEllipse || Mathf.Abs(delta) < 1e-6f) return false;
+            var sizes = _session.MainEllipseSizes();
+            int index = NearestIndex(sizes, _session.MainSemiMinor);
+            if (index < 0) return false;
+            int to = Mathf.Clamp(index + (delta < 0f ? 1 : -1), 0, sizes.Count - 1);
+            if (to == index && Mathf.Abs(sizes[index] - _session.MainSemiMinor) < 1e-3f) return false;
+            return _session.SetMainSemiMinor(sizes[to]);
+        }
+
+        private static int NearestIndex(List<float> sizes, float value)
+        {
+            int best = -1;
+            for (int i = 0; i < sizes.Count; i++)
+                if (best < 0 || Mathf.Abs(sizes[i] - value) < Mathf.Abs(sizes[best] - value)) best = i;
+            return best;
         }
 
         private void Save()
@@ -357,6 +411,7 @@ namespace RithmaticDuels.Presentation
             PresetStore.Save(_library);
             _editing = _library.FindPreset(preset.Name);
             _session = new DefenceEditorSession(_rules, _editing.Clone());
+            _baseline = Snapshot();
             _message = null;
         }
 
@@ -368,12 +423,14 @@ namespace RithmaticDuels.Presentation
         {
             var preset = _session.Preset;
             var e = Event.current;
+            _partsViewHeight = height;
+            AutoScroll(e);
             _partsScroll = GUILayout.BeginScrollView(_partsScroll, GUILayout.Height(height));
             try
             {
                 int min = 0, max = preset.Components.Count - 1;
                 if (_dragging) preset.MoveRange(_pressIndex, out min, out max);
-                if (e.type == EventType.Repaint) _rowRects.Clear();
+                if (e.type == EventType.Repaint) { _rowRects.Clear(); _dropInvalid = false; }
 
                 // The main LoW is always built first and can't move.
                 GUILayout.Label("1. Main LoW (" + preset.Layout.Name + ")", GUILayout.Height(RowHeight));
@@ -418,7 +475,11 @@ namespace RithmaticDuels.Presentation
                 if (_pressIndex >= 0 && e.type == EventType.MouseDrag)
                 {
                     if (!_dragging && (e.mousePosition - _pressMouse).magnitude > DragStart) _dragging = true;
-                    if (_dragging) _dropIndex = DropIndexAt(e.mousePosition.y);
+                    if (_dragging)
+                    {
+                        _dragViewY = e.mousePosition.y - _partsScroll.y;
+                        _dropIndex = DropIndexAt(e.mousePosition.y);
+                    }
                     e.Use();
                 }
                 if (_dragging && e.type == EventType.Repaint && _dropIndex >= 0 && _dropIndex < _rowRects.Count)
@@ -426,6 +487,7 @@ namespace RithmaticDuels.Presentation
                     // Where the part would land: a line above or below the row it would take the place of.
                     var target = _rowRects[_dropIndex];
                     bool allowed = _dropIndex >= min && _dropIndex <= max;
+                    _dropInvalid = !allowed;
                     float y = _dropIndex <= _pressIndex ? target.y - 1f : target.yMax - 1f;
                     var colour = GUI.color;
                     GUI.color = allowed ? Color.white : MenuSkin.Refused;
@@ -455,6 +517,27 @@ namespace RithmaticDuels.Presentation
                 e.Use();
                 if (_session.Preset.CanMove(_selected, to)) { _message = null; Then(() => { _session.Move(_selected, to); _selected = to; }); }
             }
+        }
+
+        /// <summary>
+        /// While a part is dragged near the top or bottom of the parts box, scrolls the list that way, faster the
+        /// closer it is to the edge, and keeps the drop marker under the mouse. Stops at the ends of the list.
+        /// </summary>
+        private void AutoScroll(Event e)
+        {
+            if (e.type != EventType.Repaint) return;
+            float now = Time.realtimeSinceStartup;
+            float dt = Mathf.Min(0.1f, now - _lastAutoScroll);
+            _lastAutoScroll = now;
+            if (!_dragging || _rowRects.Count == 0) return;
+            float push = 0f;
+            if (_dragViewY < AutoScrollBand) push = -(AutoScrollBand - _dragViewY) / AutoScrollBand;
+            else if (_dragViewY > _partsViewHeight - AutoScrollBand) push = (_dragViewY - (_partsViewHeight - AutoScrollBand)) / AutoScrollBand;
+            if (push == 0f) return;
+            float maxScroll = Mathf.Max(0f, _rowRects[_rowRects.Count - 1].yMax + 8f - _partsViewHeight);
+            float before = _partsScroll.y;
+            _partsScroll.y = Mathf.Clamp(_partsScroll.y + Mathf.Clamp(push, -1f, 1f) * AutoScrollSpeed * dt, 0f, maxScroll);
+            if (_partsScroll.y != before) _dropIndex = DropIndexAt(_dragViewY + _partsScroll.y);
         }
 
         private static GUIStyle SelectedRow(GUIStyle style)
@@ -504,7 +587,8 @@ namespace RithmaticDuels.Presentation
         private void UpdateInvalidCursor()
         {
             var preview = _session.CanAdd ? _picker.Preview : null;
-            bool show = preview != null && preview.InvalidHover.HasValue && !_dragging;
+            // The same red cross as a refused spot in a duel: over the board, and over a build-order place a dragged part can't go.
+            bool show = _dragging ? _dropInvalid : preview != null && preview.InvalidHover.HasValue;
             int size = 32;
             if (_camera != null && _camera.orthographicSize > 0f)
             {

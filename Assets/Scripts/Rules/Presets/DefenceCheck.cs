@@ -6,6 +6,19 @@ namespace RithmaticDuels.Rules.Presets
     /// Whether a defence can be saved (DESIGN.md section 6.8): its structure is sound and every part fits when
     /// built in order on an empty board. The editor uses this so an invalid defence can never be saved.
     /// </summary>
+    /// <summary>A defence built on a scratch board, for previews (see <see cref="DefenceCheck.Trial"/>).</summary>
+    public sealed class DefenceTrial
+    {
+        public ChalkBoard Board;
+        public Duel Duel;
+        /// <summary>Turns taken to build it, with no modifiers.</summary>
+        public int Turns;
+        /// <summary>Of <see cref="Turns"/>, those spent on the main LoW and its bind points.</summary>
+        public int MainWardTurns;
+        /// <summary>False if it stopped before every part was built.</summary>
+        public bool Complete;
+    }
+
     public static class DefenceCheck
     {
         /// <summary>Null if the defence can be saved, otherwise why not.</summary>
@@ -47,6 +60,33 @@ namespace RithmaticDuels.Rules.Presets
             if (run.State == DefenceRunState.Finished) return null;
             failedIndex = run.CurrentIndex;
             return run.BlockedReason ?? "Part of the defence couldn't be built.";
+        }
+
+        /// <summary>
+        /// Builds the defence for <paramref name="player"/> on an empty board, as <see cref="BuildProblem"/> does, and
+        /// keeps the result: the scratch board shows the whole template where it would go, and <see cref="DefenceTrial.Turns"/>
+        /// is how many turns it takes with no modifiers (DESIGN.md section 6.8).
+        /// </summary>
+        public static DefenceTrial Trial(DefencePreset preset, RulesConfig config, Player player)
+        {
+            var board = new ChalkBoard(config);
+            var duel = new Duel(config, new FixedRandom(), board);
+            var run = new DefenceRun(preset, player);
+            var other = player == Player.A ? Player.B : Player.A;
+            int turns = 0, mainTurns = 0;
+            while (run.IsRunning && turns < 1000)
+            {
+                Placement placement;
+                var action = run.ContinueAction(duel, board, out placement);
+                if (action == null || duel.Validate(player, action) != null) break;
+                if (placement != null) board.SetPendingPlacement(player, action.Spec, placement);
+                var otherAction = StandIn(duel, other);
+                var report = player == Player.A ? duel.ResolveTurn(action, otherAction) : duel.ResolveTurn(otherAction, action);
+                turns++;
+                run.Observe(duel, report);
+                if (mainTurns == 0 && run.CurrentIndex >= 0) mainTurns = turns;
+            }
+            return new DefenceTrial { Board = board, Duel = duel, Turns = turns, MainWardTurns = mainTurns, Complete = run.State == DefenceRunState.Finished };
         }
 
         /// <summary>

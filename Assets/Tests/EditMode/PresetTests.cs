@@ -47,10 +47,35 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
-        public void Layout_CollinearVerticesCantBeSaved()
+        public void Layout_CollinearVerticesAreValid()
         {
+            // Three vertices on a diameter: the line gives 2 points, the perpendicular heights through the outer two
+            // touch the circle at those same points, and the one through the centre adds 2 more.
             var layout = BindPointLayout.Triangle("Flat", new Vec2(-1f, 0f), new Vec2(0f, 0f), new Vec2(1f, 0f));
-            Assert.IsNotNull(layout.Problem(_config));
+            Assert.IsNull(layout.Problem(_config));
+            Assert.AreEqual(4, layout.BindPointCount);
+            Assert.IsTrue(BindPointLayout.VertexAllowed(layout.Vertices, 1, new Vec2(0.5f, 0f), _config.Presets));
+        }
+
+        [Test]
+        public void LockedPartner_FollowsTheLock()
+        {
+            var moved = new Vec2(0.5f, 0.8f);
+            var partner = new Vec2(-1f, -0.2f);
+            Assert.AreEqual(new Vec2(0.5f, -0.8f), BindPointLayout.LockedPartner(EdgeLock.MirrorHorizontal, moved, partner));
+            Assert.AreEqual(new Vec2(-0.5f, 0.8f), BindPointLayout.LockedPartner(EdgeLock.MirrorVertical, moved, partner));
+            Assert.AreEqual(new Vec2(-1f, 0.8f), BindPointLayout.LockedPartner(EdgeLock.Horizontal, moved, partner));
+            Assert.AreEqual(new Vec2(0.5f, -0.2f), BindPointLayout.LockedPartner(EdgeLock.Vertical, moved, partner));
+        }
+
+        [Test]
+        public void Layout_RotatedKeepsCountAndTurnsPoints()
+        {
+            var six = BindPointLayout.Triangle("x", Vec2.FromAngle(0f), Vec2.FromAngle(2.0944f), Vec2.FromAngle(4.18879f));
+            var turned = BindPointLayout.Rotated(six.Vertices, 0.3f);
+            Assert.AreEqual(six.Vertices[0].Length, turned[0].Length, 1e-5f);
+            Assert.AreEqual(0.3f, turned[0].Angle, 1e-5f);
+            Assert.AreEqual(six.BindPointCount, BindPointLayout.Triangle("y", turned[0], turned[1], turned[2]).BindPointCount);
         }
 
         [Test]
@@ -249,7 +274,7 @@ namespace RithmaticDuels.Rules.Tests
         private static int Build(Duel duel, ChalkBoard board, DefenceRun a, DefenceRun b)
         {
             int turns = 0;
-            while ((a.IsRunning || b.IsRunning) && turns < 200) { Step(duel, board, a, b); turns++; }
+            while ((a.IsRunning || (b != null && b.IsRunning)) && turns < 200) { Step(duel, board, a, b); turns++; }
             Assert.AreNotEqual(DefenceRunState.Blocked, a.State, a.BlockedReason);
             return turns;
         }
@@ -265,6 +290,43 @@ namespace RithmaticDuels.Rules.Tests
             Assert.IsFalse(BindPointLayout.VertexAllowed(v, 0, new Vec2(-0.5f, 0.88f), _config.Presets));
             // Too far out.
             Assert.IsFalse(BindPointLayout.VertexAllowed(v, 0, new Vec2(_config.Presets.LayoutMaxVertexRadius + 0.5f, 0f), _config.Presets));
+        }
+
+        [Test]
+        public void LaterOffer_OnlyMatchingLayouts_AndBuildsOnExistingMainWard()
+        {
+            var four = DefaultPresets.Ballintain(Layout("Four-point circle"));
+            var six = DefaultPresets.Ballintain(Layout("Six-point circle"));
+            var board = new ChalkBoard(_config);
+            var duel = new Duel(_config, new ScriptedRandom(Rolls.NoModifier), board);
+            // Only the main LoW, built with a preset that has no other parts.
+            var bare = four.Clone();
+            bare.Components.Clear();
+            Build(duel, board, new DefenceRun(bare, Player.A), new DefenceRun(bare, Player.B));
+            Assert.IsTrue(DefenceRun.CanOffer(duel, Player.A));
+            Assert.IsNull(DefenceRun.MatchProblem(four, duel, board, Player.A));
+            Assert.IsNotNull(DefenceRun.MatchProblem(six, duel, board, Player.A));
+            Assert.IsNotNull(DefenceRun.MatchProblem(bare, duel, board, Player.A));
+
+            var run = DefenceRun.Begin(four, Player.A, board);
+            Assert.AreEqual(0, run.CurrentIndex);
+            Build(duel, board, run, null);
+            Assert.AreEqual(DefenceRunState.Finished, run.State);
+            Assert.AreEqual(1 + four.Components.Count, duel.Lines.Count(l => l.Owner == Player.A && l.IsActive));
+        }
+
+        [Test]
+        public void Timeout_MidDefence_PressesContinue()
+        {
+            var preset = DefaultPresets.Ballintain(Layout("Four-point circle"));
+            var board = new ChalkBoard(_config);
+            var duel = new Duel(_config, new ScriptedRandom(Rolls.NoModifier), board);
+            var run = new DefenceRun(preset, Player.A);
+            Step(duel, board, run, null);
+            Placement placement;
+            var timeout = run.TimeoutAction(duel, board, out placement);
+            var expected = run.ContinueAction(duel, board, out placement);
+            Assert.AreEqual(expected.Kind, timeout.Kind);
         }
     }
 }

@@ -249,10 +249,16 @@ namespace RithmaticDuels.Rules
         /// <summary>How far from the circle's centre (in radii) the bind point editor lets a triangle vertex go.</summary>
         public float LayoutMaxVertexRadius = 3f;
         /// <summary>
-        /// The bind point editor refuses a vertex spot closer than this (in radii) to another vertex or to the line
-        /// through the other two, so the triangle never flattens into a line.
+        /// The bind point editor refuses a vertex spot closer than this (in radii) to another vertex.
         /// </summary>
         public float LayoutMinVertexGap = 0.1f;
+        /// <summary>How far (degrees) one Shift + scroll step turns the whole layout round the circle.</summary>
+        public float LayoutRotateStepDegrees = 5f;
+        /// <summary>Zoom limits in the bind point editor (1 = the whole 3-radius area fits).</summary>
+        public float LayoutMinZoom = 0.5f;
+        public float LayoutMaxZoom = 4f;
+        /// <summary>How much one scroll step zooms the bind point editor (multiplier).</summary>
+        public float LayoutZoomStep = 1.15f;
     }
 
     [Serializable]

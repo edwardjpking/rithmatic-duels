@@ -122,7 +122,7 @@ namespace RithmaticDuels.Rules
             if (MustStartMainWard(state))
                 return PlayerAction.Start(DrawingSpec.Warding(Config.Warding.TimeoutMainWardBindPoints));
             if (state.NeedsBindPoints && !state.HasWorkInProgress)
-                return PlayerAction.DrawBindPoints(state.MainWard.Spec.BindPoints);
+                return PlayerAction.DrawBindPoints(state.MainWard.Spec.BindPoints, state.MainWard.Spec.Layout);
             return state.HasWorkInProgress ? PlayerAction.Continue() : PlayerAction.Pass();
         }
 
@@ -242,6 +242,8 @@ namespace RithmaticDuels.Rules
             var placed = new MovementResult();
             _movement.PlaceNewLines(this, placed);
             ApplyMovementResult(placed, report, breachTime);
+            // A line that finished bound to a bind point broken earlier this tick falls straight away (DESIGN.md section 4.1).
+            DestroyUnboundLines(report, breachTime);
 
             if (fatigueTurn > 0 && fatigueTurn % Config.ChalkFatigue.IntervalTurns == 0)
             {
@@ -291,6 +293,9 @@ namespace RithmaticDuels.Rules
                     break;
 
                 case ActionKind.DrawBindPoints:
+                    // The redrawn points follow the layout picked now (a saved one, or the standard spots).
+                    state.MainWard.Spec.Layout = action.Layout != null && action.Layout.BindPointCount == action.Amount ? action.Layout.Clone() : null;
+                    state.MainWard.Spec.BindPoints = action.Amount;
                     StartBindPoints(state, action.Amount, startProgress, report);
                     break;
 

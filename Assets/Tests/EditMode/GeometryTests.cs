@@ -1024,6 +1024,27 @@ namespace RithmaticDuels.Rules.Tests
         }
 
         [Test]
+        public void ALineFinishingOnABindPointBrokenThatTickFallsWithIt()
+        {
+            // v0.31 test 12: a tangent started on a circle's far bind point; the circle breaks in the tick the tangent
+            // finishes. The tangent must go too, not land on another bind point that now has its old index.
+            var circle = Draw(Player.A, DrawingSpec.Warding(4), Placement.AtBindPoint(0, 1.5f));
+            var points = _board.BindPointsOf(Player.A);
+            int far = Enumerable.Range(0, points.Count).Single(i => Vec2.Distance(points[i], V(12f, 10f)) < 1e-3f);
+            var placement = Placement.TangentAt(far, 1f);
+            var spec = _board.Measure(Player.A, DrawingSpec.Forbiddance(1), placement);
+            _board.SetPendingPlacement(Player.A, spec, placement);
+            circle.Status = LineStatus.Broken;
+            _duel.ResolveTurn(PlayerAction.Start(spec, DrawingPace.Normal), Pass);
+            while (_duel.GetPlayer(Player.A).HasWorkInProgress) _duel.ResolveTurn(Continue, Pass);
+
+            var tangent = _duel.Lines.Last(l => l.Owner == Player.A);
+            Assert.AreEqual(LineType.Forbiddance, tangent.Type);
+            Assert.AreEqual(LineStatus.Destroyed, tangent.Status);
+            Assert.IsNull(_board.BodyOf(tangent.Id));
+        }
+
+        [Test]
         public void EverythingBoundToABrokenWardGoesWithItDownTheTree()
         {
             // A circle on the main LoW's front bind point (9, 10), centre (10.5, 10). On its far point (12, 10): a

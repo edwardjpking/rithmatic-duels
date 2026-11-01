@@ -19,6 +19,8 @@ namespace RithmaticDuels.Presentation
         public IReadOnlyList<Vec2> WardBindPoints;
         /// <summary>A previewed Mark's Cross's crossed LoF.</summary>
         public IReadOnlyList<Segment> Braces;
+        /// <summary>The crossed LoF of a Mark's Cross that only follows the mouse (<see cref="GhostWard"/>).</summary>
+        public IReadOnlyList<Segment> GhostBraces;
         /// <summary>Bind points that can't be picked for this drawing, filled in red.</summary>
         public IReadOnlyList<Vec2> BlockedBindPoints;
         /// <summary>Where the mouse is, if a click there would be ignored because nothing can be placed there: marked with a red cross.</summary>
@@ -46,6 +48,11 @@ namespace RithmaticDuels.Presentation
         public bool ChalklingHovered;
         /// <summary>A bind point under the mouse that a click would pick, ringed faintly.</summary>
         public Vec2? HoverBindPoint;
+        /// <summary>Every part of a picked saved defence, where it will be built: LoW, their bind points, LoF and chalklings.</summary>
+        public readonly List<WardShape> TemplateWards = new List<WardShape>();
+        public readonly List<Vec2> TemplateBindPoints = new List<Vec2>();
+        public readonly List<Segment> TemplateSegments = new List<Segment>();
+        public readonly List<KeyValuePair<Vec2, Glyph>> TemplateChalklings = new List<KeyValuePair<Vec2, Glyph>>();
         /// <summary>Bind points of the main LoW the player has picked.</summary>
         public readonly List<int> BindPoints = new List<int>();
     }
@@ -233,6 +240,8 @@ namespace RithmaticDuels.Presentation
         public IList<DefencePreset> Presets = new List<DefencePreset>();
         // On turn 1: the saved defence picked (-1 for none, drawing by hand). While building: 0 Continue, 1 Cancel.
         private int _presetChoice = -1;
+        // Later in the duel the Defence row hides behind a "Use a saved defence" button until it is pressed (Amelia, v0.32).
+        private bool _showLaterPresets;
         private int _runChoice = 0;
         private bool _runPicked;
         private DefencePreset _pickedPreset;
@@ -438,15 +447,41 @@ namespace RithmaticDuels.Presentation
         {
             placement = null;
             hint = null;
+            if (board.MainWardOf(player) != null && !_showLaterPresets)
+            {
+                if (GUILayout.Button("Use a saved defence"))
+                {
+                    _showLaterPresets = true;
+                    GUIUtility.ExitGUI();
+                }
+                GUILayout.Space(4);
+                return null;
+            }
             var labels = new string[Presets.Count + 1];
             labels[0] = "Draw by hand";
-            for (int i = 0; i < Presets.Count; i++) labels[i + 1] = Presets[i].Name;
+            // With the main LoW already drawn, only defences on the same bind point layout can be picked (Amelia, v0.32).
+            int unusable = 0;
+            string why = null;
+            for (int i = 0; i < Presets.Count; i++)
+            {
+                labels[i + 1] = Presets[i].Name;
+                string problem = DefenceRun.MatchProblem(Presets[i], duel, board, player);
+                if (problem == null) continue;
+                if (i + 1 < 31) unusable |= 1 << (i + 1);
+                why = why == null ? problem : "Greyed-out defences don't match your main Line of Warding's bind points.";
+            }
+            if (_presetChoice >= 0 && Unusable(unusable, _presetChoice + 1)) _presetChoice = -1;
             BeginRow("Defence:");
-            int chosen = Buttons(_presetChoice + 1, labels, NextRowWidth(), 0, null, _presetChoice < 0);
+            // On turn 1 "Draw by hand" is only a default, so the number keys pick here first. Later in the duel the row
+            // is optional, so it counts as chosen and the keys go on to the action row as usual.
+            bool laterOffer = board.MainWardOf(player) != null;
+            int chosen = Buttons(_presetChoice + 1, labels, NextRowWidth(), unusable, why, _presetChoice < 0 && !laterOffer);
             GUILayout.EndHorizontal();
-            if (chosen >= 0 && chosen - 1 != _presetChoice)
+            if (chosen >= 0 && chosen - 1 != _presetChoice && !Unusable(unusable, chosen))
             {
                 _presetChoice = chosen - 1;
+                // Later in the duel, "Draw by hand" folds the row back into its button.
+                if (laterOffer && _presetChoice < 0) _showLaterPresets = false;
                 GUIUtility.ExitGUI();
             }
             GUILayout.Space(4);
@@ -454,12 +489,19 @@ namespace RithmaticDuels.Presentation
             if (_presetChoice < 0) return null;
 
             var preset = Presets[_presetChoice];
-            GUILayout.Label("Builds " + preset.Name + " part by part (" + (preset.Components.Count + 1) + " parts), each at its normal drawing time. "
+            var built = TemplateOf(preset, duel.Config, player);
+            bool onMain = laterOffer;
+            int parts = preset.Components.Count + (onMain ? 0 : 1);
+            int turns = onMain ? built.Turns - built.MainWardTurns : built.Turns;
+            GUILayout.Label("Builds " + preset.Name + (onMain ? " on your main Line of Warding" : "") + " part by part (" + parts + " parts), each at its normal drawing time: "
+                + turns + " turn(s) in all, before modifiers. "
+                + (onMain ? "Parts that clash with lines already drawn are skipped. " : "")
                 + "You can only continue or cancel it, and a cancelled defence can't be restarted.");
-            var trial = new DefenceRun(preset, player);
+            var trial = DefenceRun.Begin(preset, player, board);
             DrawingSpec spec; DrawingPace pace;
             if (!trial.CurrentDrawing(duel, board, out spec, out placement, out pace, out hint)) return null;
             ShowPart(board, player, spec, placement);
+            ShowTemplate(built, player);
             _pickedPreset = preset;
             return PlayerAction.Start(spec, pace);
         }
@@ -518,6 +560,39 @@ namespace RithmaticDuels.Presentation
                 case LineType.Forbiddance: return "a Line of Forbiddance";
                 case LineType.Making: return spec.IsBound ? "a bound chalkling" : "a chalkling";
                 default: return "a line";
+            }
+        }
+
+        private DefenceTrial _template;
+        private DefencePreset _templateOf;
+        private Player _templateFor;
+
+        /// <summary>The picked defence built on a scratch board, worked out again only when the pick changes.</summary>
+        private DefenceTrial TemplateOf(DefencePreset preset, RulesConfig config, Player player)
+        {
+            if (_template == null || _templateOf != preset || _templateFor != player)
+            {
+                _template = DefenceCheck.Trial(preset, config, player);
+                _templateOf = preset;
+                _templateFor = player;
+            }
+            return _template;
+        }
+
+        /// <summary>Adds every part of a picked defence to the preview, as picked placements (Amelia, v0.31).</summary>
+        private void ShowTemplate(DefenceTrial built, Player player)
+        {
+            if (Preview == null) Preview = new PlacementPreview { Player = player };
+            foreach (var line in built.Duel.Lines)
+            {
+                if (line.Owner != player || !line.IsActive) continue;
+                var body = built.Board.BodyOf(line.Id);
+                var ward = body as WardBody;
+                if (ward != null) { Preview.TemplateWards.Add(ward.Shape); Preview.TemplateBindPoints.AddRange(ward.BindPoints); continue; }
+                var forbiddance = body as ForbiddanceBody;
+                if (forbiddance != null) { Preview.TemplateSegments.Add(forbiddance.Segment); continue; }
+                var chalkling = body as ChalklingBody;
+                if (chalkling != null) Preview.TemplateChalklings.Add(new KeyValuePair<Vec2, Glyph>(chalkling.Position, line.Glyph));
             }
         }
 
@@ -623,6 +698,21 @@ namespace RithmaticDuels.Presentation
         /// </summary>
         public bool HandleRightClick(ChalkBoard board, Player player, RulesConfig config)
         {
+            // The later Defence row: un-pick the defence first, then fold the row back into its button.
+            if (_showLaterPresets && Run == null)
+            {
+                if (_presetChoice >= 0) _presetChoice = -1;
+                else _showLaterPresets = false;
+                return true;
+            }
+            // A saved defence being built: stepping back returns to Continue, selected as the default (Amelia, v0.31).
+            if (Run != null && Run.IsRunning)
+            {
+                if (!_runPicked && _runChoice == 0) return false;
+                _runChoice = 0;
+                _runPicked = false;
+                return true;
+            }
             bool needsMain = board.MainWardOf(player) == null && config.MainWardFirst;
             if (Effective == ActionKind.StartDrawing)
             {
@@ -945,7 +1035,13 @@ namespace RithmaticDuels.Presentation
                             if (preview.Ward != null && count == 0) preview.Braces = ChalkBoard.MarksCrossBraces(preview.Ward, points);
                             if (preview.Ward != null) GUILayout.Label("Weakest point: " + board.WeakestDurability(preview.Ward) + " durability, before its modifier.");
                         }
-                        else preview.GhostWard = board.PreviewWard(player, spec, at);
+                        else
+                        {
+                            // Under the mouse, before it is picked: a Mark's Cross shows its crossed LoF too.
+                            IReadOnlyList<Vec2> ghostPoints;
+                            preview.GhostWard = board.PreviewWard(player, spec, at, out ghostPoints);
+                            if (preview.GhostWard != null && count == 0) preview.GhostBraces = ChalkBoard.MarksCrossBraces(preview.GhostWard, ghostPoints);
+                        }
                     }
                     preview.BlockedBindPoints = BlockedBindPoints(board, player);
                     break;
@@ -1109,26 +1205,35 @@ namespace RithmaticDuels.Presentation
             return PlayerAction.Start(spec, _pace);
         }
 
-        /// <summary>Redrawing the main LoW's bind points after a cancel. The count is offered as the shape allows.</summary>
+        /// <summary>
+        /// Redrawing the main LoW's bind points after a cancel. The same choices as at setup: on a circle 4, 6, 9 and
+        /// the player's saved circle layouts; on an ellipse its two ends (Amelia, v0.32).
+        /// </summary>
         private PlayerAction DrawBindPointsMenu(Duel duel, ChalkBoard board, Player player, out string hint)
         {
             var choices = board.BindPointChoices(player);
-            var labels = new string[choices.Length];
+            var main = board.MainWardOf(player);
+            var own = main != null && main.Shape.IsCircle ? OwnCircleLayouts() : new List<RithmaticDuels.Rules.Presets.BindPointLayout>();
+            var labels = new string[choices.Length + own.Count];
             for (int i = 0; i < choices.Length; i++) labels[i] = choices[i].ToString();
-            if (choices.Length == 1) _bindPointChoice = 0;
+            for (int i = 0; i < own.Count; i++) labels[choices.Length + i] = own[i].Name + " (" + own[i].BindPointCount + ")";
+            if (labels.Length == 1) _bindPointChoice = 0;
             BeginRow("Bind points:");
             Choose(ref _bindPointChoice, labels);
             GUILayout.EndHorizontal();
-            if (_bindPointChoice < 0 || _bindPointChoice >= choices.Length)
+            if (_bindPointChoice < 0 || _bindPointChoice >= labels.Length)
             {
                 hint = "Choose how many bind points to draw.";
                 return null;
             }
-            int count = choices[_bindPointChoice];
-            Preview = new PlacementPreview { Player = player, WardBindPoints = board.PreviewBindPoints(player, count) };
+            RithmaticDuels.Rules.Presets.BindPointLayout layout = _bindPointChoice < choices.Length ? null : own[_bindPointChoice - choices.Length];
+            int count = layout != null ? layout.BindPointCount : choices[_bindPointChoice];
+            var spec = DrawingSpec.Warding(count);
+            if (layout != null) spec.Layout = layout.Clone();
+            Preview = new PlacementPreview { Player = player, WardBindPoints = board.PreviewBindPoints(player, spec) };
             GUILayout.Label(BindPointTimingText(duel.Config, count) + " Nothing else can be drawn until they are done.");
             hint = null;
-            return PlayerAction.DrawBindPoints(count);
+            return PlayerAction.DrawBindPoints(count, layout);
         }
 
         private static string BindPointTimingText(RulesConfig config, int count)
@@ -1157,7 +1262,11 @@ namespace RithmaticDuels.Presentation
             var placedTether = PlacedChalklingMode;
             BeginRow("Tether:");
             int tetherMask = _bindA >= 0 ? 1 << (int)ChalklingMode.Free : _pointA.HasValue ? 1 << (int)ChalklingMode.Bound : 0;
-            int chosenTether = ChooseShown(placedTether.HasValue ? (int)placedTether.Value : -1, ChalklingLabels, tetherMask, StepBackReason);
+            // A bound chalkling must Defend, so once Attack is chosen binding is greyed out (Amelia, v0.31).
+            bool attacking = _glyph == Glyph.Attack && !_pointA.HasValue && _bindA < 0;
+            if (attacking) tetherMask |= 1 << (int)ChalklingMode.Bound;
+            int chosenTether = ChooseShown(placedTether.HasValue ? (int)placedTether.Value : -1, ChalklingLabels, tetherMask,
+                attacking ? "A bound chalkling must Defend. Choose Defend to bind it." : StepBackReason);
             if (chosenTether >= 0)
             {
                 _chalklingMode = (ChalklingMode)chosenTether;
